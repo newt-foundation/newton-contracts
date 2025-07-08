@@ -1,0 +1,19 @@
+{
+  "extends": "solhint:recommended",
+  "rules": {
+    "compiler-version": "off",
+    "func-visibility": "off",
+    "no-empty-blocks": "off",
+    "not-rely-on-time": "off",
+    "avoid-low-level-calls": "off",
+    "avoid-sha3": "off",
+    "no-inline-assembly": "off",
+    "no-unused-vars": "off",
+    "max-line-length": "off",
+    "quotes": "off",
+    "indent": "off",
+    "two-lines-top-level-separator": "off",
+    "no-global-import": "off"
+  },
+  "ignoreFiles": ["lib/**/*.sol", "lib/**/*"]
+}

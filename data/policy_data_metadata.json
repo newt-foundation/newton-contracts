@@ -1,0 +1,7 @@
+{
+  "name": "Real-Time Market Signals Data",
+  "version": "1.0.0",
+  "author": "Newton",
+  "link": "https://newton.xyz",
+  "description": "This policy data gives real-time market signals for top 200 market cap crypto tokens:\ntoken price data, past 200-days daily moving average, market cap rank, and more."
+}

@@ -1,0 +1,16 @@
+{
+  "makefile.configureOnOpen": false,
+  "editor.formatOnSave": true,
+  "[solidity]": {
+    "editor.defaultFormatter": "JuanBlanco.solidity"
+  },
+  "solidity.formatter": "forge",
+  "solidity.compileUsingRemoteVersion": "v0.8.27",
+  "solidity.packageDefaultDependenciesContractsDirectory": "src",
+  "solidity.packageDefaultDependenciesDirectory": "lib",
+  "solidity.solhintRules": {
+    "func-param-name-mixedcase": "off",
+    "var-name-mixedcase": "off"
+  },
+  "editor.formatOnSaveMode": "file"
+}

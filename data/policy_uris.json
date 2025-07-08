@@ -1,0 +1,10 @@
+{
+  "policyDataLocation": "https://silver-socialist-eel-341.mypinata.cloud/ipfs/bafybeig5q265nedo6pdpl7ewgftckdlz7qsiqpfgoquanuv3hjblbkethq",
+  "policyDataArgs": "",
+  "attester": "0xD45062003a4626a532F30A4596aB253c45AE0647",
+  "policyUri": "https://silver-socialist-eel-341.mypinata.cloud/ipfs/bafkreid4epagcbvjq2ufsgsnulv3m3kpss3elz7uygesqolypmp5t5y2ku",
+  "schemaUri": "https://silver-socialist-eel-341.mypinata.cloud/ipfs/bafkreibjw26cbnfjhn5654ockcid4qqx2twtvzwfrckzjlhxq4r4r2a46i",
+  "entrypoint": "newton_trading_agent.allow",
+  "policyMetadataUri": "https://silver-socialist-eel-341.mypinata.cloud/ipfs/bafkreiajudbpi7epbo5herbkbrdbocwerdjise2kzbc7useexwve6sbgeu",
+  "policyDataMetadataUri": "https://silver-socialist-eel-341.mypinata.cloud/ipfs/bafkreibvlqeppn577fs5iak52poh7p4irp3bizh2dtoiyksava44kx5sga"
+}

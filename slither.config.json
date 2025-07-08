@@ -1,0 +1,4 @@
+{
+  "filter_paths": ["lib", "lib/**/*", "lib/**/*.sol"],
+  "exclude": ["lib/**/*", "lib/**/*.sol"]
+}

@@ -1,0 +1,27 @@
+{
+  "admin": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+  "allowed_actions": {
+    "31337": {
+      "address": "0x8f86403a4de0bb5791fa46b8e795c547942fe4cf",
+      "function_name": "buy",
+      "max_limit": 1000000000000000000
+    },
+    "11155111": {
+      "address": "0x8f86403a4de0bb5791fa46b8e795c547942fe4cf",
+      "function_name": "buy",
+      "max_limit": 1000000000000000000
+    }
+  },
+  "token_whitelist": {
+    "31337": {
+      "address": "0x8f86403a4de0bb5791fa46b8e795c547942fe4cf",
+      "max_limit": 1000000000000000000,
+      "symbol": "NEWT"
+    },
+    "11155111": {
+      "address": "0x29f2D40B0605204364af54EC677bD022dA425d03",
+      "max_limit": 1000000000000000000,
+      "symbol": "WBTC"
+    }
+  }
+}

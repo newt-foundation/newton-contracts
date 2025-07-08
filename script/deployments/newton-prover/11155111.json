@@ -1,0 +1,16 @@
+{
+  "lastUpdate": { "timestamp": "1758213276", "block_number": "9229782" },
+  "addresses": {
+    "proxyAdmin": "0x66a3965552edf75a0552262233e855698b2fd340",
+    "newtonProverServiceManager": "0x96464e86f76b6a95d32ccb1dee6425561f4f3721",
+    "newtonProverServiceManagerImpl": "0xc12b146aa863a085c515cbe743f890a97ab454d6",
+    "newtonProverTaskManager": "0xc0438f9839e783355b64b3ec541c03c7a7896d3a",
+    "newtonProverTaskManagerImpl": "0xb80539ec2483728e329ba7b1b4a0f1460857421d",
+    "policyFactory": "0xe554537a9dabf9b420bce9f7e31612212ecf97e4",
+    "policyFactoryImpl": "0xef4deec2fc23b72818ae93df7b9d5def4a897017",
+    "policy": "0xb1e68540abe9bebf1d0165007eb6cc3329fdebd6",
+    "policyImplementation": "0x33451982cdde3ed2ed7bc9fbc6a7db00132d7d09",
+    "policyDataFactory": "0xa3f74785a4959083a2d1e3e8f4aa77ae19771782",
+    "policyDataFactoryImpl": "0x2935e15fc40ed554ac7ee5378c3751eee933a4d5"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "wasm_file": "../poc-newton-trade-agent/target/wasm32-wasip2/release/main.wasm",
+  "wasm_args_file": "",
+  "policy_file": "../poc-newton-trade-agent/policy.rego",
+  "schema_file": "../poc-newton-trade-agent/params_schema.json",
+  "entrypoint": "newton_trading_agent.allow",
+  "policy_metadata_file": "contracts/demo/policy_metadata.json",
+  "policy_data_metadata_file": "contracts/demo/policy_data_metadata.json"
+}
