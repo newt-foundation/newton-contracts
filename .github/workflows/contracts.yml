@@ -32,7 +32,44 @@ jobs:
 
           - name: Build
             run: forge build
+            
+    deepsource-slither:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+          with:
+            submodules: recursive
 
+        - name: Install Foundry
+          uses: foundry-rs/foundry-toolchain@v1
+        
+        - name: Print forge version
+          run: forge --version
+        
+        - name: Install Slither
+          run: |
+            python3 -m pip install slither-analyzer
+  
+        - name: Run Slither
+          run: |
+            slither . --sarif results.sarif
+          id: slither
+          continue-on-error: true
+  
+        - name: Install Deepsource CLI
+          run: curl https://deepsource.io/cli | sh
+  
+        - name: Check if SARIF file exists
+          run: |
+            ls -la results.sarif
+            echo "SARIF file size: $(wc -c < results.sarif)"
+  
+        - name: Upload Results to Deepsource
+          run: ./bin/deepsource report --analyzer slither --analyzer-type community --value-file ./results.sarif
+          env:
+            DEEPSOURCE_DSN: ${{ secrets.DEEPSOURCE_DSN }}
+          continue-on-error: true
+    
     test:
         runs-on: ubuntu-latest
         steps:
