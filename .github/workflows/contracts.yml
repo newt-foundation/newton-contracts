@@ -48,9 +48,12 @@ jobs:
         - name: Print forge version
           run: forge --version
         
-        - name: Set Remappings
+        - name: Install Dependencies
           run: |
-            forge remappings
+            forge install OpenZeppelin/openzeppelin-contracts --no-commit
+            forge install OpenZeppelin/openzeppelin-contracts-upgradeable --no-commit
+            forge install foundry-rs/forge-std --no-commit
+            forge install transmissions11/solmate --no-commit
         
         - name: Install Slither
           run: |
