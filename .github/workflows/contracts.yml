@@ -48,6 +48,13 @@ jobs:
         - name: Print forge version
           run: forge --version
         
+        - name: Install Dependencies
+          run: |
+            forge install OpenZeppelin/openzeppelin-contracts
+            forge install OpenZeppelin/openzeppelin-contracts-upgradeable
+            forge install foundry-rs/forge-std
+            forge install transmissions11/solmate
+        
         - name: Run Slither
           uses: crytic/slither-action@v0.4.1
           id: slither
