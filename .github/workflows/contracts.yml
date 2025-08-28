@@ -32,7 +32,7 @@ jobs:
 
           - name: Build
             run: forge build
-            
+
     deepsource-slither:
       runs-on: ubuntu-latest
       steps:
@@ -42,9 +42,15 @@ jobs:
 
         - name: Install Foundry
           uses: foundry-rs/foundry-toolchain@v1
+          with:
+              version: stable
         
         - name: Print forge version
           run: forge --version
+        
+        - name: Set Remappings
+          run: |
+            forge remappings
         
         - name: Install Slither
           run: |
