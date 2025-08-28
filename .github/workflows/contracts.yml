@@ -49,7 +49,12 @@ jobs:
           run: forge --version
         
         - name: Install Dependencies
-          run: forge remappings
+          run: |
+            forge remappings
+            forge install OpenZeppelin/openzeppelin-contracts
+            forge install OpenZeppelin/openzeppelin-contracts-upgradeable
+            forge install foundry-rs/forge-std
+            forge install transmissions11/solmate
         
         - name: Install Slither
           run: |
