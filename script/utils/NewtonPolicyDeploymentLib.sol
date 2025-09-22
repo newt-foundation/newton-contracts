@@ -51,7 +51,7 @@ library NewtonPolicyDeploymentLib {
         NewtonPolicyLib.PolicyUris memory policyUris =
             NewtonPolicyLib.readPolicyUris(policyUrisPath);
 
-        uint256 expireAfter = 4 minutes;
+        uint256 expireAfter = VM.envOr("EXPIRE_AFTER", uint256(1 hours));
 
         address[] memory attesters = new address[](1);
 
