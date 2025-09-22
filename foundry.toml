@@ -52,7 +52,7 @@
 
     gas_limit = 5000000000
     no-match-contract = "FFI"
-    fs_permissions = [{ access = "read-write", path = "./" }]
+    fs_permissions = [{ access = "read", path = "../" }, { access = "write", path = "./" }]
 
 [profile.lint]
     exclude_lints = ["private-vars-leading-underscore", "const-name-snakecase"]
