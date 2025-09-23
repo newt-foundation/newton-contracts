@@ -9,10 +9,10 @@ import "@openzeppelin/contracts/interfaces/IERC165.sol";
 import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import "@openzeppelin/contracts/utils/Create2.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import {NewtonPolicyDataFactory} from "./NewtonPolicyDataFactory.sol";
-import {INewtonPolicyData} from "../interfaces/INewtonPolicyData.sol";
-import {INewtonPolicy} from "../interfaces/INewtonPolicy.sol";
-import {NewtonMessage} from "./NewtonMessage.sol";
+import "./NewtonPolicyDataFactory.sol";
+import "../interfaces/INewtonPolicyData.sol";
+import "../interfaces/INewtonPolicy.sol";
+import "./NewtonMessage.sol";
 
 contract NewtonPolicyData is
     Initializable,
@@ -24,8 +24,8 @@ contract NewtonPolicyData is
 
     /* STORAGE */
     address public factory;
-    string private _policyDataLocation;
-    string private _policyDataArgs;
+    string private _wasmCid;
+    string private _wasmArgs;
     uint32 private _expireAfter;
     string private _metadataUri;
     INewtonPolicyData.AttestationInfo private _attestationInfo;
@@ -39,7 +39,7 @@ contract NewtonPolicyData is
     error InvalidAttestationInfo();
 
     /* EVENTS */
-    event PolicyDataMetadataUriUpdated(string metadataUri);
+    event PolicyDataMetadataCidUpdated(string metadataCid);
     event AttestationInfoUpdated(INewtonPolicyData.AttestationInfo attestationInfo);
 
     /* Modifiers */
@@ -61,8 +61,8 @@ contract NewtonPolicyData is
 
     function initialize(
         address _factory,
-        string calldata policyDataLocation,
-        string calldata policyDataArgs,
+        string calldata wasmCid,
+        string calldata wasmArgs,
         uint32 expireAfter,
         string calldata metadataUri,
         address _owner
@@ -71,29 +71,29 @@ contract NewtonPolicyData is
         _transferOwnership(_owner);
         __ERC165_init();
         factory = _factory;
-        _policyDataLocation = policyDataLocation;
-        _policyDataArgs = policyDataArgs;
+        _wasmCid = wasmCid;
+        _wasmArgs = wasmArgs;
         _expireAfter = expireAfter;
         _metadataUri = metadataUri;
     }
 
-    function getMetadataUri() public view returns (string memory) {
+    function getMetadataCid() public view returns (string memory) {
         return _metadataUri;
     }
 
-    function setMetadataUri(
+    function setMetadataCid(
         string calldata metadataUri
     ) public onlyOwner {
         _metadataUri = metadataUri;
-        emit PolicyDataMetadataUriUpdated(metadataUri);
+        emit PolicyDataMetadataCidUpdated(metadataUri);
     }
 
-    function getPolicyDataLocation() public view returns (string memory) {
-        return _policyDataLocation;
+    function getWasmCid() public view returns (string memory) {
+        return _wasmCid;
     }
 
-    function getPolicyDataArgs() public view returns (string memory) {
-        return _policyDataArgs;
+    function getWasmArgsCid() public view returns (string memory) {
+        return _wasmArgs;
     }
 
     function getAttestationInfo() public view returns (INewtonPolicyData.AttestationInfo memory) {
@@ -154,8 +154,8 @@ contract NewtonPolicyData is
                     policyData.data,
                     policyData.policyDataAddress,
                     policyData.expireBlock,
-                    _policyDataLocation,
-                    _policyDataArgs
+                    _wasmCid,
+                    _wasmArgs
                 )
             ),
             policyData.attestation

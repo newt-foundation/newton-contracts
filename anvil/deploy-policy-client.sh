@@ -59,9 +59,9 @@ echo $OUTPUT
 
 policy_client_impl_address=$(echo "$OUTPUT" | grep "PolicyClient Implementation: " | awk '{print $NF}')
 
-# ExamplePolicyClient
+# MockNewtonPolicyClient
 forge verify-contract \
     --num-of-optimizations 200 --watch \
     --rpc-url $RPC_URL --verifier etherscan --etherscan-api-key $ETHERSCAN_API_KEY \
     --constructor-args $(cast abi-encode "constructor()") \
-    $policy_client_impl_address ./src/mocks/ExamplePolicyClient.sol:ExamplePolicyClient
+    $policy_client_impl_address ./examples/mock/MockNewtonPolicyClient.sol:MockNewtonPolicyClient
