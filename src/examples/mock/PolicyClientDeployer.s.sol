@@ -5,11 +5,11 @@ import "forge-std/Script.sol";
 import "forge-std/StdJson.sol";
 import "forge-std/Test.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
-import {ExamplePolicyClient} from "../src/examples/ExamplePolicyClient.sol";
-import {INewtonPolicy} from "../src/interfaces/INewtonPolicy.sol";
-import {NewtonPolicyLib} from "./utils/NewtonPolicyLib.sol";
-import {UpgradeableProxyLib} from "./utils/UpgradeableProxyLib.sol";
-import {NewtonPolicyDeploymentLib} from "./utils/NewtonPolicyDeploymentLib.sol";
+import {NewtonProverDeploymentLib} from "../../../script/utils/NewtonProverDeploymentLib.sol";
+import {MockNewtonPolicyClient} from "./MockNewtonPolicyClient.sol";
+import {INewtonPolicy} from "../../interfaces/INewtonPolicy.sol";
+import {NewtonPolicyLib} from "../../../script/utils/NewtonPolicyLib.sol";
+import {UpgradeableProxyLib} from "../../../script/utils/UpgradeableProxyLib.sol";
 
 // # To deploy and verify our contract
 // forge script script/PolicyClientDeployer.s.sol:PolicyClientDeployer --rpc-url $RPC_URL  --private-key $PRIVATE_KEY --broadcast -vvvv
@@ -21,7 +21,7 @@ contract PolicyClientDeployer is Script {
     address internal _deployer;
     address internal _policyAddress;
     string internal _policyParamPath;
-    string internal _policyUrisPath;
+    string internal _policyCidsPath;
     address internal _proxyAdmin;
 
     error PolicyParamPathNotSet();
@@ -46,21 +46,21 @@ contract PolicyClientDeployer is Script {
         // Deploy ProxyAdmin with the correct owner (the deployer)
         _proxyAdmin = UpgradeableProxyLib.deployProxyAdmin();
 
-        NewtonPolicyDeploymentLib.CoreDeploymentData memory coreDeploymentData =
-            NewtonPolicyDeploymentLib.readCoreDeploymentJson(block.chainid);
+        NewtonProverDeploymentLib.DeploymentData memory deploymentData =
+            NewtonProverDeploymentLib.readDeploymentJson(block.chainid);
 
-        address newtonProverTaskManager = coreDeploymentData.newtonProverTaskManager;
+        address newtonProverTaskManager = deploymentData.newtonProverTaskManager;
 
         address policyClient = UpgradeableProxyLib.setUpEmptyProxy(_proxyAdmin);
-        address policyClientImpl = address(new ExamplePolicyClient());
+        address policyClientImpl = address(new MockNewtonPolicyClient());
         bytes memory upgradeCall = abi.encodeCall(
-            ExamplePolicyClient.initialize, (newtonProverTaskManager, _policyAddress, _deployer)
+            MockNewtonPolicyClient.initialize, (newtonProverTaskManager, _policyAddress, _deployer)
         );
         UpgradeableProxyLib.upgradeAndCall(policyClient, policyClientImpl, upgradeCall);
 
         string memory policyParams = NewtonPolicyLib.readPolicyParam(_policyParamPath);
         uint256 expireAfter = 1 minutes;
-        bytes32 policyId = ExamplePolicyClient(policyClient).setPolicy(
+        bytes32 policyId = MockNewtonPolicyClient(policyClient).setPolicy(
             INewtonPolicy.PolicyConfig({
                 policyParams: bytes(policyParams),
                 expireAfter: uint32(expireAfter)

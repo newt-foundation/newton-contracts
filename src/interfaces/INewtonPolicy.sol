@@ -16,8 +16,8 @@ interface INewtonPolicy is IERC165 {
         bytes32 policyId;
         address policyAddress;
         address owner;
-        string policyUri;
-        string schemaUri;
+        string policyCid;
+        string schemaCid;
         string entrypoint;
         PolicyConfig policyConfig;
         address[] policyData;
@@ -26,29 +26,29 @@ interface INewtonPolicy is IERC165 {
     struct PolicyInfo {
         address policyAddress;
         address owner;
-        string metadataUri;
-        string policyUri;
-        string schemaUri;
+        string metadataCid;
+        string policyCid;
+        string schemaCid;
         string entrypoint;
         address[] policyData;
     }
 
     /* Events */
     event PolicySet(address indexed client, bytes32 indexed policyId, SetPolicyInfo policy);
-    event PolicyMetadataUriUpdated(string metadataUri);
+    event policyMetadataCidUpdated(string metadataCid);
 
     /**
-     * @notice Retrieves the metadata URI for the policy.
-     * @return The metadata URI for the policy.
+     * @notice Retrieves the metadata CID for the policy.
+     * @return The metadata CID for the policy.
      */
-    function getMetadataUri() external view returns (string memory);
+    function getMetadataCid() external view returns (string memory);
 
     /**
-     * @notice Sets the metadata URI for the policy.
-     * @param metadataUri The metadata URI to set for the policy.
+     * @notice Sets the metadata CID for the policy.
+     * @param metadataCid The metadata CID to set for the policy.
      */
-    function setMetadataUri(
-        string calldata metadataUri
+    function setMetadataCid(
+        string calldata metadataCid
     ) external;
 
     /**
@@ -71,13 +71,13 @@ interface INewtonPolicy is IERC165 {
      * @return The policy params schema from the Rego policy
      * @dev https://docs.rs/regorus/latest/regorus/struct.Schema.html
      */
-    function getSchemaUri() external view returns (string memory);
+    function getSchemaCid() external view returns (string memory);
 
     /**
      * @notice Retrieves the policy location for the policy.
      * @return The policy location for the policy.
      */
-    function getPolicyUri() external view returns (string memory);
+    function getPolicyCid() external view returns (string memory);
 
     /**
      * @notice Retrieves the policy configuration for the given policyID.

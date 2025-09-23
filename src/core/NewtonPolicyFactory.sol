@@ -66,8 +66,8 @@ contract NewtonPolicyFactory is OwnableUpgradeable {
 
     function deployPolicy(
         string memory _entrypoint,
-        string memory _policyUri,
-        string memory _schemaUri,
+        string memory _policyCid,
+        string memory _schemaCid,
         address[] memory _policyData,
         string memory _metadataUri,
         address _owner
@@ -76,8 +76,8 @@ contract NewtonPolicyFactory is OwnableUpgradeable {
             NewtonPolicy.initialize.selector,
             address(this),
             _entrypoint,
-            _policyUri,
-            _schemaUri,
+            _policyCid,
+            _schemaCid,
             _policyData,
             _metadataUri,
             _owner
@@ -87,8 +87,8 @@ contract NewtonPolicyFactory is OwnableUpgradeable {
             abi.encodePacked(
                 address(this),
                 _entrypoint,
-                _policyUri,
-                _schemaUri,
+                _policyCid,
+                _schemaCid,
                 _policyData,
                 _metadataUri,
                 _owner
@@ -112,15 +112,15 @@ contract NewtonPolicyFactory is OwnableUpgradeable {
         emit PolicyDeployed(
             policyAddr,
             INewtonPolicy.PolicyInfo(
-                policyAddr, _owner, _metadataUri, _policyUri, _schemaUri, _entrypoint, _policyData
+                policyAddr, _owner, _metadataUri, _policyCid, _schemaCid, _entrypoint, _policyData
             )
         );
     }
 
     function computePolicyAddress(
         string memory _entrypoint,
-        string memory _policyUri,
-        string memory _schemaUri,
+        string memory _policyCid,
+        string memory _schemaCid,
         address[] memory _policyData,
         string memory _metadataUri,
         address _owner
@@ -129,8 +129,8 @@ contract NewtonPolicyFactory is OwnableUpgradeable {
             NewtonPolicy.initialize.selector,
             address(this),
             _entrypoint,
-            _policyUri,
-            _schemaUri,
+            _policyCid,
+            _schemaCid,
             _policyData,
             _metadataUri,
             _owner
@@ -140,8 +140,8 @@ contract NewtonPolicyFactory is OwnableUpgradeable {
             abi.encodePacked(
                 address(this),
                 _entrypoint,
-                _policyUri,
-                _schemaUri,
+                _policyCid,
+                _schemaCid,
                 _policyData,
                 _metadataUri,
                 _owner

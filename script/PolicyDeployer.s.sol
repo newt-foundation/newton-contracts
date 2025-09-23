@@ -5,7 +5,8 @@ import "forge-std/Script.sol";
 import "forge-std/StdJson.sol";
 import "forge-std/Test.sol";
 
-import {NewtonPolicyDeploymentLib} from "../script/utils/NewtonPolicyDeploymentLib.sol";
+import {NewtonProverDeploymentLib} from "./utils/NewtonProverDeploymentLib.sol";
+import {NewtonPolicyDeploymentLib} from "./utils/NewtonPolicyDeploymentLib.sol";
 
 // # To deploy and verify our contract
 // forge script script/PolicyDeployer.s.sol:PolicyDeployer --rpc-url $RPC_URL  --private-key $PRIVATE_KEY --broadcast -vvvv
@@ -13,27 +14,27 @@ import {NewtonPolicyDeploymentLib} from "../script/utils/NewtonPolicyDeploymentL
 // solhint-disable-next-line max-states-count
 contract PolicyDeployer is Script {
     address internal _deployer;
-    string internal _policyUrisPath;
+    string internal _policyCidsPath;
 
-    error PolicyUrisPathNotSet();
+    error policyCidsPathNotSet();
 
     function setUp() public virtual {
         _deployer = vm.rememberKey(vm.envUint("PRIVATE_KEY"));
         vm.label(_deployer, "Deployer");
 
-        string memory policyUrisPath = vm.envString("POLICY_URIS_PATH");
-        require(bytes(policyUrisPath).length > 0, PolicyUrisPathNotSet());
-        _policyUrisPath = policyUrisPath;
+        string memory policyCidsPath = vm.envString("POLICY_CIDS_PATH");
+        require(bytes(policyCidsPath).length > 0, policyCidsPathNotSet());
+        _policyCidsPath = policyCidsPath;
     }
 
     function run() external {
         vm.startBroadcast(_deployer);
 
-        NewtonPolicyDeploymentLib.CoreDeploymentData memory coreDeploymentData =
-            NewtonPolicyDeploymentLib.readCoreDeploymentJson(block.chainid);
+        NewtonProverDeploymentLib.DeploymentData memory deploymentData =
+            NewtonProverDeploymentLib.readDeploymentJson(block.chainid);
 
-        NewtonPolicyDeploymentLib.PolicyDeploymentData memory policyDeploymentData =
-            NewtonPolicyDeploymentLib.deployPolicy(_deployer, coreDeploymentData, _policyUrisPath);
+        NewtonPolicyDeploymentLib.DeploymentData memory policyDeploymentData =
+            NewtonPolicyDeploymentLib.deployPolicy(_deployer, deploymentData, _policyCidsPath);
 
         // solhint-disable-next-line no-console
         console2.log("Policy:", address(policyDeploymentData.policy));

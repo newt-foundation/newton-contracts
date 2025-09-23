@@ -15,11 +15,11 @@ import {INewtonPolicy} from "../interfaces/INewtonPolicy.sol";
 contract NewtonPolicy is Initializable, OwnableUpgradeable, ERC165Upgradeable, INewtonPolicy {
     /* STORAGE */
     address public factory;
-    string public policyUri;
-    string public schemaUri;
+    string public policyCid;
+    string public schemaCid;
     string public entrypoint;
     address[] public policyData;
-    string public metadataUri;
+    string public metadataCid;
 
     // mapping of policyId to per policy config
     mapping(bytes32 => INewtonPolicy.PolicyConfig) private _policyIdToConfig;
@@ -51,21 +51,21 @@ contract NewtonPolicy is Initializable, OwnableUpgradeable, ERC165Upgradeable, I
     function initialize(
         address _factory,
         string calldata _entrypoint,
-        string calldata _policyUri,
-        string calldata _schemaUri,
+        string calldata _policyCid,
+        string calldata _schemaCid,
         address[] calldata _policyData,
-        string calldata _metadataUri,
+        string calldata _metadataCid,
         address _owner
     ) public initializer {
         __Ownable_init();
         _transferOwnership(_owner);
         __ERC165_init();
         factory = _factory;
-        policyUri = _policyUri;
-        schemaUri = _schemaUri;
+        policyCid = _policyCid;
+        schemaCid = _schemaCid;
         policyData = _policyData;
         entrypoint = _entrypoint;
-        metadataUri = _metadataUri;
+        metadataCid = _metadataCid;
     }
 
     // function to set policy for the msg.sender (client)
@@ -77,8 +77,8 @@ contract NewtonPolicy is Initializable, OwnableUpgradeable, ERC165Upgradeable, I
                 msg.sender,
                 address(this),
                 owner(),
-                policyUri,
-                schemaUri,
+                policyCid,
+                schemaCid,
                 entrypoint,
                 policyConfig,
                 policyData,
@@ -96,8 +96,8 @@ contract NewtonPolicy is Initializable, OwnableUpgradeable, ERC165Upgradeable, I
                 policyId,
                 address(this),
                 owner(),
-                policyUri,
-                schemaUri,
+                policyCid,
+                schemaCid,
                 entrypoint,
                 policyConfig,
                 policyData
@@ -113,27 +113,27 @@ contract NewtonPolicy is Initializable, OwnableUpgradeable, ERC165Upgradeable, I
         return clientToPolicyId[client];
     }
 
-    function getMetadataUri() public view returns (string memory) {
-        return metadataUri;
+    function getMetadataCid() public view returns (string memory) {
+        return metadataCid;
     }
 
-    function setMetadataUri(
-        string calldata _metadataUri
+    function setMetadataCid(
+        string calldata _metadataCid
     ) public onlyOwner {
-        metadataUri = _metadataUri;
-        emit PolicyMetadataUriUpdated(_metadataUri);
+        metadataCid = _metadataCid;
+        emit policyMetadataCidUpdated(_metadataCid);
     }
 
     function getEntrypoint() public view returns (string memory) {
         return entrypoint;
     }
 
-    function getPolicyUri() public view returns (string memory) {
-        return policyUri;
+    function getPolicyCid() public view returns (string memory) {
+        return policyCid;
     }
 
-    function getSchemaUri() public view returns (string memory) {
-        return schemaUri;
+    function getSchemaCid() public view returns (string memory) {
+        return schemaCid;
     }
 
     function getPolicyData() public view returns (address[] memory) {
