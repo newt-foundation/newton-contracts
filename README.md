@@ -644,6 +644,8 @@ slither .
 
 ### EigenLayer Ecosystem
 
+All EigenLayer code listed below is subject to the following license https://github.com/Layr-Labs/eigenlayer-middleware?tab=License-1-ov-file#readme
+
 - [eigensdk-rs](https://github.com/Layr-Labs/eigensdk-rs) - Official EigenLayer Rust SDK
 - [rust-bls-bn254](https://github.com/Layr-Labs/bn254-bls-keystore-rs) - EIP 2335 Compatible Keystore using BN254
 - [eigenlayer-contracts](https://github.com/Layr-Labs/eigenlayer-contracts) - EigenLayer core smart contracts
