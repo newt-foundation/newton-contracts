@@ -17,9 +17,9 @@ interface INewtonPolicyData is IERC165 {
     struct PolicyDataInfo {
         address policyDataAddress;
         address owner;
-        string metadataUri;
-        string policyDataLocation;
-        string policyDataArgs;
+        string metadataCid;
+        string wasmCid;
+        string wasmArgsCid;
         uint32 expireAfter;
     }
 
@@ -35,17 +35,17 @@ interface INewtonPolicyData is IERC165 {
     }
 
     /**
-     * @notice Retrieves the metadata URI for the policy.
-     * @return The metadata URI for the policy.
+     * @notice Retrieves the metadata CID for the policy.
+     * @return The metadata CID for the policy.
      */
-    function getMetadataUri() external view returns (string memory);
+    function getMetadataCid() external view returns (string memory);
 
     /**
-     * @notice Sets the metadata URI for the policy data.
-     * @param metadataUri The metadata URI to set for the policy data.
+     * @notice Sets the metadata CID for the policy data.
+     * @param metadataCid The metadata CID to set for the policy data.
      */
-    function setMetadataUri(
-        string calldata metadataUri
+    function setMetadataCid(
+        string calldata metadataCid
     ) external;
 
     /**
@@ -63,16 +63,16 @@ interface INewtonPolicyData is IERC165 {
     ) external;
 
     /**
-     * @notice Retrieves the policy data location (IPFS URL for WASM plugin).
+     * @notice Retrieves the policy data location (IPFS CID for WASM plugin).
      * @return The policy data location for the policy data contract.
      */
-    function getPolicyDataLocation() external view returns (string memory);
+    function getWasmCid() external view returns (string memory);
 
     /**
-     * @notice Retrieves the policy data arguments location (IPFS URL for WASM plugin args).
+     * @notice Retrieves the policy data arguments location (IPFS CID for WASM plugin args).
      * @return The policy data arguments location for the policy data contract.
      */
-    function getPolicyDataArgs() external view returns (string memory);
+    function getWasmArgsCid() external view returns (string memory);
 
     /**
      * @notice Retrieves the expire after block number for the policy data.

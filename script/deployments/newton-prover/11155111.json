@@ -1,16 +1,40 @@
 {
-  "lastUpdate": { "timestamp": "1758213276", "block_number": "9229782" },
+  "lastUpdate": {
+    "timestamp": "1758647568",
+    "block_number": "9263979"
+  },
   "addresses": {
     "proxyAdmin": "0x66a3965552edf75a0552262233e855698b2fd340",
     "newtonProverServiceManager": "0x96464e86f76b6a95d32ccb1dee6425561f4f3721",
-    "newtonProverServiceManagerImpl": "0xc12b146aa863a085c515cbe743f890a97ab454d6",
+    "newtonProverServiceManagerImpl": "0xd6cce604845a1521e072c8867b32f39d1a006577",
     "newtonProverTaskManager": "0xc0438f9839e783355b64b3ec541c03c7a7896d3a",
-    "newtonProverTaskManagerImpl": "0xb80539ec2483728e329ba7b1b4a0f1460857421d",
+    "newtonProverTaskManagerImpl": "0xe592e3a544b1bac7f41289709344cff46de12e0b",
+    "registryCoordinator": "0xd02bbb70a75107320d379a052e5c4cf664f157e8",
+    "slashingRegistryCoordinatorImpl": "0xf117d6b170f1e75ff5dee3d535069c6d46c974f9",
+    "blsApkRegistry": "0x1e102786353f5c7ce406485dcb84d09000a4ddfc",
+    "blsApkRegistryImpl": "0xf5655d2492b20e39e593e13f9e5200247a38153c",
+    "indexRegistry": "0x52f53420c948cc5bb4e3c0ce3e7abfd14d3ff17e",
+    "indexRegistryImpl": "0x5fd114420985993e9a0490701cf31f69deddfbb8",
+    "stakeRegistry": "0x25de74af9680a08e8d952b0fe64cd2c5393509ec",
+    "stakeRegistryImpl": "0xecebc7331404506dd8a1086238108511ce2a662f",
+    "socketRegistry": "0x74db9f7e4dbf35bca310a80596656f7c4feac5c9",
+    "socketRegistryImpl": "0x0e9239cd778604a6ebb3e366a1dc78e6ef7a0b5f",
+    "operatorStateRetriever": "0xe2db4a05d2fbdf6e64b2f659dfd11b704f89c5a6",
+    "strategy": "0x5475d533281b583a0eba64fc8257780589d84ef0",
+    "pauserRegistry": "0xe4696e6f6df3e542d25b757cc5ad63b21b34361f",
+    "token": "0x23e350222f65d501ba8f07511eab04a3fdc0c711",
+    "tokenImpl": "0x23e350222f65d501ba8f07511eab04a3fdc0c711",
+    "slasher": "0x4dc7975036b9531fec8173f2e2dcda353fbb90f8",
+    "instantSlasherImpl": "0x5f2c546b8fd6704768d2a4b8c959fe6d11c8e21f",
     "policyFactory": "0xe554537a9dabf9b420bce9f7e31612212ecf97e4",
-    "policyFactoryImpl": "0xef4deec2fc23b72818ae93df7b9d5def4a897017",
-    "policy": "0xb1e68540abe9bebf1d0165007eb6cc3329fdebd6",
+    "policyFactoryImpl": "0xc8539b1ec9fa508207f8d961c2898b60598a207e",
+    "policy": "0x16f0456a3f8daeef18a5be757468cc92ce63f82e",
     "policyImplementation": "0x33451982cdde3ed2ed7bc9fbc6a7db00132d7d09",
     "policyDataFactory": "0xa3f74785a4959083a2d1e3e8f4aa77ae19771782",
-    "policyDataFactoryImpl": "0x2935e15fc40ed554ac7ee5378c3751eee933a4d5"
+    "policyDataFactoryImpl": "0x371b5ecab80b18a1bc984b7e1a9785b8aa039488",
+    "policyData": "0x1b89694896d0f8658c97f23737c2a0fcb53f376b",
+    "policyDataImplementation": "0xf3256b9c928c9f31064039651c96f6a06a1a25f8",
+    "mockNewtonPolicyClient": "0x8157cf7c38503947c57e67718cc8317a9ca974ba",
+    "mockNewtonPolicyClientImpl": "0x22ea34f26d90811329d174a0fd2d08cab93dccf2"
   }
 }

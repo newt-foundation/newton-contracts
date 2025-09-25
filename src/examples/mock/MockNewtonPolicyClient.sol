@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.27;
 
-import {NewtonPolicyClient} from "../mixins/NewtonPolicyClient.sol";
-import {NewtonMessage} from "../core/NewtonMessage.sol";
+import {NewtonPolicyClient} from "../../mixins/NewtonPolicyClient.sol";
+import {NewtonMessage} from "../../core/NewtonMessage.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
 
-contract ExamplePolicyClient is NewtonPolicyClient, OwnableUpgradeable {
+contract MockNewtonPolicyClient is NewtonPolicyClient, OwnableUpgradeable {
     // Errors
     error InvalidAttestation();
     error IntentExecutionFailed();

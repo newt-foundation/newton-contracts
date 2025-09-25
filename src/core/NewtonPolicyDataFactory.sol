@@ -65,8 +65,8 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable {
     }
 
     function deployPolicyData(
-        string memory _policyDataLocation,
-        string memory _policyDataArgs,
+        string memory _wasmCid,
+        string memory _wasmArgs,
         uint32 _expireAfter,
         string memory _metadataUri,
         address _owner
@@ -74,22 +74,15 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable {
         bytes memory initData = abi.encodeWithSelector(
             NewtonPolicyData.initialize.selector,
             address(this),
-            _policyDataLocation,
-            _policyDataArgs,
+            _wasmCid,
+            _wasmArgs,
             _expireAfter,
             _metadataUri,
             _owner
         );
 
         bytes32 salt = keccak256(
-            abi.encodePacked(
-                address(this),
-                _policyDataLocation,
-                _policyDataArgs,
-                _expireAfter,
-                _metadataUri,
-                _owner
-            )
+            abi.encodePacked(address(this), _wasmCid, _wasmArgs, _expireAfter, _metadataUri, _owner)
         );
 
         bytes memory bytecode = abi.encodePacked(
@@ -110,19 +103,14 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable {
         emit PolicyDataDeployed(
             policyDataAddr,
             INewtonPolicyData.PolicyDataInfo(
-                policyDataAddr,
-                _owner,
-                _metadataUri,
-                _policyDataLocation,
-                _policyDataArgs,
-                _expireAfter
+                policyDataAddr, _owner, _metadataUri, _wasmCid, _wasmArgs, _expireAfter
             )
         );
     }
 
     function computePolicyDataAddress(
-        string memory _policyDataLocation,
-        string memory _policyDataArgs,
+        string memory _wasmCid,
+        string memory _wasmArgs,
         uint32 _expireAfter,
         string memory _metadataUri,
         address _owner
@@ -130,22 +118,15 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable {
         bytes memory initData = abi.encodeWithSelector(
             NewtonPolicyData.initialize.selector,
             address(this),
-            _policyDataLocation,
-            _policyDataArgs,
+            _wasmCid,
+            _wasmArgs,
             _expireAfter,
             _metadataUri,
             _owner
         );
 
         bytes32 salt = keccak256(
-            abi.encodePacked(
-                address(this),
-                _policyDataLocation,
-                _policyDataArgs,
-                _expireAfter,
-                _metadataUri,
-                _owner
-            )
+            abi.encodePacked(address(this), _wasmCid, _wasmArgs, _expireAfter, _metadataUri, _owner)
         );
 
         bytes memory bytecode = abi.encodePacked(

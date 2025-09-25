@@ -2,10 +2,10 @@
 
 # Default values
 chain_id=""
-wasm_uri=""
-wasm_args_uri=""
-policy_uri=""
-schema_uri=""
+wasm_cid=""
+wasm_args_cid=""
+policy_cid=""
+schema_cid=""
 attester=""
 entrypoint=""
 
@@ -16,22 +16,22 @@ while getopts "c:w:a:p:s:m:d:t:e:h" opt; do
             chain_id="$OPTARG"
             ;;
         w)
-            wasm_uri="$OPTARG"
+            wasm_cid="$OPTARG"
             ;;
         a)
-            wasm_args_uri="$OPTARG"
+            wasm_args_cid="$OPTARG"
             ;;
         p)
-            policy_uri="$OPTARG"
+            policy_cid="$OPTARG"
             ;;
         s)
-            schema_uri="$OPTARG"
+            schema_cid="$OPTARG"
             ;;
         m)
-            policy_metadata_uri="$OPTARG"
+            policy_metadata_cid="$OPTARG"
             ;;
         d)
-            policy_data_metadata_uri="$OPTARG"
+            policy_data_metadata_cid="$OPTARG"
             ;;
         t)
             attester="$OPTARG"
@@ -40,15 +40,15 @@ while getopts "c:w:a:p:s:m:d:t:e:h" opt; do
             entrypoint="$OPTARG"
             ;;
         h)
-            echo "Usage: $0 -c <chain_id> -w <wasm_uri> -a <wasm_args_uri> -p <policy_uri> -s <schema_uri> \
-            -m <policy_metadata_uri> -d <policy_data_metadata_uri> -t <attester> -e <entrypoint>"
+            echo "Usage: $0 -c <chain_id> -w <wasm_cid> -a <wasm_args_uri> -p <policyCid> -s <schemaCid> \
+            -m <policy_metadata_cid> -d <policy_data_metadata_cid> -t <attester> -e <entrypoint>"
             echo "  -c: Chain ID"
-            echo "  -w: WASM URI"
-            echo "  -a: WASM Args URI"
-            echo "  -p: Policy URI"
-            echo "  -s: Schema URI"
-            echo "  -m: Policy Metadata URI"
-            echo "  -d: Policy Data Metadata URI"
+            echo "  -w: WASM CID"
+            echo "  -a: WASM Args CID"
+            echo "  -p: Policy CID"
+            echo "  -s: Schema CID"
+            echo "  -m: Policy Metadata CID"
+            echo "  -d: Policy Data Metadata CID"
             echo "  -t: Attester"
             echo "  -e: Entrypoint"
             echo "  -h: Show this help message"
@@ -62,22 +62,22 @@ while getopts "c:w:a:p:s:m:d:t:e:h" opt; do
 done
 
 # Validate required parameters
-if [ -z "$chain_id" ] || [ -z "$wasm_uri" ] || [ -z "$policy_uri" ] || [ -z "$schema_uri" ] || \
-[ -z "$policy_metadata_uri" ] || [ -z "$policy_data_metadata_uri" ] || [ -z "$attester" ] || [ -z "$entrypoint" ]; then
-    echo "Error: Required parameters are missing (only wasm_args_uri is optional)"
-    echo "Usage: $0 -c <chain_id> -w <wasm_uri> -a <wasm_args_uri> -p <policy_uri> -s <schema_uri> \
-    -m <policy_metadata_uri> -d <policy_data_metadata_uri> -t <attester> -e <entrypoint>"
+if [ -z "$chain_id" ] || [ -z "$wasm_cid" ] || [ -z "$policy_cid" ] || [ -z "$schema_cid" ] || \
+[ -z "$policy_metadata_cid" ] || [ -z "$policy_data_metadata_cid" ] || [ -z "$attester" ] || [ -z "$entrypoint" ]; then
+    echo "Error: Required parameters are missing (only wasm_args_cid is optional)"
+    echo "Usage: $0 -c <chain_id> -w <wasm_cid> -a <wasm_args_cid> -p <policyCid> -s <schemaCid> \
+    -m <policy_metadata_cid> -d <policy_data_metadata_cid> -t <attester> -e <entrypoint>"
     exit 1
 fi
 
 # Use the parameters
 echo "Chain ID: $chain_id"
-echo "WASM URI: $wasm_uri"
-echo "WASM Args URI: $wasm_args_uri"
-echo "Policy URI: $policy_uri"
-echo "Schema URI: $schema_uri"
-echo "Policy Metadata URI: $policy_metadata_uri"
-echo "Policy Data Metadata URI: $policy_data_metadata_uri"
+echo "WASM CID: $wasm_cid"
+echo "WASM Args CID: $wasm_args_cid"
+echo "Policy CID: $policy_cid"
+echo "Schema CID: $schema_cid"
+echo "Policy Metadata CID: $policy_metadata_cid"
+echo "Policy Data Metadata CID: $policy_data_metadata_cid"
 echo "Attester: $attester"
 echo "Entrypoint: $entrypoint"
 
@@ -104,23 +104,23 @@ cd "$parent_path"
 cd ../
 
 # Create JSON file with URIs
-POLICY_URIS_PATH="${POLICY_URIS_PATH:-policy_uris.json}"
+POLICY_CIDS_PATH="${POLICY_CIDS_PATH:-policy_cids.json}"
 
 # Create the JSON content
-cat > "$POLICY_URIS_PATH" << EOF
+cat > "$POLICY_CIDS_PATH" << EOF
 {
-  "policyDataLocation": "$wasm_uri",
-  "policyDataArgs": "$wasm_args_uri",
-  "policyUri": "$policy_uri",
-  "schemaUri": "$schema_uri",
+  "wasmCid": "$wasm_cid",
+  "wasmArgsCid": "$wasm_args_cid",
+  "policyCid": "$policy_cid",
+  "schemaCid": "$schema_cid",
   "attester": "$attester",
   "entrypoint": "$entrypoint",
-  "policyDataMetadataUri": "$policy_data_metadata_uri",
-  "policyMetadataUri": "$policy_metadata_uri"
+  "policyDataMetadataCid": "$policy_data_metadata_cid",
+  "policyMetadataCid": "$policy_metadata_cid"
 }
 EOF
 
-OUTPUT=$(PRIVATE_KEY=$PRIVATE_KEY POLICY_URIS_PATH=$POLICY_URIS_PATH \
+OUTPUT=$(PRIVATE_KEY=$PRIVATE_KEY POLICY_CIDS_PATH=$POLICY_CIDS_PATH \
     forge script script/PolicyDeployer.s.sol --rpc-url $RPC_URL --private-key $PRIVATE_KEY --broadcast --slow)
 
 echo $OUTPUT

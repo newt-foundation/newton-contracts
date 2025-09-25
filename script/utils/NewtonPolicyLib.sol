@@ -12,23 +12,23 @@ library NewtonPolicyLib {
     Vm internal constant VM = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
 
     error NewtonPolicyLib__PolicyParamNotFound();
-    error NewtonPolicyLib__PolicyUrisNotFound();
+    error NewtonPolicyLib__policyCidsNotFound();
 
-    struct PolicyUris {
-        string policyDataLocation;
-        string policyDataArgs;
+    struct policyCids {
+        string wasmCid;
+        string wasmArgs;
         address attester;
-        string policyUri;
-        string schemaUri;
+        string policyCid;
+        string schemaCid;
         string entrypoint;
-        string policyDataMetadataUri;
-        string policyMetadataUri;
+        string policyDataMetadataCid;
+        string policyMetadataCid;
     }
 
-    function readPolicyUris(
+    function readpolicyCids(
         string memory path
-    ) internal returns (PolicyUris memory) {
-        return _readPolicyUris(path);
+    ) internal returns (policyCids memory) {
+        return _readpolicyCids(path);
     }
 
     function readPolicyParam(
@@ -37,21 +37,21 @@ library NewtonPolicyLib {
         return _readPolicyParam(path);
     }
 
-    function _readPolicyUris(
+    function _readpolicyCids(
         string memory path
-    ) internal returns (PolicyUris memory) {
-        require(VM.exists(path), NewtonPolicyLib__PolicyUrisNotFound());
+    ) internal returns (policyCids memory) {
+        require(VM.exists(path), NewtonPolicyLib__policyCidsNotFound());
         string memory json = VM.readFile(path);
 
-        PolicyUris memory data;
-        data.policyDataLocation = json.readString(".policyDataLocation");
-        data.policyDataArgs = json.readString(".policyDataArgs");
+        policyCids memory data;
+        data.wasmCid = json.readString(".wasmCid");
+        data.wasmArgs = json.readString(".wasmArgs");
         data.attester = json.readAddress(".attester");
-        data.policyUri = json.readString(".policyUri");
-        data.schemaUri = json.readString(".schemaUri");
+        data.policyCid = json.readString(".policyCid");
+        data.schemaCid = json.readString(".schemaCid");
         data.entrypoint = json.readString(".entrypoint");
-        data.policyDataMetadataUri = json.readString(".policyDataMetadataUri");
-        data.policyMetadataUri = json.readString(".policyMetadataUri");
+        data.policyDataMetadataCid = json.readString(".policyDataMetadataCid");
+        data.policyMetadataCid = json.readString(".policyMetadataCid");
         return data;
     }
 
