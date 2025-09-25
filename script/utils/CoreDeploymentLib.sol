@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: Apache-2.0
 // solhint-disable no-console
 pragma solidity ^0.8.27;
 
