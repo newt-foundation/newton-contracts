@@ -1,0 +1,27 @@
+{
+  "lastUpdate": { "timestamp": "1758847451", "block_number": "23443700" },
+  "addresses": {
+    "proxyAdmin": "0xb332d037120a0858b097fd666f643a0d27b20624",
+    "newtonProverServiceManager": "0x0d1d5ea331091236f5896f4fea551e0642dc8eac",
+    "newtonProverServiceManagerImpl": "0xca9fcc74ccb8c07be7e6645dbd2cfd6fceb39844",
+    "newtonProverTaskManager": "0x3c0024c289b3ec2c0bd6e6fa02196216af34277c",
+    "newtonProverTaskManagerImpl": "0xce25e0b02ea1a66339d20165052e2d6e9efa935e",
+    "registryCoordinator": "0xd1b18a02ceb4dd90d520fe46fc052161f8f450ff",
+    "slashingRegistryCoordinatorImpl": "0xb45694c35c4ed65ba87661fe6cbe0c23411f43b7",
+    "blsApkRegistry": "0xdbc5a50bd1c5ebcee49b8e2bd388ae0604cff02c",
+    "blsApkRegistryImpl": "0xd4baa7d1cae534b26a3a8b7967e5fecaa80816c6",
+    "indexRegistry": "0x3703bffc4c3ca3d6947102d8be950138edcf3ceb",
+    "indexRegistryImpl": "0x3233e933d6eca1d339b064b876182dda6173190d",
+    "stakeRegistry": "0xd6c4610be6d85f9fbc4223cc0d8a50d6ba70384c",
+    "stakeRegistryImpl": "0xf0bbd1444239142e112dfd8f20748792a44f4313",
+    "socketRegistry": "0xe9a10426916b19d9dad6d9306fb136f42929961a",
+    "socketRegistryImpl": "0x828a3866a91d9365de823ecb54db54306e9641a0",
+    "operatorStateRetriever": "0x8ef78814fb05f95b0fa771adf6a7e89850f57916",
+    "strategy": "0x86ccab8e46a6fe62bd1ff48b16a70a88354bb9cc",
+    "pauserRegistry": "0xa20d923e921382b995b8e1df0d79f3a0aa79fb1a",
+    "token": "0xd0ec028a3d21533fdd200838f39c85b03679285d",
+    "tokenImpl": "0x1f064066068f837598b35796ca9f177863915846",
+    "slasher": "0xd4338fa7d86832d245700c323e32b7b2db8250ad",
+    "instantSlasherImpl": "0xef9b70a318c76172d1eeff4e3d347a1ad021fb0d"
+  }
+}

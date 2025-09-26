@@ -1,0 +1,20 @@
+{
+  "lastUpdate": {
+    "timestamp": "1758848423",
+    "block_number": "23443779"
+  },
+  "addresses": {
+    "proxyAdmin": "0x3280b95df4817cba59b673955959ac1eebf9cd65",
+    "policyFactory": "0x06ab99848ef38a36afc68a651e3ea7eb6e7e7a18",
+    "policyFactoryImpl": "0x6b3ad6a3df1b4ef620f51dc9914879594847a96c",
+    "policy": "0x4a2b1b1d2993a4415d954766f64d71b1416b7934",
+    "policyImplementation": "0x2ad7f0b712532842144755b20e52c8f10a2ff56c",
+    "policyDataFactory": "0xa2c2b14c7f6bf3f86808591fc0e566b116374ec9",
+    "policyDataFactoryImpl": "0xc1dc2b2f78346ffba6a389982a15010cc46f0936",
+    "policyData": "0xf46a0a12efd447223a4f37ced31110fce4229453",
+    "policyDataImplementation": "0x97cdf20fd3dc2be01b7903de02b677397153475e",
+    "policyClient": "0x9e0844fb51030c8e6f23fafa90d5fbbcca6e5efb",
+    "policyClientImpl": "0xd57dca92bcb89a3bcca84f24193020ea98ce4624",
+    "policyId": "0x662107540a8573ac63f9623127d7ff7cd57ce9813742f92e1c9138565e1855c2"
+  }
+}
