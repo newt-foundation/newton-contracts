@@ -7,13 +7,12 @@ import {stdJson} from "forge-std/StdJson.sol";
 import {ChainLib} from "../../src/libraries/ChainLib.sol";
 import {IAVSDirectory} from "@eigenlayer/contracts/interfaces/IAVSDirectory.sol";
 import {ISocketRegistry, SocketRegistry} from "@eigenlayer-middleware/src/SocketRegistry.sol";
-import {
-    ISlashingRegistryCoordinator,
-    ISlashingRegistryCoordinatorTypes
-} from "@eigenlayer-middleware/src/interfaces/ISlashingRegistryCoordinator.sol";
+import {ISlashingRegistryCoordinator} from
+    "@eigenlayer-middleware/src/interfaces/ISlashingRegistryCoordinator.sol";
 import {SlashingRegistryCoordinator} from
     "@eigenlayer-middleware/src/SlashingRegistryCoordinator.sol";
 import {IPermissionController} from "@eigenlayer/contracts/interfaces/IPermissionController.sol";
+import {INewtonProverTaskManager} from "../../src/interfaces/INewtonProverTaskManager.sol";
 import {IDelegationManager} from "@eigenlayer/contracts/interfaces/IDelegationManager.sol";
 import {UpgradeableProxyLib} from "./UpgradeableProxyLib.sol";
 import {CoreDeploymentLib} from "./CoreDeploymentLib.sol";
@@ -24,12 +23,7 @@ import {IndexRegistry} from "@eigenlayer-middleware/src/IndexRegistry.sol";
 import {InstantSlasher} from "@eigenlayer-middleware/src/slashers/InstantSlasher.sol";
 import {StakeRegistry} from "@eigenlayer-middleware/src/StakeRegistry.sol";
 import {IAllocationManager} from "@eigenlayer/contracts/interfaces/IAllocationManager.sol";
-import {IStrategy} from "@eigenlayer/contracts/interfaces/IStrategyManager.sol";
 import {CoreDeploymentLib} from "./CoreDeploymentLib.sol";
-import {NewtonPolicyFactory} from "../../src/core/NewtonPolicyFactory.sol";
-import {NewtonPolicyDataFactory} from "../../src/core/NewtonPolicyDataFactory.sol";
-import {MockNewtonPolicyClient} from "../../src/examples/mock/MockNewtonPolicyClient.sol";
-import {INewtonPolicyData} from "../../src/interfaces/INewtonPolicyData.sol";
 import {
     IBLSApkRegistry,
     IIndexRegistry,
@@ -40,7 +34,6 @@ import {
     PauserRegistry, IPauserRegistry
 } from "@eigenlayer/contracts/permissions/PauserRegistry.sol";
 import {OperatorStateRetriever} from "@eigenlayer-middleware/src/OperatorStateRetriever.sol";
-import {NewtonPolicyLib} from "./NewtonPolicyLib.sol";
 
 library NewtonProverDeploymentLib {
     using stdJson for *;
@@ -52,10 +45,9 @@ library NewtonProverDeploymentLib {
     error StakeRegistryNotDeployed();
     error DelegationManagerNotDeployed();
     error ContractNotDeployed(string contractName, address contractAddress);
-    error PolicyDeploymentFailed(address expectedAddress);
     error ValidationFailed(string reason);
 
-    string internal constant MIDDLEWARE_VERSION = "v1.4.0-testnet-holesky";
+    string internal constant MIDDLEWARE_VERSION = "v1.5.0-testnet-final";
     Vm internal constant VM = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
 
     struct DeploymentData {
@@ -80,29 +72,44 @@ library NewtonProverDeploymentLib {
         address tokenImpl;
         address slasher;
         address instantSlasherImpl;
-        address policyFactory;
-        address policyFactoryImpl;
-        address policy;
-        address policyImplementation;
-        address policyDataFactory;
-        address policyDataFactoryImpl;
-        address policyData;
-        address policyDataImplementation;
-        address mockNewtonPolicyClient;
-        address mockNewtonPolicyClientImpl;
     }
 
     struct NewtonProverSetupConfig {
+        address token;
+        address tokenImpl;
         uint256 numQuorums;
         uint256[] operatorParams;
+        uint96 minimumStake;
+        uint32 lookAheadPeriod;
         address operatorAddr;
         address operator2Addr;
         address taskGeneratorAddr;
         address aggregatorAddr;
-        address rewardsOwner;
-        address rewardsInitiator;
-        uint256 rewardsOwnerKey;
-        uint256 rewardsInitiatorKey;
+    }
+
+    function getTaskManagerConfig()
+        internal
+        view
+        returns (INewtonProverTaskManager.TaskManagerConfig memory)
+    {
+        ChainLib.requireSupportedChain();
+        if (ChainLib.isMainnet()) {
+            // solhint-disable-next-line no-console
+            console2.log("Mainnet task manager config");
+            return INewtonProverTaskManager.TaskManagerConfig({
+                taskResponseWindowBlock: 30,
+                taskChallengeWindowBlock: 0,
+                isChallengeEnabled: false
+            });
+        }
+
+        // solhint-disable-next-line no-console
+        console2.log("Non-mainnet task manager config");
+        return INewtonProverTaskManager.TaskManagerConfig({
+            taskResponseWindowBlock: 30,
+            taskChallengeWindowBlock: 30,
+            isChallengeEnabled: true
+        });
     }
 
     function readDeploymentJson(
@@ -119,16 +126,14 @@ library NewtonProverDeploymentLib {
         string memory json = VM.readFile(fileName);
 
         NewtonProverSetupConfig memory data;
+        data.token = json.readAddressOr(".token", address(0));
+        data.tokenImpl = json.readAddressOr(".tokenImpl", address(0));
         data.numQuorums = json.readUint(".num_quorums");
         data.operatorParams = json.readUintArray(".operator_params");
-        data.aggregatorAddr = json.readAddress(".aggregator_addr");
-        data.operatorAddr = json.readAddress(".operator_addr");
-        data.taskGeneratorAddr = json.readAddress(".task_generator_addr");
-        data.operator2Addr = json.readAddress(".operator_2_addr");
-        data.rewardsInitiator = json.readAddress(".rewards_initiator_addr");
-        data.rewardsOwner = json.readAddress(".rewards_owner_addr");
-        data.rewardsInitiatorKey = json.readUint(".rewards_initiator_key");
-        data.rewardsOwnerKey = json.readUint(".rewards_owner_key");
+        data.aggregatorAddr = json.readAddressOr(".aggregator_addr", address(0));
+        data.operatorAddr = json.readAddressOr(".operator_addr", address(0));
+        data.taskGeneratorAddr = json.readAddressOr(".task_generator_addr", address(0));
+        data.operator2Addr = json.readAddressOr(".operator_2_addr", address(0));
         return data;
     }
 
@@ -167,16 +172,6 @@ library NewtonProverDeploymentLib {
         data.tokenImpl = json.readAddress(".addresses.tokenImpl");
         data.slasher = json.readAddress(".addresses.slasher");
         data.instantSlasherImpl = json.readAddress(".addresses.instantSlasherImpl");
-        data.policyFactory = json.readAddress(".addresses.policyFactory");
-        data.policyFactoryImpl = json.readAddress(".addresses.policyFactoryImpl");
-        data.policy = json.readAddress(".addresses.policy");
-        data.policyImplementation = json.readAddress(".addresses.policyImplementation");
-        data.policyDataFactory = json.readAddress(".addresses.policyDataFactory");
-        data.policyDataFactoryImpl = json.readAddress(".addresses.policyDataFactoryImpl");
-        data.policyData = json.readAddress(".addresses.policyData");
-        data.policyDataImplementation = json.readAddress(".addresses.policyDataImplementation");
-        data.mockNewtonPolicyClient = json.readAddress(".addresses.mockNewtonPolicyClient");
-        data.mockNewtonPolicyClientImpl = json.readAddress(".addresses.mockNewtonPolicyClientImpl");
 
         return data;
     }
@@ -272,26 +267,6 @@ library NewtonProverDeploymentLib {
             data.slasher.toHexString(),
             '","instantSlasherImpl":"',
             data.slasher.getImplementation().toHexString(),
-            '","policyFactory":"',
-            data.policyFactory.toHexString(),
-            '","policyFactoryImpl":"',
-            data.policyFactory.getImplementation().toHexString(),
-            '","policy":"',
-            data.policy.toHexString(),
-            '","policyImplementation":"',
-            data.policyImplementation.toHexString(),
-            '","policyDataFactory":"',
-            data.policyDataFactory.toHexString(),
-            '","policyDataFactoryImpl":"',
-            data.policyDataFactory.getImplementation().toHexString(),
-            '","policyData":"',
-            data.policyData.toHexString(),
-            '","policyDataImplementation":"',
-            data.policyDataImplementation.toHexString(),
-            '","mockNewtonPolicyClient":"',
-            data.mockNewtonPolicyClient.toHexString(),
-            '","mockNewtonPolicyClientImpl":"',
-            data.mockNewtonPolicyClient.getImplementation().toHexString(),
             '"}'
         );
     }
@@ -329,19 +304,6 @@ library NewtonProverDeploymentLib {
         _validateContract("StakeRegistry", result.stakeRegistry);
         _validateContract("SocketRegistry", result.socketRegistry);
         _validateContract("OperatorStateRetriever", result.operatorStateRetriever);
-
-        // Policy system validation - CRITICAL for the bug fix
-        _validateContract("PolicyFactory", result.policyFactory);
-        _validateContract("Policy", result.policy);
-        _validateContract("PolicyDataFactory", result.policyDataFactory);
-        _validateContract("PolicyData", result.policyData);
-
-        // Mock client validation
-        _validateContract("MockNewtonPolicyClient", result.mockNewtonPolicyClient);
-
-        // Implementation contracts validation
-        _validateContract("PolicyImplementation", result.policyImplementation);
-        _validateContract("PolicyDataImplementation", result.policyDataImplementation);
 
         // Additional infrastructure
         _validateContract("PauserRegistry", result.pauserRegistry);

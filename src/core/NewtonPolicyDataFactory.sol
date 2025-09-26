@@ -9,6 +9,7 @@ import {IERC165} from "@openzeppelin/contracts/interfaces/IERC165.sol";
 import {NewtonMessage} from "./NewtonMessage.sol";
 import {INewtonPolicyData} from "../interfaces/INewtonPolicyData.sol";
 import {NewtonPolicyData} from "./NewtonPolicyData.sol";
+import {ChainLib} from "../libraries/ChainLib.sol";
 
 contract NewtonPolicyDataFactory is OwnableUpgradeable {
     address public implementation;
@@ -35,6 +36,7 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable {
         _transferOwnership(owner);
         implementation = address(new NewtonPolicyData());
         proxyAdmin = new ProxyAdmin();
+        verifiers[owner] = true;
     }
 
     /* ERRORS */
@@ -68,7 +70,7 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable {
         string memory _wasmCid,
         string memory _wasmArgs,
         uint32 _expireAfter,
-        string memory _metadataUri,
+        string memory _metadataCid,
         address _owner
     ) external returns (address policyDataAddr) {
         bytes memory initData = abi.encodeWithSelector(
@@ -77,12 +79,12 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable {
             _wasmCid,
             _wasmArgs,
             _expireAfter,
-            _metadataUri,
+            _metadataCid,
             _owner
         );
 
         bytes32 salt = keccak256(
-            abi.encodePacked(address(this), _wasmCid, _wasmArgs, _expireAfter, _metadataUri, _owner)
+            abi.encodePacked(address(this), _wasmCid, _wasmArgs, _expireAfter, _metadataCid, _owner)
         );
 
         bytes memory bytecode = abi.encodePacked(
@@ -97,13 +99,21 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable {
         }
 
         policyDataAddr = proxy;
-        policyDataVerifications[policyDataAddr] =
-            NewtonMessage.VerificationInfo(address(0), false, 0);
+
+        ChainLib.requireSupportedChain();
+        if (ChainLib.isMainnet()) {
+            policyDataVerifications[policyDataAddr] =
+                NewtonMessage.VerificationInfo(address(0), false, 0);
+        } else {
+            // set policy verification to default true for testnet
+            policyDataVerifications[policyDataAddr] =
+                NewtonMessage.VerificationInfo(owner(), true, block.timestamp);
+        }
 
         emit PolicyDataDeployed(
             policyDataAddr,
             INewtonPolicyData.PolicyDataInfo(
-                policyDataAddr, _owner, _metadataUri, _wasmCid, _wasmArgs, _expireAfter
+                policyDataAddr, _owner, _metadataCid, _wasmCid, _wasmArgs, _expireAfter
             )
         );
     }
@@ -112,7 +122,7 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable {
         string memory _wasmCid,
         string memory _wasmArgs,
         uint32 _expireAfter,
-        string memory _metadataUri,
+        string memory _metadataCid,
         address _owner
     ) public view returns (address predicted) {
         bytes memory initData = abi.encodeWithSelector(
@@ -121,12 +131,12 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable {
             _wasmCid,
             _wasmArgs,
             _expireAfter,
-            _metadataUri,
+            _metadataCid,
             _owner
         );
 
         bytes32 salt = keccak256(
-            abi.encodePacked(address(this), _wasmCid, _wasmArgs, _expireAfter, _metadataUri, _owner)
+            abi.encodePacked(address(this), _wasmCid, _wasmArgs, _expireAfter, _metadataCid, _owner)
         );
 
         bytes memory bytecode = abi.encodePacked(

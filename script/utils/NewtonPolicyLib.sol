@@ -12,9 +12,9 @@ library NewtonPolicyLib {
     Vm internal constant VM = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
 
     error NewtonPolicyLib__PolicyParamNotFound();
-    error NewtonPolicyLib__policyCidsNotFound();
+    error NewtonPolicyLib__PolicyCidsNotFound();
 
-    struct policyCids {
+    struct PolicyCids {
         string wasmCid;
         string wasmArgs;
         address attester;
@@ -25,10 +25,10 @@ library NewtonPolicyLib {
         string policyMetadataCid;
     }
 
-    function readpolicyCids(
+    function readPolicyCids(
         string memory path
-    ) internal returns (policyCids memory) {
-        return _readpolicyCids(path);
+    ) internal returns (PolicyCids memory) {
+        return _readPolicyCids(path);
     }
 
     function readPolicyParam(
@@ -37,15 +37,15 @@ library NewtonPolicyLib {
         return _readPolicyParam(path);
     }
 
-    function _readpolicyCids(
+    function _readPolicyCids(
         string memory path
-    ) internal returns (policyCids memory) {
-        require(VM.exists(path), NewtonPolicyLib__policyCidsNotFound());
+    ) internal returns (PolicyCids memory) {
+        require(VM.exists(path), NewtonPolicyLib__PolicyCidsNotFound());
         string memory json = VM.readFile(path);
 
-        policyCids memory data;
+        PolicyCids memory data;
         data.wasmCid = json.readString(".wasmCid");
-        data.wasmArgs = json.readString(".wasmArgs");
+        data.wasmArgs = json.readStringOr(".wasmArgs", "");
         data.attester = json.readAddress(".attester");
         data.policyCid = json.readString(".policyCid");
         data.schemaCid = json.readString(".schemaCid");

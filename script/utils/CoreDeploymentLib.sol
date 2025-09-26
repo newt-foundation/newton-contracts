@@ -37,7 +37,7 @@ library CoreDeploymentLib {
     using Strings for *;
     using UpgradeableProxyLib for address;
 
-    string internal constant EIGENLAYER_VERSION = "v1.4.0-testnet-holesky";
+    string internal constant EIGENLAYER_VERSION = "v1.5.0-testnet-final";
     Vm internal constant VM = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
 
     struct StrategyManagerConfig {
@@ -52,6 +52,13 @@ library CoreDeploymentLib {
 
     struct EigenPodManagerConfig {
         uint256 initPausedStatus;
+    }
+
+    struct AllocationManagerConfig {
+        uint256 initPausedStatus;
+        address initialOwner;
+        uint256 deallocationDelay;
+        uint256 allocationConfigurationDelay;
     }
 
     struct RewardsCoordinatorConfig {
@@ -116,7 +123,7 @@ library CoreDeploymentLib {
                 IAllocationManager(result.allocationManager),
                 IPauserRegistry(result.pauserRegistry),
                 IPermissionController(result.permissionController),
-                uint32(0), // TODO: check minWithdrawalDelay
+                uint32(configData.delegationManager.withdrawalDelayBlocks),
                 EIGENLAYER_VERSION
             )
         );
@@ -152,8 +159,8 @@ library CoreDeploymentLib {
                 IPauserRegistry(result.pauserRegistry),
                 IPermissionController(result.permissionController),
                 // IAVSDirectory(result.avsDirectory),
-                uint32(0), // _DEALLOCATION_DELAY
-                uint32(0), // _ALLOCATION_CONFIGURATION_DELAY
+                uint32(configData.allocationManager.deallocationDelay), // _DEALLOCATION_DELAY
+                uint32(configData.allocationManager.allocationConfigurationDelay), // _ALLOCATION_CONFIGURATION_DELAY
                 EIGENLAYER_VERSION
             )
         );
@@ -311,10 +318,8 @@ library CoreDeploymentLib {
         // Upgrade AllocationManager contract
         upgradeCall = abi.encodeCall(
             AllocationManager.initialize,
-            // TODO: Double check this
             (
                 deployer, // initialOwner
-                // IPauserRegistry(result.pauserRegistry), // _pauserRegistry
                 configData.delegationManager.initPausedStatus // initialPausedStatus
             )
         );
@@ -331,6 +336,7 @@ library CoreDeploymentLib {
         EigenPodManagerConfig eigenPodManager;
         RewardsCoordinatorConfig rewardsCoordinator;
         StrategyFactoryConfig strategyFactory;
+        AllocationManagerConfig allocationManager;
     }
     // StrategyConfig[] strategies;
 
@@ -383,6 +389,15 @@ library CoreDeploymentLib {
             json.readUint(".rewardsCoordinator.global_operator_commission_bips");
         // RewardsCoordinator config end
 
+        // AllocationManager config start
+        data.allocationManager.initPausedStatus =
+            json.readUint(".allocationManager.init_paused_status");
+        data.allocationManager.initialOwner = json.readAddress(".allocationManager.initial_owner");
+        data.allocationManager.deallocationDelay =
+            json.readUint(".allocationManager.deallocation_delay");
+        data.allocationManager.allocationConfigurationDelay =
+            json.readUint(".allocationManager.allocation_configuration_delay");
+        // AllocationManager config end
         return data;
     }
 
