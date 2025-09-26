@@ -27,7 +27,7 @@ contract NewtonPolicyData is
     string private _wasmCid;
     string private _wasmArgs;
     uint32 private _expireAfter;
-    string private _metadataUri;
+    string private _metadataCid;
     INewtonPolicyData.AttestationInfo private _attestationInfo;
 
     /* ERRORS */
@@ -64,7 +64,7 @@ contract NewtonPolicyData is
         string calldata wasmCid,
         string calldata wasmArgs,
         uint32 expireAfter,
-        string calldata metadataUri,
+        string calldata metadataCid,
         address _owner
     ) public initializer {
         __Ownable_init();
@@ -74,18 +74,18 @@ contract NewtonPolicyData is
         _wasmCid = wasmCid;
         _wasmArgs = wasmArgs;
         _expireAfter = expireAfter;
-        _metadataUri = metadataUri;
+        _metadataCid = metadataCid;
     }
 
     function getMetadataCid() public view returns (string memory) {
-        return _metadataUri;
+        return _metadataCid;
     }
 
     function setMetadataCid(
-        string calldata metadataUri
+        string calldata metadataCid
     ) public onlyOwner {
-        _metadataUri = metadataUri;
-        emit PolicyDataMetadataCidUpdated(metadataUri);
+        _metadataCid = metadataCid;
+        emit PolicyDataMetadataCidUpdated(metadataCid);
     }
 
     function getWasmCid() public view returns (string memory) {

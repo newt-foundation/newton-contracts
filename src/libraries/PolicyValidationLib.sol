@@ -34,9 +34,7 @@ library PolicyValidationLib {
         require(policyTaskData.policyId == policyId, PolicyIdMismatch());
         require(policyTaskData.policyAddress == policyAddress, PolicyAddressMismatch());
 
-        if (ChainLib.isMainnet()) {
-            require(INewtonPolicy(policyAddress).isPolicyVerified(), PolicyNotVerified());
-        }
+        require(INewtonPolicy(policyAddress).isPolicyVerified(), PolicyNotVerified());
     }
 
     /**
@@ -58,13 +56,11 @@ library PolicyValidationLib {
                 PolicyDataAddressMismatch()
             );
 
-            if (ChainLib.isMainnet()) {
-                require(
-                    INewtonPolicyData(policyTaskData.policyData[i].policyDataAddress)
-                        .isPolicyDataVerified(),
-                    PolicyDataNotVerified()
-                );
-            }
+            require(
+                INewtonPolicyData(policyTaskData.policyData[i].policyDataAddress)
+                    .isPolicyDataVerified(),
+                PolicyDataNotVerified()
+            );
 
             require(
                 INewtonPolicyData(policyDataAddresses[i]).attest(policyData[i]),

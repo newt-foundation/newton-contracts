@@ -21,11 +21,19 @@ contract PolicyClientDeployer is Script {
     address internal _deployer;
     address internal _policyAddress;
     string internal _policyParamPath;
-    string internal _policyCidsPath;
+    string internal _policyUrisPath;
     address internal _proxyAdmin;
 
     error PolicyParamPathNotSet();
     error PolicyAddressNotSet();
+
+    struct DeploymentData {
+        address policyAddress;
+        bytes32 policyId;
+        address policyClient;
+        address policyClientImpl;
+        address policyClientOwner;
+    }
 
     function setUp() public virtual {
         _deployer = vm.rememberKey(vm.envUint("PRIVATE_KEY"));
@@ -67,17 +75,50 @@ contract PolicyClientDeployer is Script {
             })
         );
 
+        DeploymentData memory _deploymentData = DeploymentData({
+            policyAddress: _policyAddress,
+            policyId: policyId,
+            policyClient: policyClient,
+            policyClientImpl: policyClientImpl,
+            policyClientOwner: _deployer
+        });
+
         // solhint-disable-next-line no-console
-        console2.log("Policy:", address(_policyAddress));
-        // solhint-disable-next-line no-console
-        console2.log("PolicyId:", Strings.toHexString(uint256(policyId)));
-        // solhint-disable-next-line no-console
-        console2.log("PolicyClient:", address(policyClient));
-        // solhint-disable-next-line no-console
-        console2.log("PolicyClient Implementation:", address(policyClientImpl));
-        // solhint-disable-next-line no-console
-        console2.log("PolicyClient Owner:", _deployer);
+        console2.log(_prettyPrintDeploymentJson(_deploymentData));
 
         vm.stopBroadcast();
+    }
+
+    function _prettyPrintDeploymentJson(
+        DeploymentData memory deploymentData
+    ) private pure returns (string memory) {
+        string memory json = "{\n";
+        json = string.concat(
+            json, "  \"policyAddress\": \"", vm.toString(deploymentData.policyAddress), "\",\n"
+        );
+        json = string.concat(
+            json,
+            "  \"policyId\": \"",
+            Strings.toHexString(uint256(deploymentData.policyId)),
+            "\",\n"
+        );
+        json = string.concat(
+            json, "  \"policyClient\": \"", vm.toString(deploymentData.policyClient), "\",\n"
+        );
+        json = string.concat(
+            json,
+            "  \"policyClientImpl\": \"",
+            vm.toString(deploymentData.policyClientImpl),
+            "\",\n"
+        );
+        json = string.concat(
+            json,
+            "  \"policyClientOwner\": \"",
+            vm.toString(deploymentData.policyClientOwner),
+            "\",\n"
+        );
+        json = string.concat(json, "}");
+
+        return json;
     }
 }
