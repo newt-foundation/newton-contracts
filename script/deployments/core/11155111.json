@@ -1,5 +1,8 @@
 {
-  "lastUpdate": { "timestamp": "1753912001", "block_number": "1" },
+  "lastUpdate": {
+    "timestamp": "1753912001",
+    "block_number": "1"
+  },
   "addresses": {
     "proxyAdmin": "0x56E88cb4f0136fC27D95499dE4BE2acf47946Fa1",
     "delegation": "0xD4A7E1Bd8015057293f0D0A557088c286942e84b",
