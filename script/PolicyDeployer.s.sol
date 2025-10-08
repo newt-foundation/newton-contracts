@@ -7,6 +7,7 @@ import "forge-std/Test.sol";
 
 import {NewtonPolicyDeploymentLib} from "./utils/NewtonPolicyDeploymentLib.sol";
 import {NewtonPolicyLib} from "./utils/NewtonPolicyLib.sol";
+import {AdminLib} from "../script/utils/AdminLib.sol";
 
 // # To deploy and verify our contract
 // forge script script/PolicyDeployer.s.sol:PolicyDeployer --rpc-url $RPC_URL  --private-key $PRIVATE_KEY --broadcast -vvvv
@@ -15,10 +16,10 @@ import {NewtonPolicyLib} from "./utils/NewtonPolicyLib.sol";
 contract PolicyDeployer is Script {
     address internal _deployer;
     string internal _policyCidsPath;
-    address internal _taskGeneratorAddress;
+    string internal _taskGeneratorsPath;
 
     error PolicyCidsPathNotSet();
-    error TaskGeneratorAddressNotSet();
+    error TaskGeneratorsPathNotSet();
 
     function setUp() public virtual {
         _deployer = vm.rememberKey(vm.envUint("PRIVATE_KEY"));
@@ -28,9 +29,12 @@ contract PolicyDeployer is Script {
         require(bytes(policyCidsPath).length > 0, PolicyCidsPathNotSet());
         _policyCidsPath = policyCidsPath;
 
-        address taskGeneratorAddress = vm.envAddress("TASK_GENERATOR_ADDRESS");
-        require(taskGeneratorAddress != address(0), TaskGeneratorAddressNotSet());
-        _taskGeneratorAddress = taskGeneratorAddress;
+        try vm.envString("TASK_GENERATORS_PATH") returns (string memory taskGeneratorsPath) {
+            _taskGeneratorsPath =
+                bytes(taskGeneratorsPath).length > 0 ? taskGeneratorsPath : "admin_script.json";
+        } catch {
+            _taskGeneratorsPath = "admin_script.json";
+        }
     }
 
     function run() external {
@@ -43,9 +47,12 @@ contract PolicyDeployer is Script {
         NewtonPolicyLib.PolicyCids memory policyCids =
             NewtonPolicyLib.readPolicyCids(_policyCidsPath);
 
+        address[] memory taskGenerators =
+            AdminLib.readAddresses(_taskGeneratorsPath, true).taskGenerator;
+
         NewtonPolicyDeploymentLib.DeploymentData memory policyDeploymentData =
         NewtonPolicyDeploymentLib.deployPolicy(
-            _deployer, deploymentData, policyCids, _taskGeneratorAddress
+            _deployer, deploymentData, policyCids, taskGenerators, uint32(600 seconds)
         );
 
         // solhint-disable-next-line no-console

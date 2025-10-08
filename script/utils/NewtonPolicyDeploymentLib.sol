@@ -11,17 +11,19 @@ import {INewtonPolicyData} from "../../src/interfaces/INewtonPolicyData.sol";
 import {MockNewtonPolicyClient} from "../../src/examples/mock/MockNewtonPolicyClient.sol";
 import {NewtonPolicyLib} from "./NewtonPolicyLib.sol";
 import {UpgradeableProxyLib} from "./UpgradeableProxyLib.sol";
+import {ArrayLib} from "./ArrayLib.sol";
 
 library NewtonPolicyDeploymentLib {
     using stdJson for *;
     using Strings for *;
     using UpgradeableProxyLib for address;
+    using ArrayLib for address[];
 
     /* ERRORS */
     error DeploymentFileDoesNotExist();
     error ContractNotDeployed(string contractName, address contractAddress);
     error ValidationFailed(string reason);
-    error TaskGeneratorAddressCannotBeZero();
+    error TaskGeneratorAddressesEmpty();
     error AttesterCannotBeZero();
 
     Vm internal constant VM = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
@@ -45,27 +47,22 @@ library NewtonPolicyDeploymentLib {
         address owner,
         DeploymentData memory deploymentData,
         NewtonPolicyLib.PolicyCids memory policyCids,
-        address taskGeneratorAddress
+        address[] memory taskGenerators,
+        uint32 policyDataExpireAfter
     ) internal returns (DeploymentData memory) {
-        require(taskGeneratorAddress != address(0), TaskGeneratorAddressCannotBeZero());
+        require(taskGenerators.length > 0, TaskGeneratorAddressesEmpty());
         require(policyCids.attester != address(0), AttesterCannotBeZero());
 
-        address[] memory attesters;
-        if (taskGeneratorAddress == policyCids.attester) {
-            attesters = new address[](1);
-            attesters[0] = policyCids.attester;
-        } else {
-            attesters = new address[](2);
-            attesters[0] = policyCids.attester;
-            attesters[1] = taskGeneratorAddress;
-        }
+        address[] memory attesters = new address[](1);
+        attesters[0] = policyCids.attester;
+        attesters = attesters.addToArray(taskGenerators);
 
         DeploymentData memory result = deploymentData;
 
         address policyData = NewtonPolicyDataFactory(result.policyDataFactory).deployPolicyData(
             policyCids.wasmCid,
             policyCids.wasmArgs,
-            uint32(8 minutes),
+            policyDataExpireAfter,
             policyCids.policyDataMetadataCid,
             owner
         );
@@ -108,9 +105,10 @@ library NewtonPolicyDeploymentLib {
         address admin,
         address newtonProverTaskManager,
         string memory policyParams,
-        address taskGeneratorAddress
+        address[] memory taskGenerators,
+        uint32 policyDataExpireAfter
     ) internal returns (DeploymentData memory) {
-        require(taskGeneratorAddress != address(0), TaskGeneratorAddressCannotBeZero());
+        require(taskGenerators.length > 0, TaskGeneratorAddressesEmpty());
         require(policyCids.attester != address(0), AttesterCannotBeZero());
 
         DeploymentData memory result;
@@ -126,20 +124,14 @@ library NewtonPolicyDeploymentLib {
             result.policyDataFactory, result.policyDataFactoryImpl, policyDataFactoryUpgradeCall
         );
 
-        address[] memory attesters;
-        if (taskGeneratorAddress == policyCids.attester) {
-            attesters = new address[](1);
-            attesters[0] = policyCids.attester;
-        } else {
-            attesters = new address[](2);
-            attesters[0] = policyCids.attester;
-            attesters[1] = taskGeneratorAddress;
-        }
+        address[] memory attesters = new address[](1);
+        attesters[0] = policyCids.attester;
+        attesters = attesters.addToArray(taskGenerators);
 
         address policyData = NewtonPolicyDataFactory(result.policyDataFactory).deployPolicyData(
             policyCids.wasmCid,
             policyCids.wasmArgs,
-            uint32(15 minutes),
+            policyDataExpireAfter,
             policyCids.policyDataMetadataCid,
             admin
         );
@@ -221,9 +213,10 @@ library NewtonPolicyDeploymentLib {
         address admin,
         address newtonProverTaskManager,
         string memory policyParams,
-        address taskGeneratorAddress
+        address[] memory taskGenerators,
+        uint32 policyDataExpireAfter
     ) internal returns (DeploymentData memory) {
-        require(taskGeneratorAddress != address(0), TaskGeneratorAddressCannotBeZero());
+        require(taskGenerators.length > 0, TaskGeneratorAddressesEmpty());
         require(policyCids.attester != address(0), AttesterCannotBeZero());
 
         DeploymentData memory result = deploymentData;
@@ -232,20 +225,14 @@ library NewtonPolicyDeploymentLib {
         result.policyDataFactoryImpl = address(new NewtonPolicyDataFactory());
         UpgradeableProxyLib.upgrade(result.policyDataFactory, result.policyDataFactoryImpl);
 
-        address[] memory attesters;
-        if (taskGeneratorAddress == policyCids.attester) {
-            attesters = new address[](1);
-            attesters[0] = policyCids.attester;
-        } else {
-            attesters = new address[](2);
-            attesters[0] = policyCids.attester;
-            attesters[1] = taskGeneratorAddress;
-        }
+        address[] memory attesters = new address[](1);
+        attesters[0] = policyCids.attester;
+        attesters = attesters.addToArray(taskGenerators);
 
         address policyData = NewtonPolicyDataFactory(result.policyDataFactory).deployPolicyData(
             policyCids.wasmCid,
             policyCids.wasmArgs,
-            uint32(8 minutes),
+            policyDataExpireAfter,
             policyCids.policyDataMetadataCid,
             admin
         );
