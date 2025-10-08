@@ -7,6 +7,7 @@ import "forge-std/Test.sol";
 
 import {NewtonPolicyDeploymentLib} from "./utils/NewtonPolicyDeploymentLib.sol";
 import {NewtonPolicyLib} from "./utils/NewtonPolicyLib.sol";
+import {AdminLib} from "../script/utils/AdminLib.sol";
 
 // # To deploy and verify our contract
 // forge script script/PolicyDeployer.s.sol:PolicyDeployer --rpc-url $RPC_URL  --private-key $PRIVATE_KEY --broadcast -vvvv
@@ -15,10 +16,8 @@ import {NewtonPolicyLib} from "./utils/NewtonPolicyLib.sol";
 contract PolicyDeployer is Script {
     address internal _deployer;
     string internal _policyCidsPath;
-    address internal _taskGeneratorAddress;
 
     error PolicyCidsPathNotSet();
-    error TaskGeneratorAddressNotSet();
 
     function setUp() public virtual {
         _deployer = vm.rememberKey(vm.envUint("PRIVATE_KEY"));
@@ -27,10 +26,6 @@ contract PolicyDeployer is Script {
         string memory policyCidsPath = vm.envString("POLICY_CIDS_PATH");
         require(bytes(policyCidsPath).length > 0, PolicyCidsPathNotSet());
         _policyCidsPath = policyCidsPath;
-
-        address taskGeneratorAddress = vm.envAddress("TASK_GENERATOR_ADDRESS");
-        require(taskGeneratorAddress != address(0), TaskGeneratorAddressNotSet());
-        _taskGeneratorAddress = taskGeneratorAddress;
     }
 
     function run() external {
@@ -43,9 +38,15 @@ contract PolicyDeployer is Script {
         NewtonPolicyLib.PolicyCids memory policyCids =
             NewtonPolicyLib.readPolicyCids(_policyCidsPath);
 
+        string memory taskGeneratorsPath =
+            string.concat("script/deployments/config/", vm.toString(block.chainid), ".json");
+
+        address[] memory taskGenerators =
+            AdminLib.readAddresses(taskGeneratorsPath, true).taskGenerator;
+
         NewtonPolicyDeploymentLib.DeploymentData memory policyDeploymentData =
         NewtonPolicyDeploymentLib.deployPolicy(
-            _deployer, deploymentData, policyCids, _taskGeneratorAddress
+            _deployer, deploymentData, policyCids, taskGenerators, uint32(600 seconds)
         );
 
         // solhint-disable-next-line no-console

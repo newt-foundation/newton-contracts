@@ -5,7 +5,7 @@ import "forge-std/Script.sol";
 import "forge-std/StdJson.sol";
 import "forge-std/Test.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
-import {NewtonProverDeploymentLib} from "../../../script/utils/NewtonProverDeploymentLib.sol";
+import {DeploymentLib} from "../../../script/utils/DeploymentLib.sol";
 import {MockNewtonPolicyClient} from "./MockNewtonPolicyClient.sol";
 import {INewtonPolicy} from "../../interfaces/INewtonPolicy.sol";
 import {NewtonPolicyLib} from "../../../script/utils/NewtonPolicyLib.sol";
@@ -54,8 +54,8 @@ contract PolicyClientDeployer is Script {
         // Deploy ProxyAdmin with the correct owner (the deployer)
         _proxyAdmin = UpgradeableProxyLib.deployProxyAdmin();
 
-        NewtonProverDeploymentLib.DeploymentData memory deploymentData =
-            NewtonProverDeploymentLib.readDeploymentJson(block.chainid);
+        DeploymentLib.DeploymentData memory deploymentData =
+            DeploymentLib.readDeploymentJson(block.chainid);
 
         address newtonProverTaskManager = deploymentData.newtonProverTaskManager;
 
