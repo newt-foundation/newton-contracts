@@ -16,10 +16,8 @@ import {AdminLib} from "../script/utils/AdminLib.sol";
 contract PolicyDeployer is Script {
     address internal _deployer;
     string internal _policyCidsPath;
-    string internal _taskGeneratorsPath;
 
     error PolicyCidsPathNotSet();
-    error TaskGeneratorsPathNotSet();
 
     function setUp() public virtual {
         _deployer = vm.rememberKey(vm.envUint("PRIVATE_KEY"));
@@ -28,13 +26,6 @@ contract PolicyDeployer is Script {
         string memory policyCidsPath = vm.envString("POLICY_CIDS_PATH");
         require(bytes(policyCidsPath).length > 0, PolicyCidsPathNotSet());
         _policyCidsPath = policyCidsPath;
-
-        try vm.envString("TASK_GENERATORS_PATH") returns (string memory taskGeneratorsPath) {
-            _taskGeneratorsPath =
-                bytes(taskGeneratorsPath).length > 0 ? taskGeneratorsPath : "admin_script.json";
-        } catch {
-            _taskGeneratorsPath = "admin_script.json";
-        }
     }
 
     function run() external {
@@ -47,8 +38,11 @@ contract PolicyDeployer is Script {
         NewtonPolicyLib.PolicyCids memory policyCids =
             NewtonPolicyLib.readPolicyCids(_policyCidsPath);
 
+        string memory taskGeneratorsPath =
+            string.concat("script/deployments/config/", vm.toString(block.chainid), ".json");
+
         address[] memory taskGenerators =
-            AdminLib.readAddresses(_taskGeneratorsPath, true).taskGenerator;
+            AdminLib.readAddresses(taskGeneratorsPath, true).taskGenerator;
 
         NewtonPolicyDeploymentLib.DeploymentData memory policyDeploymentData =
         NewtonPolicyDeploymentLib.deployPolicy(
