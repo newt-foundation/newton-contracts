@@ -17,6 +17,7 @@ contract NewtonPolicyFactory is OwnableUpgradeable {
 
     mapping(address => bool) public verifiers;
     mapping(address => NewtonMessage.VerificationInfo) public policyVerifications;
+    mapping(address => address[]) public ownersToPolicies;
 
     event PolicyDeployed(address policy, INewtonPolicy.PolicyInfo policyInfo);
     event PolicyVerificationUpdated(
@@ -119,6 +120,8 @@ contract NewtonPolicyFactory is OwnableUpgradeable {
                 NewtonMessage.VerificationInfo(owner(), true, block.timestamp);
         }
 
+        ownersToPolicies[_owner].push(policyAddr);
+
         emit PolicyDeployed(
             policyAddr,
             INewtonPolicy.PolicyInfo(
@@ -190,5 +193,11 @@ contract NewtonPolicyFactory is OwnableUpgradeable {
     ) external onlyOwner {
         verifiers[verifier] = false;
         emit VerifierRemoved(verifier);
+    }
+
+    function getAllPoliciesByOwner(
+        address owner
+    ) external view returns (address[] memory) {
+        return ownersToPolicies[owner];
     }
 }

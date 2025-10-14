@@ -33,8 +33,6 @@ contract NewtonPolicy is Initializable, OwnableUpgradeable, ERC165Upgradeable, I
 
     /* Modifiers */
     modifier onlyPolicyClient() {
-        require(msg.sender.code.length > 0, OnlyPolicyClient());
-
         bytes4 interfaceId = type(INewtonPolicyClient).interfaceId;
 
         (bool success, bytes memory result) = msg.sender.staticcall(
