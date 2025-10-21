@@ -1,20 +1,20 @@
 {
   "lastUpdate": {
-    "timestamp": "1759196219",
-    "block_number": "23472571"
+    "timestamp": "1759449503",
+    "block_number": "23493523"
   },
   "addresses": {
     "proxyAdmin": "0x9556c1b0b895d1eecf139172eb8d7ab7dc20d306",
     "newtonProverServiceManager": "0xafbd64968c344dcbbe620b1b156b9ee0b8c0182f",
-    "newtonProverServiceManagerImpl": "0x0139323b0907aea149a8bd0b687cacb7e1428dfc",
+    "newtonProverServiceManagerImpl": "0xb3c4303cc08fda44077739ea7feb45a4cf41f9a5",
     "newtonProverTaskManager": "0xbe36c0a4f1378c21467f324790655ad677fd7507",
-    "newtonProverTaskManagerImpl": "0x900c540b53c0d43140c925d6f5938e718bcea3a2",
+    "newtonProverTaskManagerImpl": "0xc0381fd8c9d7e953cfafeea585eefaaf8f2ab3fd",
     "challengeVerifier": "0x2c7a452a7c9729d7b068e75141292930c4ce176d",
-    "challengeVerifierImpl": "0x865c8ee4381638ed687ca236aae45104381eb907",
+    "challengeVerifierImpl": "0x21fe15aa38922106623df375c1aee200c16689c9",
     "attestationValidator": "0x741d58b876705ce89e8ec93b87aeff50cce7930a",
-    "attestationValidatorImpl": "0x6daf872963926fbb9f4b9b411d14aa7913bc4021",
+    "attestationValidatorImpl": "0x350a4246e2693ab60daecdd285ae1e65ca2c0a30",
     "operatorRegistry": "0xb19d17019e1f9958615aab05a27ab0c566637918",
-    "operatorRegistryImpl": "0x906838e29135eb497e12c8d46071e56f6057ffbc",
+    "operatorRegistryImpl": "0x62d6859aecbf47b39a5123fb32a4d152351f2d4a",
     "blsApkRegistry": "0x3b92dcffe91129b25d75d751d0b93b70496e6c7a",
     "blsApkRegistryImpl": "0x4fc0dd8cae88abcce15a6d583c02c6dcca189ab8",
     "indexRegistry": "0x84f53acf491a7a7aae77357ba6d7cc24f2b5a30f",
