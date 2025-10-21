@@ -24,6 +24,8 @@ library DeploymentLib {
         address newtonProverTaskManagerImpl;
         address challengeVerifier;
         address challengeVerifierImpl;
+        address regoVerifier;
+        address regoVerifierImpl;
         address attestationValidator;
         address attestationValidatorImpl;
         address operatorRegistry;
@@ -51,6 +53,8 @@ library DeploymentLib {
         uint32 taskResponseWindowBlock;
         uint32 taskChallengeWindowBlock;
         bool isChallengeEnabled;
+        address sp1Verifier;
+        bytes32 sp1ProgramVkey;
     }
 
     struct NewtonStakingConfig {
@@ -67,7 +71,8 @@ library DeploymentLib {
     function readDeploymentJson(
         uint256 chainId
     ) internal returns (DeploymentData memory) {
-        return _readDeploymentJson("script/deployments/newton-prover/", chainId);
+        string memory env = VM.envOr("DEPLOYMENT_ENV", string("prod"));
+        return _readDeploymentJson("script/deployments/newton-prover/", chainId, env);
     }
 
     function readNewtonStakingConfigJson(
@@ -100,14 +105,18 @@ library DeploymentLib {
         data.taskResponseWindowBlock = uint32(json.readUintOr(".task_response_window_block", 30));
         data.taskChallengeWindowBlock = uint32(json.readUintOr(".task_challenge_window_block", 30));
         data.isChallengeEnabled = json.readBoolOr(".is_challenge_enabled", false);
+        data.sp1Verifier = json.readAddressOr(".sp1_verifier", address(0));
+        data.sp1ProgramVkey = json.readBytes32Or(".sp1_program_vkey", bytes32(0));
         return data;
     }
 
     function _readDeploymentJson(
         string memory directoryPath,
-        uint256 chainId
+        uint256 chainId,
+        string memory env
     ) internal returns (DeploymentData memory) {
-        string memory fileName = string.concat(directoryPath, VM.toString(chainId), ".json");
+        string memory fileName =
+            string.concat(directoryPath, VM.toString(chainId), "-", env, ".json");
 
         require(VM.exists(fileName), DeploymentFileDoesNotExist());
 
@@ -144,6 +153,8 @@ library DeploymentLib {
         data.tokenImpl = json.readAddress(".addresses.tokenImpl");
         data.slasher = json.readAddress(".addresses.slasher");
         data.instantSlasherImpl = json.readAddress(".addresses.instantSlasherImpl");
+        data.regoVerifier = json.readAddressOr(".addresses.regoVerifier", address(0));
+        data.regoVerifierImpl = json.readAddressOr(".addresses.regoVerifierImpl", address(0));
 
         return data;
     }
@@ -152,20 +163,22 @@ library DeploymentLib {
     function writeDeploymentJson(
         DeploymentData memory data
     ) internal {
-        writeDeploymentJson("script/deployments/newton-prover/", block.chainid, data);
+        string memory env = VM.envOr("DEPLOYMENT_ENV", string("stagef"));
+        writeDeploymentJson("script/deployments/newton-prover/", block.chainid, data, env);
     }
 
     function writeDeploymentJson(
         string memory outputPath,
         uint256 chainId,
-        DeploymentData memory data
+        DeploymentData memory data,
+        string memory env
     ) internal {
         address proxyAdmin =
             address(UpgradeableProxyLib.getProxyAdmin(data.newtonProverServiceManager));
 
         string memory deploymentData = _generateDeploymentJson(data, proxyAdmin);
 
-        string memory fileName = string.concat(outputPath, VM.toString(chainId), ".json");
+        string memory fileName = string.concat(outputPath, VM.toString(chainId), "-", env, ".json");
         if (!VM.exists(outputPath)) {
             VM.createDir(outputPath, true);
         }
@@ -198,6 +211,8 @@ library DeploymentLib {
         string memory challengeVerifierImpl = "";
         string memory attestationValidator = "";
         string memory attestationValidatorImpl = "";
+        string memory regoVerifier = "";
+        string memory regoVerifierImpl = "";
         if (data.challengeVerifier != address(0)) {
             challengeVerifier = data.challengeVerifier.toHexString();
             challengeVerifierImpl = data.challengeVerifier.getImplementation().toHexString();
@@ -206,7 +221,10 @@ library DeploymentLib {
             attestationValidator = data.attestationValidator.toHexString();
             attestationValidatorImpl = data.attestationValidator.getImplementation().toHexString();
         }
-
+        if (data.regoVerifier != address(0)) {
+            regoVerifier = data.regoVerifier.toHexString();
+            regoVerifierImpl = data.regoVerifier.getImplementation().toHexString();
+        }
         return string.concat(
             '{"proxyAdmin":"',
             proxyAdmin.toHexString(),
@@ -222,6 +240,10 @@ library DeploymentLib {
             challengeVerifier,
             '","challengeVerifierImpl":"',
             challengeVerifierImpl,
+            '","regoVerifier":"',
+            regoVerifier,
+            '","regoVerifierImpl":"',
+            regoVerifierImpl,
             '","attestationValidator":"',
             attestationValidator,
             '","attestationValidatorImpl":"',

@@ -27,27 +27,6 @@ contract NewtonPolicy is Initializable, OwnableUpgradeable, ERC165Upgradeable, I
     // mapping of client to policyId
     mapping(address => bytes32) public clientToPolicyId;
 
-    /* ERRORS */
-    error OnlyPolicyClient();
-    error InterfaceNotSupported();
-
-    /* Modifiers */
-    modifier onlyPolicyClient() {
-        require(msg.sender.code.length > 0, OnlyPolicyClient());
-
-        bytes4 interfaceId = type(INewtonPolicyClient).interfaceId;
-
-        (bool success, bytes memory result) = msg.sender.staticcall(
-            abi.encodeWithSelector(IERC165.supportsInterface.selector, interfaceId)
-        );
-
-        require(
-            success && result.length == 32 && abi.decode(result, (bool)), InterfaceNotSupported()
-        );
-
-        _;
-    }
-
     function initialize(
         address _factory,
         string calldata _entrypoint,
@@ -71,7 +50,7 @@ contract NewtonPolicy is Initializable, OwnableUpgradeable, ERC165Upgradeable, I
     // function to set policy for the msg.sender (client)
     function setPolicy(
         INewtonPolicy.PolicyConfig calldata policyConfig
-    ) public onlyPolicyClient returns (bytes32) {
+    ) public returns (bytes32) {
         bytes32 policyId = keccak256(
             abi.encode(
                 msg.sender,

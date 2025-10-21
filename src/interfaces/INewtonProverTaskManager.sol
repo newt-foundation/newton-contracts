@@ -18,18 +18,6 @@ interface INewtonProverTaskManager {
 
     event AttestationSpent(bytes32 indexed taskId, NewtonMessage.Attestation attestation);
 
-    /* CUSTOM ERRORS */
-    error OnlyAggregator();
-    error OnlyTaskGenerator();
-    error InsufficientQuorumStake();
-    error ChallengeNotEnabled();
-    error NotChallengable();
-    error ChallengePeriodExpired();
-    error AttestationHashMismatch();
-    error AttestationExpired();
-    error AttestationAlreadySpent();
-    error InvalidTaskManagerConfig();
-
     // STRUCTS
     // task submitter decides on the criteria for a task to be completed
     // note that this does not mean the task was "correctly" answered (i.e. the number was proved correctly)
@@ -106,28 +94,16 @@ interface INewtonProverTaskManager {
         bytes data;
     }
 
-    // Task manager config for the task manager.
-    struct TaskManagerConfig {
-        // The window block for the task response.
-        uint32 taskResponseWindowBlock;
-        // The window block for the task challenge.
-        uint32 taskChallengeWindowBlock;
-        // Whether the challenge is enabled.
-        bool isChallengeEnabled;
-    }
-
     // FUNCTIONS
     // NOTE: this function creates new task.
     function createNewTask(
+        bytes32 taskId,
         address policyClient,
         NewtonMessage.Intent calldata intent,
         NewtonMessage.PolicyTaskData calldata policyTaskData,
         bytes calldata quorumNumbers,
         uint32 quorumThresholdPercentage
     ) external;
-
-    // NOTE: this function returns the latest task nonce.
-    function latestNonce() external view returns (uint32);
 
     // NOTE: this function responds to existing tasks.
     function respondToTask(

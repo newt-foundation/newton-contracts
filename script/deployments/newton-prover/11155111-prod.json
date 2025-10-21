@@ -1,0 +1,33 @@
+{
+  "lastUpdate": { "timestamp": "1760745912", "block_number": "9434510" },
+  "addresses": {
+    "proxyAdmin": "0x6209497ba23d6132774cc9f43e63b08d0c100a92",
+    "newtonProverServiceManager": "0x48dd46cc1f6e0db48b6cf746effad9a8d709a564",
+    "newtonProverServiceManagerImpl": "0xb1fd4e4cb03f7fc52b852b033672f96f2c25807b",
+    "newtonProverTaskManager": "0x1ea5b8cf6760987b3247f013929b565595b0eca3",
+    "newtonProverTaskManagerImpl": "0xb41d5dcb1cbce59e09d5e63bdbe0e5acbca10096",
+    "challengeVerifier": "0x3bd23e69dd814605a244a35fe578d844690044b1",
+    "challengeVerifierImpl": "0x9062e2d0910cbe73ba89a1c5afc5ce65f20dfb7b",
+    "regoVerifier": "0xee7a32dd61f02157c55db7d6fdd55061da4fd44f",
+    "regoVerifierImpl": "0x6b2a955981f5f7afdb6ea17a4259a00ef48446ea",
+    "attestationValidator": "0xacd6ddf54e5ebd91962154859957c69e4c894d39",
+    "attestationValidatorImpl": "0x68283a58682bd4ecc73f5dc0744d31d15e11143e",
+    "operatorRegistry": "0xe97f806cef1883705f4e2d459581b47f5f0f716a",
+    "operatorRegistryImpl": "0x5fed88f02cf112766f512c56fe4dba5f48a018b8",
+    "blsApkRegistry": "0x2215c30e08268ef7e61fcc4f610f4064ac334526",
+    "blsApkRegistryImpl": "0xf6bc1673fa9a51d29d24fa5c179357da704228c0",
+    "indexRegistry": "0x39f7fde85f64417c3046496c9f0dd77ea1c43ba1",
+    "indexRegistryImpl": "0xec66e29322aa97e101070cf734aef90e3bde9731",
+    "stakeRegistry": "0x9f73a0564874b52b568a5f4a7c7870505c14a5e7",
+    "stakeRegistryImpl": "0xdaa61e6aca29762d056b821ea6c50f9cbf422dae",
+    "socketRegistry": "0xbf386a62395b79d1bf134dda67910bf341381ad2",
+    "socketRegistryImpl": "0xe0a376944c770b9c286936689867e4c1857a9267",
+    "operatorStateRetriever": "0xea360f2712bbbea6bb4c8b8b83aee688f0659262",
+    "strategy": "0x1dbff4b1d44032af673476be94a55c245249957b",
+    "pauserRegistry": "0xf29e2a9d2044db59e440245014f90ecc73730329",
+    "token": "0x7002748acadd250b5e72120ae5a1fb40802e214f",
+    "tokenImpl": "0x44dcd21572bf3211c842aac755de6529e35aa166",
+    "slasher": "0x26068ba56190bfa66dddbf288edf437b09b1b739",
+    "instantSlasherImpl": "0xaf3f43d245e2e4cad87ec2b825059d2f2524148f"
+  }
+}

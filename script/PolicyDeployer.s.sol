@@ -59,43 +59,9 @@ contract PolicyDeployer is Script {
         NewtonPolicyDeploymentLib.DeploymentData memory deploymentData
     ) private pure returns (string memory) {
         string memory json = "{\n";
-
-        json = string.concat(
-            json, "  \"policyFactory\": \"", vm.toString(deploymentData.policyFactory), "\",\n"
-        );
-        json = string.concat(
-            json,
-            "  \"policyFactoryImpl\": \"",
-            vm.toString(deploymentData.policyFactoryImpl),
-            "\",\n"
-        );
         json = string.concat(json, "  \"policy\": \"", vm.toString(deploymentData.policy), "\",\n");
         json = string.concat(
-            json,
-            "  \"policyImplementation\": \"",
-            vm.toString(deploymentData.policyImplementation),
-            "\",\n"
-        );
-        json = string.concat(
-            json,
-            "  \"policyDataFactory\": \"",
-            vm.toString(deploymentData.policyDataFactory),
-            "\",\n"
-        );
-        json = string.concat(
-            json,
-            "  \"policyDataFactoryImpl\": \"",
-            vm.toString(deploymentData.policyDataFactoryImpl),
-            "\",\n"
-        );
-        json = string.concat(
             json, "  \"policyData\": \"", vm.toString(deploymentData.policyData), "\",\n"
-        );
-        json = string.concat(
-            json,
-            "  \"policyDataImplementation\": \"",
-            vm.toString(deploymentData.policyDataImplementation),
-            "\"\n"
         );
         json = string.concat(json, "}");
 

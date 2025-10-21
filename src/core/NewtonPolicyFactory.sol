@@ -5,7 +5,6 @@ import "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.so
 import "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
 import "@openzeppelin/contracts/utils/Create2.sol";
-import {IERC165} from "@openzeppelin/contracts/interfaces/IERC165.sol";
 import {NewtonMessage} from "./NewtonMessage.sol";
 import {INewtonPolicy} from "../interfaces/INewtonPolicy.sol";
 import {NewtonPolicy} from "./NewtonPolicy.sol";
@@ -17,6 +16,7 @@ contract NewtonPolicyFactory is OwnableUpgradeable {
 
     mapping(address => bool) public verifiers;
     mapping(address => NewtonMessage.VerificationInfo) public policyVerifications;
+    mapping(address => address[]) public ownersToPolicies;
 
     event PolicyDeployed(address policy, INewtonPolicy.PolicyInfo policyInfo);
     event PolicyVerificationUpdated(
@@ -24,6 +24,9 @@ contract NewtonPolicyFactory is OwnableUpgradeable {
     );
     event VerifierAdded(address verifier);
     event VerifierRemoved(address verifier);
+    event OwnershipTransferredWithVerifierUpdate(
+        address indexed previousOwner, address indexed newOwner
+    );
 
     constructor() {
         _disableInitializers();
@@ -40,27 +43,9 @@ contract NewtonPolicyFactory is OwnableUpgradeable {
     }
 
     /* ERRORS */
-    error OnlyNewtonPolicy();
-    error InterfaceNotSupported();
     error OnlyVerifiers();
 
     /* Modifiers */
-    modifier onlyNewtonPolicy() {
-        require(msg.sender.code.length > 0, OnlyNewtonPolicy());
-
-        bytes4 interfaceId = type(INewtonPolicy).interfaceId;
-
-        (bool success, bytes memory result) = msg.sender.staticcall(
-            abi.encodeWithSelector(IERC165.supportsInterface.selector, interfaceId)
-        );
-
-        require(
-            success && result.length == 32 && abi.decode(result, (bool)), InterfaceNotSupported()
-        );
-
-        _;
-    }
-
     modifier onlyVerifiers() {
         require(msg.sender == owner() || verifiers[msg.sender], OnlyVerifiers());
         _;
@@ -118,6 +103,8 @@ contract NewtonPolicyFactory is OwnableUpgradeable {
             policyVerifications[policyAddr] =
                 NewtonMessage.VerificationInfo(owner(), true, block.timestamp);
         }
+
+        ownersToPolicies[_owner].push(policyAddr);
 
         emit PolicyDeployed(
             policyAddr,
@@ -190,5 +177,36 @@ contract NewtonPolicyFactory is OwnableUpgradeable {
     ) external onlyOwner {
         verifiers[verifier] = false;
         emit VerifierRemoved(verifier);
+    }
+
+    function getAllPoliciesByOwner(
+        address owner
+    ) external view returns (address[] memory) {
+        return ownersToPolicies[owner];
+    }
+
+    /**
+     * @dev Override transferOwnership to remove verifier privileges from the old owner
+     * This addresses FIND-013: Old owner retains verifier privileges after ownership transfer
+     */
+    function transferOwnership(
+        address newOwner
+    ) public override onlyOwner {
+        address previousOwner = owner();
+
+        // Remove verifier privileges from the previous owner
+        if (verifiers[previousOwner]) {
+            verifiers[previousOwner] = false;
+            emit VerifierRemoved(previousOwner);
+        }
+
+        // Transfer ownership
+        _transferOwnership(newOwner);
+
+        // Add verifier privileges to the new owner
+        verifiers[newOwner] = true;
+        emit VerifierAdded(newOwner);
+
+        emit OwnershipTransferredWithVerifierUpdate(previousOwner, newOwner);
     }
 }
