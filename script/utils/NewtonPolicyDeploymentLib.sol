@@ -291,14 +291,17 @@ library NewtonPolicyDeploymentLib {
     function readDeploymentJson(
         uint256 chainId
     ) internal returns (DeploymentData memory) {
-        return _readDeploymentJson("script/deployments/policy/", chainId);
+        string memory env = VM.envOr("DEPLOYMENT_ENV", string("stagef"));
+        return _readDeploymentJson("script/deployments/policy/", chainId, env);
     }
 
     function _readDeploymentJson(
         string memory directoryPath,
-        uint256 chainId
+        uint256 chainId,
+        string memory env
     ) internal returns (DeploymentData memory) {
-        string memory fileName = string.concat(directoryPath, VM.toString(chainId), ".json");
+        string memory fileName =
+            string.concat(directoryPath, VM.toString(chainId), "-", env, ".json");
 
         require(VM.exists(fileName), DeploymentFileDoesNotExist());
 
@@ -324,19 +327,21 @@ library NewtonPolicyDeploymentLib {
     function writeDeploymentJson(
         DeploymentData memory data
     ) internal {
-        writeDeploymentJson("script/deployments/policy/", block.chainid, data);
+        string memory env = VM.envOr("DEPLOYMENT_ENV", string("stagef"));
+        writeDeploymentJson("script/deployments/policy/", block.chainid, data, env);
     }
 
     function writeDeploymentJson(
         string memory outputPath,
         uint256 chainId,
-        DeploymentData memory data
+        DeploymentData memory data,
+        string memory env
     ) internal {
         address proxyAdmin = address(UpgradeableProxyLib.getProxyAdmin(data.policyFactory));
 
         string memory deploymentData = _generateDeploymentJson(data, proxyAdmin);
 
-        string memory fileName = string.concat(outputPath, VM.toString(chainId), ".json");
+        string memory fileName = string.concat(outputPath, VM.toString(chainId), "-", env, ".json");
         if (!VM.exists(outputPath)) {
             VM.createDir(outputPath, true);
         }
