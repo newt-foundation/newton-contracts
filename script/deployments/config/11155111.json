@@ -1,6 +1,7 @@
 {
     "add": {
         "taskGenerator": [
+            "0xD45062003a4626a532F30A4596aB253c45AE0647",
             "0x4883282094755C01cd0d15dFE74753c9E189d194",
             "0x51eBfB4c0441b0D8898d968975073c24B9190227",
             "0x19F9dEC9928417B6Ea6aD52291acCa9deef59E3F",
@@ -21,8 +22,7 @@
     },
     "remove": {
         "taskGenerator": [
-            "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
-            "0xD45062003a4626a532F30A4596aB253c45AE0647"
+            "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
         ],
         "operator": [],
         "policyVerifier": [],
