@@ -45,7 +45,7 @@ contract AttestationValidator is Initializable, OwnableUpgradeable {
         TaskLib.sanityCheckAttestation(attestation);
         bytes32 attestationHash = keccak256(abi.encode(attestation));
         require(attestations[attestation.taskId] == attestationHash, AttestationHashMismatch());
-        require(uint32(block.number) <= attestation.expiration, AttestationExpired());
+        require(uint32(block.number) < attestation.expiration, AttestationExpired());
         // Prevent double spending of the same attestation by setting the attestation hash to 0
         require(attestations[attestation.taskId] != bytes32(0), AttestationAlreadySpent());
         attestations[attestation.taskId] = bytes32(0);
@@ -63,10 +63,12 @@ contract AttestationValidator is Initializable, OwnableUpgradeable {
         bytes32 policyId,
         address policyClient,
         NewtonMessage.Intent calldata intent,
+        bytes calldata intentSignature,
         uint32 expiration
     ) external onlyTaskManager returns (bytes32) {
-        NewtonMessage.Attestation memory attestation =
-            NewtonMessage.Attestation(taskId, policyId, policyClient, intent, expiration);
+        NewtonMessage.Attestation memory attestation = NewtonMessage.Attestation(
+            taskId, policyId, policyClient, expiration, intent, intentSignature
+        );
         bytes32 attestationHash = keccak256(abi.encode(attestation));
         attestations[taskId] = attestationHash;
         return attestationHash;
@@ -78,7 +80,7 @@ contract AttestationValidator is Initializable, OwnableUpgradeable {
         TaskLib.sanityCheckAttestation(attestation);
         bytes32 attestationHash = keccak256(abi.encode(attestation));
         return attestations[attestation.taskId] == attestationHash
-            && uint32(block.number) <= attestation.expiration
+            && uint32(block.number) < attestation.expiration
             && attestations[attestation.taskId] != bytes32(0);
     }
 

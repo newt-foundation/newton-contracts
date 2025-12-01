@@ -30,10 +30,12 @@ contract NewtonMessage {
         bytes32 policyId;
         // policy client
         address policyClient;
-        // intent
-        Intent intent;
         // expiration block number for the attestation
         uint32 expiration;
+        // intent
+        Intent intent;
+        // signature of the intent by the intent creator
+        bytes intentSignature;
     }
 
     /// @notice PolicyData struct for a policy data and its attestation proof

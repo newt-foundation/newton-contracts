@@ -14,9 +14,15 @@ import {PolicyValidationLib} from "./PolicyValidationLib.sol";
  */
 library TaskLib {
     /* CUSTOM ERRORS */
+    error PolicyNotVerified();
+    error TaskResponseMismatch();
+    error EntrypointMismatch();
     error TaskMismatch();
+    error InvalidTaskId();
     error InvalidPolicyId();
     error InvalidPolicyAddress();
+    error InvalidIntent();
+    error InvalidIntentSignature();
     error TaskAlreadyResponded();
     error TaskResponseTooLate(
         uint32 blockNumber, uint32 taskCreatedBlock, uint32 taskResponseWindowBlock
@@ -24,7 +30,7 @@ library TaskLib {
     error OnlyPolicyClient();
     error InvalidPolicyClient();
     error InterfaceNotSupported();
-    error InvalidIntent();
+    error InvalidSourceOrDestination();
 
     /* FUNCTIONS */
 
@@ -33,11 +39,12 @@ library TaskLib {
         uint32 nonce,
         address policyClient,
         NewtonMessage.Intent calldata intent,
+        bytes calldata intentSignature,
         NewtonMessage.PolicyTaskData calldata policyTaskData,
         bytes calldata quorumNumbers,
         uint32 quorumThresholdPercentage
     ) external view returns (INewtonProverTaskManager.Task memory) {
-        require(intent.from != address(0) && intent.to != address(0), InvalidIntent());
+        require(intent.from != address(0) && intent.to != address(0), InvalidSourceOrDestination());
 
         // Validate policy client and get basic info
         (address policyAddress, bytes32 policyId) =
@@ -53,6 +60,7 @@ library TaskLib {
             taskId: taskId,
             nonce: nonce,
             intent: intent,
+            intentSignature: intentSignature,
             policyId: policyId,
             policyClient: policyClient,
             policyTaskData: policyTaskData,
@@ -70,6 +78,7 @@ library TaskLib {
      * @param evaluationResult The result data to evaluate
      * @return bool True if the result indicates success/true
      */
+    // solhint-disable-next-line gas-calldata-parameters
     function evaluateResult(
         bytes memory evaluationResult
     ) external pure returns (bool) {
@@ -85,6 +94,7 @@ library TaskLib {
         }
 
         // Case 2: ABI-encoded "true" string (96+ bytes)
+        // solhint-disable-next-line gas-strict-inequalities
         if (length >= 96) {
             uint256 strLen;
             assembly {
@@ -115,13 +125,22 @@ library TaskLib {
         uint32 blockNumber,
         uint32 responseWindowBlock
     ) external pure {
+        require(taskResponse.taskId == task.taskId, InvalidTaskId());
         require(taskResponse.policyId == task.policyId, InvalidPolicyId());
         require(taskResponse.policyClient == task.policyClient, InvalidPolicyClient());
         require(
             taskResponse.policyAddress == task.policyTaskData.policyAddress, InvalidPolicyAddress()
         );
         require(
-            blockNumber <= task.taskCreatedBlock + responseWindowBlock,
+            keccak256(abi.encode(taskResponse.intent)) == keccak256(abi.encode(task.intent)),
+            InvalidIntent()
+        );
+        require(
+            keccak256(taskResponse.intentSignature) == keccak256(task.intentSignature),
+            InvalidIntentSignature()
+        );
+        require(
+            blockNumber < task.taskCreatedBlock + responseWindowBlock,
             TaskResponseTooLate(blockNumber, task.taskCreatedBlock, responseWindowBlock)
         );
     }
@@ -151,5 +170,23 @@ library TaskLib {
         );
 
         require(msg.sender == attestation.policyClient, InvalidPolicyClient());
+    }
+
+    function taskHash(
+        INewtonProverTaskManager.Task calldata task
+    ) external pure returns (bytes32) {
+        return keccak256(
+            abi.encode(
+                task.taskId,
+                task.intent,
+                task.intentSignature,
+                task.policyId,
+                task.policyClient,
+                task.policyTaskData,
+                task.policyConfig,
+                task.quorumNumbers,
+                task.quorumThresholdPercentage
+            )
+        );
     }
 }
