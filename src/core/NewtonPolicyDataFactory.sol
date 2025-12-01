@@ -52,9 +52,8 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable {
 
         bytes4 interfaceId = type(INewtonPolicyData).interfaceId;
 
-        (bool success, bytes memory result) = msg.sender.staticcall(
-            abi.encodeWithSelector(IERC165.supportsInterface.selector, interfaceId)
-        );
+        (bool success, bytes memory result) = msg.sender
+            .staticcall(abi.encodeWithSelector(IERC165.supportsInterface.selector, interfaceId));
 
         require(
             success && result.length == 32 && abi.decode(result, (bool)), InterfaceNotSupported()
@@ -154,7 +153,10 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable {
         predicted = Create2.computeAddress(salt, keccak256(bytecode));
     }
 
-    function setPolicyDataVerified(address policyDataAddr, bool verified) external onlyVerifiers {
+    function setPolicyDataVerified(
+        address policyDataAddr,
+        bool verified
+    ) external onlyVerifiers {
         policyDataVerifications[policyDataAddr] =
             NewtonMessage.VerificationInfo(msg.sender, verified, block.timestamp);
         emit PolicyDataVerificationUpdated(policyDataAddr, policyDataVerifications[policyDataAddr]);
