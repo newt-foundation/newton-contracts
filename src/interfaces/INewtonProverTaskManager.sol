@@ -100,6 +100,34 @@ interface INewtonProverTaskManager {
         bytes data;
     }
 
+    // STATE VARIABLES
+    /// @notice The current task nonce
+    function nonce() external view returns (uint32);
+
+    /// @notice Core entity addresses
+    function serviceManager() external view returns (address);
+    function aggregator() external view returns (address);
+
+    /// @notice Operator registry contract
+    function operatorRegistry() external view returns (address);
+
+    /// @notice Task-related mappings
+    function allTaskHashes(
+        bytes32
+    ) external view returns (bytes32);
+    function allTaskResponses(
+        bytes32
+    ) external view returns (bytes32);
+
+    /// @notice Challenge verifier contract address
+    function challengeVerifier() external view returns (address);
+
+    /// @notice Attestation validator contract address
+    function attestationValidator() external view returns (address);
+
+    /// @notice The task response window block
+    function taskResponseWindowBlock() external view returns (uint32);
+
     // FUNCTIONS
     // NOTE: this function creates new task.
     function createNewTask(
