@@ -18,6 +18,8 @@ interface INewtonProverTaskManager {
 
     event AttestationSpent(bytes32 indexed taskId, NewtonMessage.Attestation attestation);
 
+    event AggregatorUpdated(address indexed previousAggregator, address indexed newAggregator);
+
     // STRUCTS
     // task submitter decides on the criteria for a task to be completed
     // note that this does not mean the task was "correctly" answered (i.e. the number was proved correctly)
@@ -28,24 +30,26 @@ interface INewtonProverTaskManager {
     struct Task {
         // the unique identifier for the task
         bytes32 taskId;
-        // policy client address
-        address policyClient;
         // policy id
         bytes32 policyId;
+        // policy client address
+        address policyClient;
         // the nonce of the task
         uint32 nonce;
+        // the block number when the task was created
+        uint32 taskCreatedBlock;
+        // the quorum threshold percentage of the task
+        uint32 quorumThresholdPercentage;
         // the intent of the task
         NewtonMessage.Intent intent;
+        // the signature of the intent by the intent creator
+        bytes intentSignature;
         // the policy task data of the task
         NewtonMessage.PolicyTaskData policyTaskData;
         // policy configuration for the policy program
         INewtonPolicy.PolicyConfig policyConfig;
-        // the block number when the task was created
-        uint32 taskCreatedBlock;
         // the quorum numbers of the task
         bytes quorumNumbers;
-        // the quorum threshold percentage of the task
-        uint32 quorumThresholdPercentage;
     }
 
     // Task response is hashed and signed by operators.
@@ -61,6 +65,8 @@ interface INewtonProverTaskManager {
         address policyAddress;
         // the intent of the task
         NewtonMessage.Intent intent;
+        // the signature of the intent by the intent creator
+        bytes intentSignature;
         // Policy evaluation result.
         bytes evaluationResult;
     }
@@ -74,12 +80,12 @@ interface INewtonProverTaskManager {
     struct ResponseCertificate {
         // the block number when the response certificate is created
         uint32 referenceBlock;
+        // the block number when the task response expires
+        uint32 responseExpireBlock;
         // the hash of the non-signers
         bytes32 hashOfNonSigners;
         // the non-signers and their stakes
         IBLSSignatureChecker.NonSignerStakesAndSignature nonSignerStakesAndSignature;
-        // the block number when the task response expires
-        uint32 responseExpireBlock;
     }
 
     // Challenge data is submitted by the challenger.
@@ -94,36 +100,13 @@ interface INewtonProverTaskManager {
         bytes data;
     }
 
-    // STATE VARIABLES
-    /// @notice The current task nonce
-    function nonce() external view returns (uint32);
-
-    /// @notice Core entity addresses
-    function serviceManager() external view returns (address);
-    function aggregator() external view returns (address);
-
-    /// @notice Operator registry contract
-    function operatorRegistry() external view returns (address);
-
-    /// @notice Task-related mappings
-    function allTaskHashes(bytes32) external view returns (bytes32);
-    function allTaskResponses(bytes32) external view returns (bytes32);
-
-    /// @notice Challenge verifier contract address
-    function challengeVerifier() external view returns (address);
-
-    /// @notice Attestation validator contract address
-    function attestationValidator() external view returns (address);
-
-    /// @notice The task response window block
-    function taskResponseWindowBlock() external view returns (uint32);
-
     // FUNCTIONS
     // NOTE: this function creates new task.
     function createNewTask(
         bytes32 taskId,
         address policyClient,
         NewtonMessage.Intent calldata intent,
+        bytes calldata intentSignature,
         NewtonMessage.PolicyTaskData calldata policyTaskData,
         bytes calldata quorumNumbers,
         uint32 quorumThresholdPercentage
@@ -133,7 +116,7 @@ interface INewtonProverTaskManager {
     function respondToTask(
         Task calldata task,
         TaskResponse calldata taskResponse,
-        IBLSSignatureChecker.NonSignerStakesAndSignature memory nonSignerStakesAndSignature
+        IBLSSignatureChecker.NonSignerStakesAndSignature calldata nonSignerStakesAndSignature
     ) external;
 
     // NOTE: this function raises challenge to existing tasks.
@@ -142,7 +125,7 @@ interface INewtonProverTaskManager {
         TaskResponse calldata taskResponse,
         ResponseCertificate calldata responseCertificate,
         ChallengeData calldata challenge,
-        BN254.G1Point[] memory pubkeysOfNonSigningOperators
+        BN254.G1Point[] calldata pubkeysOfNonSigningOperators
     ) external;
 
     // NOTE: this function authorizes existing task responses.

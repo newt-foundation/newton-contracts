@@ -153,7 +153,10 @@ contract NewtonPolicyFactory is OwnableUpgradeable {
         predicted = Create2.computeAddress(salt, keccak256(bytecode));
     }
 
-    function setPolicyVerification(address policyAddr, bool verified) external onlyVerifiers {
+    function setPolicyVerification(
+        address policyAddr,
+        bool verified
+    ) external onlyVerifiers {
         policyVerifications[policyAddr] =
             NewtonMessage.VerificationInfo(msg.sender, verified, block.timestamp);
         emit PolicyVerificationUpdated(policyAddr, policyVerifications[policyAddr]);

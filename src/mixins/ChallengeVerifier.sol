@@ -9,6 +9,8 @@ import "@openzeppelin-upgrades/contracts/proxy/utils/Initializable.sol";
 import "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
 import "@openzeppelin-upgrades/contracts/security/ReentrancyGuardUpgradeable.sol";
 import {RegoVerifier} from "./RegoVerifier.sol";
+import {IRegoVerifier} from "../interfaces/IRegoVerifier.sol";
+import {INewtonPolicy} from "../interfaces/INewtonPolicy.sol";
 
 contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
     /* CUSTOM ERRORS */
@@ -16,9 +18,10 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
     error NotChallengable();
     error ChallengePeriodExpired();
     error OnlyTaskManager();
+    error ChallengeFailed();
 
     /* EVENTS */
-    event ChallengeEnabled(bool isChallengeEnabled);
+    event ChallengeEnabled(bool indexed isChallengeEnabled);
 
     /* STORAGE */
     address public immutable taskManager;
@@ -75,35 +78,52 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
     }
 
     /* EXTERNAL FUNCTIONS */
+    // solhint-disable-next-line function-max-lines
     function raiseAndResolveChallenge(
         INewtonProverTaskManager.Task calldata task,
         INewtonProverTaskManager.TaskResponse calldata taskResponse,
         INewtonProverTaskManager.ResponseCertificate calldata responseCertificate,
         INewtonProverTaskManager.ChallengeData calldata challenge,
-        BN254.G1Point[] memory pubkeysOfNonSigningOperators
+        BN254.G1Point[] calldata pubkeysOfNonSigningOperators
     ) external onlyTaskManager nonReentrant returns (bool) {
         require(isChallengeEnabled, ChallengeNotEnabled());
         require(
-            keccak256(abi.encode(task)) == allTaskHashes[taskResponse.taskId],
-            TaskLib.TaskMismatch()
+            TaskLib.taskHash(task) == allTaskHashes[taskResponse.taskId], TaskLib.TaskMismatch()
         );
         require(
             _isChallengable(task, taskResponse, responseCertificate, challenge), NotChallengable()
         );
         require(
-            uint32(block.number) <= responseCertificate.referenceBlock + taskChallengeWindowBlock,
+            uint32(block.number) < responseCertificate.referenceBlock + taskChallengeWindowBlock,
             ChallengePeriodExpired()
         );
 
-        bytes memory regoResult =
-            RegoVerifier(regoVerifier).verifyRegoProof(challenge.data, challenge.proof);
+        INewtonPolicy policy = INewtonPolicy(task.policyTaskData.policyAddress);
+        require(policy.isPolicyVerified(), TaskLib.PolicyNotVerified());
 
-        bool challengeSuccess = keccak256(abi.encode(regoResult))
+        // Verify the rego proof. Reverts if the proof is invalid.
+        IRegoVerifier.RegoContext memory context =
+            RegoVerifier(regoVerifier).verifyRegoProof(challenge.data, challenge.proof);
+        // make sure that proof public values match the task and task response.
+        // Circuit also checks if task and task response are correct.
+        require(
+            TaskLib.taskHash(context.task) == allTaskHashes[taskResponse.taskId],
+            TaskLib.TaskMismatch()
+        );
+        require(
+            keccak256(abi.encode(context.taskResponse)) == allTaskResponses[taskResponse.taskId],
+            TaskLib.TaskResponseMismatch()
+        );
+        require(
+            keccak256(abi.encode(policy.getEntrypoint()))
+                == keccak256(abi.encode(context.entrypoint)),
+            TaskLib.EntrypointMismatch()
+        );
+
+        bool challengeSuccess = keccak256(abi.encode(context.evaluation))
             != keccak256(abi.encode(taskResponse.evaluationResult));
 
-        if (!challengeSuccess) {
-            return false;
-        }
+        require(challengeSuccess, ChallengeFailed());
 
         // Process non-signing operators and validate
         (
@@ -145,22 +165,17 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
         return task.taskId == taskId && allTaskResponses[taskId] != bytes32(0)
             && allTaskResponses[taskId] == keccak256(abi.encode(taskResponse, responseCertificate))
             && !taskSuccesfullyChallenged[taskId]
-            && uint32(block.number) <= responseCertificate.responseExpireBlock
+            && uint32(block.number) < responseCertificate.responseExpireBlock
             && challenge.taskId == taskId;
     }
 
     /* SETTER FUNCTIONS FOR COMPOSITION */
-    function setTaskHashes(
+    function setTaskHashesAndResponses(
         bytes32 taskId,
-        bytes32 taskHash
-    ) external onlyTaskManager {
-        allTaskHashes[taskId] = taskHash;
-    }
-
-    function setTaskResponses(
-        bytes32 taskId,
+        bytes32 taskHash,
         bytes32 taskResponseHash
     ) external onlyTaskManager {
+        allTaskHashes[taskId] = taskHash;
         allTaskResponses[taskId] = taskResponseHash;
     }
 

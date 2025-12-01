@@ -48,9 +48,8 @@ contract NewtonPolicyData is
 
         bytes4 interfaceId = type(INewtonPolicy).interfaceId;
 
-        (bool success, bytes memory result) = msg.sender.staticcall(
-            abi.encodeWithSelector(IERC165.supportsInterface.selector, interfaceId)
-        );
+        (bool success, bytes memory result) = msg.sender
+            .staticcall(abi.encodeWithSelector(IERC165.supportsInterface.selector, interfaceId));
 
         require(
             success && result.length == 32 && abi.decode(result, (bool)), InterfaceNotSupported()
@@ -185,7 +184,8 @@ contract NewtonPolicyData is
     function supportsInterface(
         bytes4 interfaceId
     ) public view virtual override(ERC165Upgradeable, IERC165) returns (bool) {
-        return interfaceId == type(INewtonPolicyData).interfaceId
-            || super.supportsInterface(interfaceId);
+        return
+            interfaceId == type(INewtonPolicyData).interfaceId
+                || super.supportsInterface(interfaceId);
     }
 }
