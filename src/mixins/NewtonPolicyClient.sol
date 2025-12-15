@@ -136,6 +136,14 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient {
         return address(_getNewtonPolicyClientStorage().policyTaskManager);
     }
 
+    function getOwner() external view returns (address) {
+        return _getOwner();
+    }
+
+    function _getOwner() internal view returns (address) {
+        return _getNewtonPolicyClientStorage().policyClientOwner;
+    }
+
     /**
      * @notice Validates the transaction by checking the policy evaluation task response.
      * @param attestation the attestation to validate

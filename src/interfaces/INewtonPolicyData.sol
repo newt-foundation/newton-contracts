@@ -19,7 +19,7 @@ interface INewtonPolicyData is IERC165 {
         address owner;
         string metadataCid;
         string wasmCid;
-        string wasmArgsCid;
+        string secretsSchemaCid;
         uint32 expireAfter;
     }
 
@@ -67,12 +67,6 @@ interface INewtonPolicyData is IERC165 {
      * @return The policy data location for the policy data contract.
      */
     function getWasmCid() external view returns (string memory);
-
-    /**
-     * @notice Retrieves the policy data arguments location (IPFS CID for WASM plugin args).
-     * @return The policy data arguments location for the policy data contract.
-     */
-    function getWasmArgsCid() external view returns (string memory);
 
     /**
      * @notice Retrieves the expire after block number for the policy data.

@@ -25,7 +25,7 @@ contract NewtonPolicyData is
     /* STORAGE */
     address public factory;
     string private _wasmCid;
-    string private _wasmArgs;
+    string private _secretsSchemaCid;
     uint32 private _expireAfter;
     string private _metadataCid;
     INewtonPolicyData.AttestationInfo private _attestationInfo;
@@ -40,6 +40,7 @@ contract NewtonPolicyData is
 
     /* EVENTS */
     event PolicyDataMetadataCidUpdated(string metadataCid);
+    event SecretsSchemaCidUpdated(string secretsSchemaCid);
     event AttestationInfoUpdated(INewtonPolicyData.AttestationInfo attestationInfo);
 
     /* Modifiers */
@@ -61,7 +62,7 @@ contract NewtonPolicyData is
     function initialize(
         address _factory,
         string calldata wasmCid,
-        string calldata wasmArgs,
+        string calldata secretsSchemaCid,
         uint32 expireAfter,
         string calldata metadataCid,
         address _owner
@@ -71,7 +72,7 @@ contract NewtonPolicyData is
         __ERC165_init();
         factory = _factory;
         _wasmCid = wasmCid;
-        _wasmArgs = wasmArgs;
+        _secretsSchemaCid = secretsSchemaCid;
         _expireAfter = expireAfter;
         _metadataCid = metadataCid;
     }
@@ -91,8 +92,15 @@ contract NewtonPolicyData is
         return _wasmCid;
     }
 
-    function getWasmArgsCid() public view returns (string memory) {
-        return _wasmArgs;
+    function getSecretsSchemaCid() public view returns (string memory) {
+        return _secretsSchemaCid;
+    }
+
+    function setSecretsSchemaCid(
+        string calldata secretsSchemaCid
+    ) public onlyOwner {
+        _secretsSchemaCid = secretsSchemaCid;
+        emit SecretsSchemaCidUpdated(secretsSchemaCid);
     }
 
     function getAttestationInfo() public view returns (INewtonPolicyData.AttestationInfo memory) {
@@ -150,11 +158,12 @@ contract NewtonPolicyData is
         (address signer, ECDSA.RecoverError error) = ECDSA.tryRecover(
             keccak256(
                 abi.encodePacked(
+                    policyData.wasmArgs,
                     policyData.data,
                     policyData.policyDataAddress,
                     policyData.expireBlock,
                     _wasmCid,
-                    _wasmArgs
+                    _secretsSchemaCid
                 )
             ),
             policyData.attestation

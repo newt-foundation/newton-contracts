@@ -6,9 +6,11 @@ import {stdJson} from "forge-std/StdJson.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {NewtonPolicyDataFactory} from "../../src/core/NewtonPolicyDataFactory.sol";
 import {NewtonPolicyFactory} from "../../src/core/NewtonPolicyFactory.sol";
+import {NewtonPolicyData} from "../../src/core/NewtonPolicyData.sol";
+import {NewtonPolicy} from "../../src/core/NewtonPolicy.sol";
 import {INewtonPolicy} from "../../src/interfaces/INewtonPolicy.sol";
 import {INewtonPolicyData} from "../../src/interfaces/INewtonPolicyData.sol";
-import {MockNewtonPolicyClient} from "../../src/examples/mock/MockNewtonPolicyClient.sol";
+import {MockNewtonPolicyClient} from "../../examples/mock/MockNewtonPolicyClient.sol";
 import {NewtonPolicyLib} from "./NewtonPolicyLib.sol";
 import {UpgradeableProxyLib} from "./UpgradeableProxyLib.sol";
 import {ArrayLib} from "./ArrayLib.sol";
@@ -59,37 +61,40 @@ library NewtonPolicyDeploymentLib {
 
         DeploymentData memory result = deploymentData;
 
-        address policyData = NewtonPolicyDataFactory(result.policyDataFactory).deployPolicyData(
-            policyCids.wasmCid,
-            policyCids.wasmArgs,
-            policyDataExpireAfter,
-            policyCids.policyDataMetadataCid,
-            owner
-        );
+        address policyData = NewtonPolicyDataFactory(result.policyDataFactory)
+            .deployPolicyData(
+                policyCids.wasmCid,
+                policyCids.secretsSchemaCid,
+                policyDataExpireAfter,
+                policyCids.policyDataMetadataCid,
+                owner
+            );
         result.policyData = policyData;
         result.policyDataImplementation =
             NewtonPolicyDataFactory(result.policyDataFactory).implementation();
 
-        INewtonPolicyData(policyData).setAttestationInfo(
-            INewtonPolicyData.AttestationInfo({
-                attesters: attesters,
-                attestationType: INewtonPolicyData.AttestationType.ECDSA,
-                verifier: address(0),
-                verificationKey: bytes32(0)
-            })
-        );
+        INewtonPolicyData(policyData)
+            .setAttestationInfo(
+                INewtonPolicyData.AttestationInfo({
+                    attesters: attesters,
+                    attestationType: INewtonPolicyData.AttestationType.ECDSA,
+                    verifier: address(0),
+                    verificationKey: bytes32(0)
+                })
+            );
 
         address[] memory policyDataArray = new address[](1);
         policyDataArray[0] = policyData;
 
-        address policy = NewtonPolicyFactory(result.policyFactory).deployPolicy(
-            policyCids.entrypoint,
-            policyCids.policyCid,
-            policyCids.schemaCid,
-            policyDataArray,
-            policyCids.policyMetadataCid,
-            owner
-        );
+        address policy = NewtonPolicyFactory(result.policyFactory)
+            .deployPolicy(
+                policyCids.entrypoint,
+                policyCids.policyCid,
+                policyCids.schemaCid,
+                policyDataArray,
+                policyCids.policyMetadataCid,
+                owner
+            );
         result.policy = policy;
         result.policyImplementation = NewtonPolicyFactory(result.policyFactory).implementation();
 
@@ -128,13 +133,14 @@ library NewtonPolicyDeploymentLib {
         attesters[0] = policyCids.attester;
         attesters = attesters.addToArray(taskGenerators);
 
-        address policyData = NewtonPolicyDataFactory(result.policyDataFactory).deployPolicyData(
-            policyCids.wasmCid,
-            policyCids.wasmArgs,
-            policyDataExpireAfter,
-            policyCids.policyDataMetadataCid,
-            admin
-        );
+        address policyData = NewtonPolicyDataFactory(result.policyDataFactory)
+            .deployPolicyData(
+                policyCids.wasmCid,
+                policyCids.secretsSchemaCid,
+                policyDataExpireAfter,
+                policyCids.policyDataMetadataCid,
+                admin
+            );
         if (policyData == address(0) || policyData.code.length == 0) {
             revert ContractNotDeployed("PolicyData", policyData);
         }
@@ -149,14 +155,15 @@ library NewtonPolicyDeploymentLib {
             revert ContractNotDeployed("PolicyDataImplementation", result.policyDataImplementation);
         }
 
-        INewtonPolicyData(policyData).setAttestationInfo(
-            INewtonPolicyData.AttestationInfo({
-                attesters: attesters,
-                attestationType: INewtonPolicyData.AttestationType.ECDSA,
-                verifier: address(0),
-                verificationKey: bytes32(0)
-            })
-        );
+        INewtonPolicyData(policyData)
+            .setAttestationInfo(
+                INewtonPolicyData.AttestationInfo({
+                    attesters: attesters,
+                    attestationType: INewtonPolicyData.AttestationType.ECDSA,
+                    verifier: address(0),
+                    verificationKey: bytes32(0)
+                })
+            );
 
         string memory entrypoint = policyCids.entrypoint;
         string memory policyCid = policyCids.policyCid;
@@ -172,9 +179,10 @@ library NewtonPolicyDeploymentLib {
             result.policyFactory, result.policyFactoryImpl, policyFactoryUpgradeCall
         );
 
-        address policy = NewtonPolicyFactory(result.policyFactory).deployPolicy(
-            entrypoint, policyCid, schemaCid, policyDataArray, policyMetadataCid, admin
-        );
+        address policy = NewtonPolicyFactory(result.policyFactory)
+            .deployPolicy(
+                entrypoint, policyCid, schemaCid, policyDataArray, policyMetadataCid, admin
+            );
 
         result.policy = policy;
         result.policyImplementation = NewtonPolicyFactory(result.policyFactory).implementation();
@@ -194,12 +202,12 @@ library NewtonPolicyDeploymentLib {
             result.policyClient, result.policyClientImpl, upgradeCall
         );
 
-        result.policyId = MockNewtonPolicyClient(result.policyClient).setPolicy(
-            INewtonPolicy.PolicyConfig({
-                policyParams: bytes(policyParams),
-                expireAfter: uint32(1 minutes)
-            })
-        );
+        result.policyId = MockNewtonPolicyClient(result.policyClient)
+            .setPolicy(
+                INewtonPolicy.PolicyConfig({
+                    policyParams: bytes(policyParams), expireAfter: uint32(1 minutes)
+                })
+            );
 
         verifyDeployment(result);
 
@@ -225,29 +233,37 @@ library NewtonPolicyDeploymentLib {
         result.policyDataFactoryImpl = address(new NewtonPolicyDataFactory());
         UpgradeableProxyLib.upgrade(result.policyDataFactory, result.policyDataFactoryImpl);
 
+        // IMPORTANT: Upgrading the factory proxy does NOT re-run `initialize()`, so the factory's
+        // persisted `implementation` address remains whatever it was before. Rotate it explicitly
+        // so newly deployed PolicyData proxies use the latest `NewtonPolicyData` bytecode.
+        NewtonPolicyDataFactory(result.policyDataFactory)
+            .setImplementation(address(new NewtonPolicyData()));
+
         address[] memory attesters = new address[](1);
         attesters[0] = policyCids.attester;
         attesters = attesters.addToArray(taskGenerators);
 
-        address policyData = NewtonPolicyDataFactory(result.policyDataFactory).deployPolicyData(
-            policyCids.wasmCid,
-            policyCids.wasmArgs,
-            policyDataExpireAfter,
-            policyCids.policyDataMetadataCid,
-            admin
-        );
+        address policyData = NewtonPolicyDataFactory(result.policyDataFactory)
+            .deployPolicyData(
+                policyCids.wasmCid,
+                policyCids.secretsSchemaCid,
+                policyDataExpireAfter,
+                policyCids.policyDataMetadataCid,
+                admin
+            );
         result.policyData = policyData;
         result.policyDataImplementation =
             NewtonPolicyDataFactory(result.policyDataFactory).implementation();
 
-        INewtonPolicyData(policyData).setAttestationInfo(
-            INewtonPolicyData.AttestationInfo({
-                attesters: attesters,
-                attestationType: INewtonPolicyData.AttestationType.ECDSA,
-                verifier: address(0),
-                verificationKey: bytes32(0)
-            })
-        );
+        INewtonPolicyData(policyData)
+            .setAttestationInfo(
+                INewtonPolicyData.AttestationInfo({
+                    attesters: attesters,
+                    attestationType: INewtonPolicyData.AttestationType.ECDSA,
+                    verifier: address(0),
+                    verificationKey: bytes32(0)
+                })
+            );
 
         string memory entrypoint = policyCids.entrypoint;
         string memory policyCid = policyCids.policyCid;
@@ -260,9 +276,14 @@ library NewtonPolicyDeploymentLib {
         result.policyFactoryImpl = address(new NewtonPolicyFactory());
         UpgradeableProxyLib.upgrade(result.policyFactory, result.policyFactoryImpl);
 
-        address policy = NewtonPolicyFactory(result.policyFactory).deployPolicy(
-            entrypoint, policyCid, schemaCid, policyDataArray, policyMetadataCid, admin
-        );
+        // Same rationale as above: rotate the persisted `implementation` so newly deployed Policy
+        // proxies use the latest `NewtonPolicy` bytecode (avoids ERC-165 interface-id drift).
+        NewtonPolicyFactory(result.policyFactory).setImplementation(address(new NewtonPolicy()));
+
+        address policy = NewtonPolicyFactory(result.policyFactory)
+            .deployPolicy(
+                entrypoint, policyCid, schemaCid, policyDataArray, policyMetadataCid, admin
+            );
         result.policy = policy;
         result.policyImplementation = NewtonPolicyFactory(result.policyFactory).implementation();
 
@@ -276,12 +297,12 @@ library NewtonPolicyDeploymentLib {
             result.policyClient, result.policyClientImpl, upgradeCall
         );
 
-        result.policyId = MockNewtonPolicyClient(result.policyClient).setPolicy(
-            INewtonPolicy.PolicyConfig({
-                policyParams: bytes(policyParams),
-                expireAfter: uint32(1 minutes)
-            })
-        );
+        result.policyId = MockNewtonPolicyClient(result.policyClient)
+            .setPolicy(
+                INewtonPolicy.PolicyConfig({
+                    policyParams: bytes(policyParams), expireAfter: uint32(1 minutes)
+                })
+            );
 
         verifyDeployment(result);
 
@@ -397,7 +418,10 @@ library NewtonPolicyDeploymentLib {
     }
 
     /// @notice Helper function to validate individual contracts
-    function _validateContract(string memory contractName, address contractAddress) private view {
+    function _validateContract(
+        string memory contractName,
+        address contractAddress
+    ) private view {
         if (contractAddress == address(0)) {
             revert ContractNotDeployed(contractName, contractAddress);
         }

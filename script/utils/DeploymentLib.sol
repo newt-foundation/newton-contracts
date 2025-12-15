@@ -71,7 +71,7 @@ library DeploymentLib {
     function readDeploymentJson(
         uint256 chainId
     ) internal returns (DeploymentData memory) {
-        string memory env = VM.envOr("DEPLOYMENT_ENV", string("prod"));
+        string memory env = VM.envOr("DEPLOYMENT_ENV", string("stagef"));
         return _readDeploymentJson("script/deployments/newton-prover/", chainId, env);
     }
 

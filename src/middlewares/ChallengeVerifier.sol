@@ -3,7 +3,14 @@ pragma solidity ^0.8.27;
 
 import {INewtonProverTaskManager} from "../interfaces/INewtonProverTaskManager.sol";
 import {TaskLib} from "../libraries/TaskLib.sol";
+import {TaskManagerErrors} from "../libraries/TaskManagerErrors.sol";
+import {OperatorVerifierLib} from "../libraries/OperatorVerifierLib.sol";
 import {ChallengeLib} from "../libraries/ChallengeLib.sol";
+import {AttestationValidator} from "./AttestationValidator.sol";
+import {
+    ISlashingRegistryCoordinator
+} from "@eigenlayer-middleware/src/interfaces/ISlashingRegistryCoordinator.sol";
+import {IBLSSignatureChecker} from "@eigenlayer-middleware/src/interfaces/IBLSSignatureChecker.sol";
 import "@eigenlayer-middleware/src/libraries/BN254.sol";
 import "@openzeppelin-upgrades/contracts/proxy/utils/Initializable.sol";
 import "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
@@ -31,9 +38,12 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
     address public immutable allocationManager;
     address public immutable instantSlasher;
     address public immutable regoVerifier;
+    address public immutable attestationValidator;
+    address public immutable operatorRegistry;
 
     bool public isChallengeEnabled;
     uint32 public taskChallengeWindowBlock;
+    uint32 public taskResponseWindowBlock;
 
     mapping(bytes32 => bool) public taskSuccesfullyChallenged;
     mapping(bytes32 => bytes32) public allTaskHashes;
@@ -53,7 +63,9 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
         address _blsApkRegistry,
         address _allocationManager,
         address _instantSlasher,
-        address _regoVerifier
+        address _regoVerifier,
+        address _attestationValidator,
+        address _operatorRegistry
     ) {
         taskManager = _taskManager;
         serviceManager = _serviceManager;
@@ -62,12 +74,15 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
         allocationManager = _allocationManager;
         instantSlasher = _instantSlasher;
         regoVerifier = _regoVerifier;
+        attestationValidator = _attestationValidator;
+        operatorRegistry = _operatorRegistry;
     }
 
     /* INITIALIZER */
     function initialize(
         bool _isChallengeEnabled,
         uint32 _taskChallengeWindowBlock,
+        uint32 _taskResponseWindowBlock,
         address _owner
     ) public initializer {
         __Ownable_init();
@@ -75,6 +90,7 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
         _transferOwnership(_owner);
         isChallengeEnabled = _isChallengeEnabled;
         taskChallengeWindowBlock = _taskChallengeWindowBlock;
+        taskResponseWindowBlock = _taskResponseWindowBlock;
     }
 
     /* EXTERNAL FUNCTIONS */
@@ -88,7 +104,8 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
     ) external onlyTaskManager nonReentrant returns (bool) {
         require(isChallengeEnabled, ChallengeNotEnabled());
         require(
-            TaskLib.taskHash(task) == allTaskHashes[taskResponse.taskId], TaskLib.TaskMismatch()
+            TaskLib.taskHash(task) == allTaskHashes[taskResponse.taskId],
+            TaskLib.TaskMismatch(allTaskHashes[taskResponse.taskId], TaskLib.taskHash(task))
         );
         require(
             _isChallengable(task, taskResponse, responseCertificate, challenge), NotChallengable()
@@ -108,7 +125,7 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
         // Circuit also checks if task and task response are correct.
         require(
             TaskLib.taskHash(context.task) == allTaskHashes[taskResponse.taskId],
-            TaskLib.TaskMismatch()
+            TaskLib.TaskMismatch(allTaskHashes[taskResponse.taskId], TaskLib.taskHash(context.task))
         );
         require(
             keccak256(abi.encode(context.taskResponse)) == allTaskResponses[taskResponse.taskId],
@@ -137,19 +154,22 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
             responseCertificate.hashOfNonSigners
         );
 
-        // Slash signing operators
-        ChallengeLib.ChallengeContext memory ctx = ChallengeLib.ChallengeContext({
-            blsApkRegistry: blsApkRegistry,
-            operatorStateRetriever: taskManager, // task manager is the operator state retriever
-            registryCoordinator: registryCoordinator,
-            allocationManager: allocationManager,
-            instantSlasher: instantSlasher,
-            serviceManager: serviceManager
-        });
+        // Slash signing operators only on source chains (where serviceManager is set)
+        // Destination chains don't have slashing capability
+        if (serviceManager != address(0)) {
+            ChallengeLib.ChallengeContext memory ctx = ChallengeLib.ChallengeContext({
+                blsApkRegistry: blsApkRegistry,
+                operatorStateRetriever: taskManager, // task manager is the operator state retriever
+                registryCoordinator: registryCoordinator,
+                allocationManager: allocationManager,
+                instantSlasher: instantSlasher,
+                serviceManager: serviceManager
+            });
 
-        ChallengeLib.slashSigningOperators(
-            ctx, task.quorumNumbers, task.taskCreatedBlock, addressOfNonSigningOperators
-        );
+            ChallengeLib.slashSigningOperators(
+                ctx, task.quorumNumbers, task.taskCreatedBlock, addressOfNonSigningOperators
+            );
+        }
 
         taskSuccesfullyChallenged[taskResponse.taskId] = true;
         return true;
@@ -197,5 +217,83 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
         uint32 _taskChallengeWindowBlock
     ) external onlyOwner {
         taskChallengeWindowBlock = _taskChallengeWindowBlock;
+    }
+
+    function updateTaskResponseWindowBlock(
+        uint32 _taskResponseWindowBlock
+    ) external onlyOwner {
+        taskResponseWindowBlock = _taskResponseWindowBlock;
+    }
+
+    function challengeDirectlyVerifiedAttestation(
+        INewtonProverTaskManager.Task calldata task,
+        INewtonProverTaskManager.TaskResponse calldata taskResponse,
+        IBLSSignatureChecker.NonSignerStakesAndSignature calldata nonSignerStakesAndSignature,
+        function(bytes32, bytes memory, uint32, IBLSSignatureChecker
+                        .NonSignerStakesAndSignature memory)
+            external
+            view returns (IBLSSignatureChecker.QuorumStakeTotals memory, bytes32) checkSignatures
+    ) external onlyTaskManager {
+        bytes32 taskId = taskResponse.taskId;
+
+        // Verify attestation was directly verified
+        require(
+            AttestationValidator(attestationValidator).isDirectlyVerified(taskId),
+            TaskManagerErrors.NotDirectlyVerified()
+        );
+
+        // Verify taskResponseWindow has passed
+        require(
+            uint32(block.number) > task.taskCreatedBlock + taskResponseWindowBlock,
+            TaskLib.TaskResponseWindowNotPassed(
+                uint32(block.number), task.taskCreatedBlock, taskResponseWindowBlock
+            )
+        );
+
+        // Verify respondToTask was never called (check TaskManager's taskResponseHash mapping)
+        bytes32 taskResponseHash = INewtonProverTaskManager(taskManager).taskResponseHash(taskId);
+        require(taskResponseHash == bytes32(0), TaskLib.TaskAlreadyResponded());
+
+        // Verify task hash matches the one stored in TaskManager
+        bytes32 expectedTaskHash = INewtonProverTaskManager(taskManager).taskHash(taskId);
+        require(
+            TaskLib.taskHash(task) == expectedTaskHash,
+            TaskLib.TaskMismatch(expectedTaskHash, TaskLib.taskHash(task))
+        );
+
+        // Re-verify BLS signatures to confirm signature validity
+        OperatorVerifierLib.verifyTaskResponseSignatures(
+            task,
+            taskResponse,
+            nonSignerStakesAndSignature,
+            ISlashingRegistryCoordinator(operatorRegistry),
+            checkSignatures
+        );
+
+        // Extract non-signer addresses from pubkeys
+        (
+            bytes32[] memory hashesOfPubkeysOfNonSigningOperators,
+            address[] memory addressOfNonSigningOperators
+        ) = ChallengeLib.processNonSigners(
+            nonSignerStakesAndSignature.nonSignerPubkeys, blsApkRegistry
+        );
+
+        // Create challenge context
+        ChallengeLib.ChallengeContext memory ctx = ChallengeLib.ChallengeContext({
+            blsApkRegistry: blsApkRegistry,
+            operatorStateRetriever: taskManager, // task manager is the operator state retriever
+            registryCoordinator: registryCoordinator,
+            allocationManager: allocationManager,
+            instantSlasher: instantSlasher,
+            serviceManager: serviceManager
+        });
+
+        // Slash signing operators
+        ChallengeLib.slashSigningOperators(
+            ctx, task.quorumNumbers, task.taskCreatedBlock, addressOfNonSigningOperators
+        );
+
+        // Invalidate attestation
+        AttestationValidator(attestationValidator).invalidateAttestation(taskId);
     }
 }

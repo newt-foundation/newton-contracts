@@ -17,7 +17,7 @@ library TaskLib {
     error PolicyNotVerified();
     error TaskResponseMismatch();
     error EntrypointMismatch();
-    error TaskMismatch();
+    error TaskMismatch(bytes32 expected, bytes32 actual);
     error InvalidTaskId();
     error InvalidPolicyId();
     error InvalidPolicyAddress();
@@ -25,6 +25,9 @@ library TaskLib {
     error InvalidIntentSignature();
     error TaskAlreadyResponded();
     error TaskResponseTooLate(
+        uint32 blockNumber, uint32 taskCreatedBlock, uint32 taskResponseWindowBlock
+    );
+    error TaskResponseWindowNotPassed(
         uint32 blockNumber, uint32 taskCreatedBlock, uint32 taskResponseWindowBlock
     );
     error OnlyPolicyClient();
@@ -35,39 +38,36 @@ library TaskLib {
     /* FUNCTIONS */
 
     function createTask(
-        bytes32 taskId,
-        uint32 nonce,
-        address policyClient,
-        NewtonMessage.Intent calldata intent,
-        bytes calldata intentSignature,
-        NewtonMessage.PolicyTaskData calldata policyTaskData,
-        bytes calldata quorumNumbers,
-        uint32 quorumThresholdPercentage
+        INewtonProverTaskManager.TaskParams calldata params,
+        uint32 nonce
     ) external view returns (INewtonProverTaskManager.Task memory) {
-        require(intent.from != address(0) && intent.to != address(0), InvalidSourceOrDestination());
+        require(
+            params.intent.from != address(0) && params.intent.to != address(0),
+            InvalidSourceOrDestination()
+        );
 
         // Validate policy client and get basic info
         (address policyAddress, bytes32 policyId) =
-            PolicyValidationLib.checkVerifiedPolicy(policyClient, policyTaskData);
+            PolicyValidationLib.checkVerifiedPolicy(params.policyClient, params.policyTaskData);
 
         uint32 currentBlock = uint32(block.number);
 
         // Validate policy data attestations
-        PolicyValidationLib.validatePolicyData(policyAddress, policyTaskData, currentBlock);
+        PolicyValidationLib.validatePolicyData(policyAddress, params.policyTaskData, currentBlock);
 
         // Create task
         INewtonProverTaskManager.Task memory newTask = INewtonProverTaskManager.Task({
-            taskId: taskId,
+            taskId: params.taskId,
             nonce: nonce,
-            intent: intent,
-            intentSignature: intentSignature,
+            intent: params.intent,
+            intentSignature: params.intentSignature,
             policyId: policyId,
-            policyClient: policyClient,
-            policyTaskData: policyTaskData,
+            policyClient: params.policyClient,
+            policyTaskData: params.policyTaskData,
             policyConfig: INewtonPolicy(policyAddress).getPolicyConfig(policyId),
             taskCreatedBlock: currentBlock,
-            quorumNumbers: quorumNumbers,
-            quorumThresholdPercentage: quorumThresholdPercentage
+            quorumNumbers: params.quorumNumbers,
+            quorumThresholdPercentage: params.quorumThresholdPercentage
         });
 
         return newTask;

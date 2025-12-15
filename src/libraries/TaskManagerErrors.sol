@@ -13,4 +13,5 @@ library TaskManagerErrors {
     error AttestationExpired();
     error AttestationAlreadySpent();
     error InvalidAggregatorAddress();
+    error NotDirectlyVerified();
 }
