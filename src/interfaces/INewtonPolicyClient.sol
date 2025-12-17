@@ -26,4 +26,10 @@ interface INewtonPolicyClient is IERC165 {
      * @return address of the policy task manager
      */
     function getNewtonPolicyTaskManager() external view returns (address);
+
+    /**
+     * @notice Retrieves the owner address of the policy client.
+     * @return The owner address of the policy client.
+     */
+    function getOwner() external view returns (address);
 }

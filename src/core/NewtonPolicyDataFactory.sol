@@ -20,12 +20,25 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable {
     mapping(address => address[]) public ownersToPolicyData;
     address[] public policyDataOwners;
 
+    /// @notice Struct used for salt generation to ensure consistent encoding
+    struct SaltData {
+        address factory;
+        string wasmCid;
+        string secretsSchemaCid;
+        uint32 expireAfter;
+        string metadataCid;
+        address owner;
+    }
+
     event PolicyDataVerificationUpdated(
         address policyData, NewtonMessage.VerificationInfo verificationInfo
     );
     event PolicyDataDeployed(address policyData, INewtonPolicyData.PolicyDataInfo policyDataInfo);
-    event VerifierAdded(address verifier);
-    event VerifierRemoved(address verifier);
+    event ImplementationUpdated(
+        address indexed oldImplementation, address indexed newImplementation
+    );
+    event VerifierAdded(address indexed verifier);
+    event VerifierRemoved(address indexed verifier);
 
     constructor() {
         _disableInitializers();
@@ -45,6 +58,7 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable {
     error OnlyNewtonPolicyData();
     error InterfaceNotSupported();
     error OnlyVerifiers();
+    error InvalidImplementationAddress();
 
     /* Modifiers */
     modifier onlyNewtonPolicyData() {
@@ -69,7 +83,7 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable {
 
     function deployPolicyData(
         string memory _wasmCid,
-        string memory _wasmArgs,
+        string memory _secretsSchemaCid,
         uint32 _expireAfter,
         string memory _metadataCid,
         address _owner
@@ -78,14 +92,30 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable {
             NewtonPolicyData.initialize.selector,
             address(this),
             _wasmCid,
-            _wasmArgs,
+            _secretsSchemaCid,
             _expireAfter,
             _metadataCid,
             _owner
         );
 
+        SaltData memory saltData = SaltData({
+            factory: address(this),
+            wasmCid: _wasmCid,
+            secretsSchemaCid: _secretsSchemaCid,
+            expireAfter: _expireAfter,
+            metadataCid: _metadataCid,
+            owner: _owner
+        });
+
         bytes32 salt = keccak256(
-            abi.encodePacked(address(this), _wasmCid, _wasmArgs, _expireAfter, _metadataCid, _owner)
+            abi.encodePacked(
+                saltData.factory,
+                saltData.wasmCid,
+                saltData.secretsSchemaCid,
+                saltData.expireAfter,
+                saltData.metadataCid,
+                saltData.owner
+            )
         );
 
         bytes memory bytecode = abi.encodePacked(
@@ -119,14 +149,27 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable {
         emit PolicyDataDeployed(
             policyDataAddr,
             INewtonPolicyData.PolicyDataInfo(
-                policyDataAddr, _owner, _metadataCid, _wasmCid, _wasmArgs, _expireAfter
+                policyDataAddr, _owner, _metadataCid, _wasmCid, _secretsSchemaCid, _expireAfter
             )
         );
     }
 
+    /// @notice Updates the policy-data implementation used for newly deployed policy-data proxies.
+    /// @dev `upgradeContracts()` upgrades the factory proxy but does not re-run `initialize()`.
+    ///      Without this setter, the factory continues using the *old* `implementation` stored in
+    ///      storage.
+    function setImplementation(
+        address newImplementation
+    ) external onlyOwner {
+        require(newImplementation.code.length > 0, InvalidImplementationAddress());
+        address old = implementation;
+        implementation = newImplementation;
+        emit ImplementationUpdated(old, newImplementation);
+    }
+
     function computePolicyDataAddress(
         string memory _wasmCid,
-        string memory _wasmArgs,
+        string memory _secretsSchemaCid,
         uint32 _expireAfter,
         string memory _metadataCid,
         address _owner
@@ -135,14 +178,30 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable {
             NewtonPolicyData.initialize.selector,
             address(this),
             _wasmCid,
-            _wasmArgs,
+            _secretsSchemaCid,
             _expireAfter,
             _metadataCid,
             _owner
         );
 
+        SaltData memory saltData = SaltData({
+            factory: address(this),
+            wasmCid: _wasmCid,
+            secretsSchemaCid: _secretsSchemaCid,
+            expireAfter: _expireAfter,
+            metadataCid: _metadataCid,
+            owner: _owner
+        });
+
         bytes32 salt = keccak256(
-            abi.encodePacked(address(this), _wasmCid, _wasmArgs, _expireAfter, _metadataCid, _owner)
+            abi.encodePacked(
+                saltData.factory,
+                saltData.wasmCid,
+                saltData.secretsSchemaCid,
+                saltData.expireAfter,
+                saltData.metadataCid,
+                saltData.owner
+            )
         );
 
         bytes memory bytecode = abi.encodePacked(

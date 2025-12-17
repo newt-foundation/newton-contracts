@@ -40,6 +40,8 @@ contract NewtonMessage {
 
     /// @notice PolicyData struct for a policy data and its attestation proof
     struct PolicyData {
+        // task request WASM args
+        bytes wasmArgs;
         // encoded policy data
         bytes data;
         // attestation proof for the policy data.

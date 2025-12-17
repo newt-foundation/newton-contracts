@@ -52,6 +52,26 @@ interface INewtonProverTaskManager {
         bytes quorumNumbers;
     }
 
+    /// Parameters for creating a new task (passed as a single struct to avoid stack-too-deep)
+    struct TaskParams {
+        // task id
+        bytes32 taskId;
+        // task request WASM args
+        bytes wasmArgs;
+        // policy client address
+        address policyClient;
+        // intent
+        NewtonMessage.Intent intent;
+        // signature of the intent by the intent creator
+        bytes intentSignature;
+        // policy task data
+        NewtonMessage.PolicyTaskData policyTaskData;
+        // quorum numbers
+        bytes quorumNumbers;
+        // quorum threshold percentage
+        uint32 quorumThresholdPercentage;
+    }
+
     // Task response is hashed and signed by operators.
     // these signatures are aggregated and sent to the contract as response.
     struct TaskResponse {
@@ -100,44 +120,10 @@ interface INewtonProverTaskManager {
         bytes data;
     }
 
-    // STATE VARIABLES
-    /// @notice The current task nonce
-    function nonce() external view returns (uint32);
-
-    /// @notice Core entity addresses
-    function serviceManager() external view returns (address);
-    function aggregator() external view returns (address);
-
-    /// @notice Operator registry contract
-    function operatorRegistry() external view returns (address);
-
-    /// @notice Task-related mappings
-    function allTaskHashes(
-        bytes32
-    ) external view returns (bytes32);
-    function allTaskResponses(
-        bytes32
-    ) external view returns (bytes32);
-
-    /// @notice Challenge verifier contract address
-    function challengeVerifier() external view returns (address);
-
-    /// @notice Attestation validator contract address
-    function attestationValidator() external view returns (address);
-
-    /// @notice The task response window block
-    function taskResponseWindowBlock() external view returns (uint32);
-
     // FUNCTIONS
     // NOTE: this function creates new task.
     function createNewTask(
-        bytes32 taskId,
-        address policyClient,
-        NewtonMessage.Intent calldata intent,
-        bytes calldata intentSignature,
-        NewtonMessage.PolicyTaskData calldata policyTaskData,
-        bytes calldata quorumNumbers,
-        uint32 quorumThresholdPercentage
+        TaskParams calldata params
     ) external;
 
     // NOTE: this function responds to existing tasks.
@@ -160,4 +146,28 @@ interface INewtonProverTaskManager {
     function validateAttestation(
         NewtonMessage.Attestation calldata attestation
     ) external returns (bool);
+
+    // NOTE: this function validates attestation directly by verifying BLS signatures
+    // without waiting for respondToTask to be called.
+    function validateAttestationDirect(
+        Task calldata task,
+        TaskResponse calldata taskResponse,
+        IBLSSignatureChecker.NonSignerStakesAndSignature calldata nonSignerStakesAndSignature
+    ) external returns (bool);
+
+    // NOTE: this function challenges directly verified attestations when respondToTask
+    // was never called after the taskResponseWindow has passed.
+    function challengeDirectlyVerifiedAttestation(
+        Task calldata task,
+        TaskResponse calldata taskResponse,
+        IBLSSignatureChecker.NonSignerStakesAndSignature calldata nonSignerStakesAndSignature
+    ) external;
+
+    // NOTE: getter functions for public mappings
+    function taskHash(
+        bytes32 taskId
+    ) external view returns (bytes32);
+    function taskResponseHash(
+        bytes32 taskId
+    ) external view returns (bytes32);
 }

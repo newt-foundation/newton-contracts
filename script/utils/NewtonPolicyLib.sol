@@ -16,13 +16,13 @@ library NewtonPolicyLib {
 
     struct PolicyCids {
         string wasmCid;
-        string wasmArgs;
         address attester;
         string policyCid;
         string schemaCid;
         string entrypoint;
         string policyDataMetadataCid;
         string policyMetadataCid;
+        string secretsSchemaCid;
     }
 
     function readPolicyCids(
@@ -45,13 +45,13 @@ library NewtonPolicyLib {
 
         PolicyCids memory data;
         data.wasmCid = json.readString(".wasmCid");
-        data.wasmArgs = json.readStringOr(".wasmArgs", "");
         data.attester = json.readAddress(".attester");
         data.policyCid = json.readString(".policyCid");
         data.schemaCid = json.readString(".schemaCid");
         data.entrypoint = json.readString(".entrypoint");
         data.policyDataMetadataCid = json.readString(".policyDataMetadataCid");
         data.policyMetadataCid = json.readString(".policyMetadataCid");
+        data.secretsSchemaCid = json.readString(".secretsSchemaCid");
         return data;
     }
 

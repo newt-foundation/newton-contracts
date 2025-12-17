@@ -5,8 +5,8 @@ import "forge-std/Script.sol";
 import "forge-std/StdJson.sol";
 import "forge-std/Test.sol";
 
-import {NewtonPolicyDeploymentLib} from "./utils/NewtonPolicyDeploymentLib.sol";
-import {NewtonPolicyLib} from "./utils/NewtonPolicyLib.sol";
+import {NewtonPolicyDeploymentLib} from "../script/utils/NewtonPolicyDeploymentLib.sol";
+import {NewtonPolicyLib} from "../script/utils/NewtonPolicyLib.sol";
 import {AdminLib} from "../script/utils/AdminLib.sol";
 
 // # To deploy and verify our contract
@@ -16,8 +16,10 @@ import {AdminLib} from "../script/utils/AdminLib.sol";
 contract PolicyDeployer is Script {
     address internal _deployer;
     string internal _policyCidsPath;
+    string internal _taskGeneratorsPath;
 
     error PolicyCidsPathNotSet();
+    error TaskGeneratorsPathNotSet();
 
     function setUp() public virtual {
         _deployer = vm.rememberKey(vm.envUint("PRIVATE_KEY"));
@@ -26,6 +28,13 @@ contract PolicyDeployer is Script {
         string memory policyCidsPath = vm.envString("POLICY_CIDS_PATH");
         require(bytes(policyCidsPath).length > 0, PolicyCidsPathNotSet());
         _policyCidsPath = policyCidsPath;
+
+        try vm.envString("TASK_GENERATORS_PATH") returns (string memory taskGeneratorsPath) {
+            _taskGeneratorsPath =
+                bytes(taskGeneratorsPath).length > 0 ? taskGeneratorsPath : "admin_script.json";
+        } catch {
+            _taskGeneratorsPath = "admin_script.json";
+        }
     }
 
     function run() external {
@@ -38,15 +47,12 @@ contract PolicyDeployer is Script {
         NewtonPolicyLib.PolicyCids memory policyCids =
             NewtonPolicyLib.readPolicyCids(_policyCidsPath);
 
-        string memory taskGeneratorsPath =
-            string.concat("script/deployments/config/", vm.toString(block.chainid), ".json");
-
         address[] memory taskGenerators =
-            AdminLib.readAddresses(taskGeneratorsPath, true).taskGenerator;
+            AdminLib.readAddresses(_taskGeneratorsPath, true).taskGenerator;
 
         NewtonPolicyDeploymentLib.DeploymentData memory policyDeploymentData =
         NewtonPolicyDeploymentLib.deployPolicy(
-            _deployer, deploymentData, policyCids, taskGenerators, uint32(600 seconds)
+            _deployer, deploymentData, policyCids, taskGenerators, uint32(300 seconds)
         );
 
         // solhint-disable-next-line no-console
@@ -59,9 +65,43 @@ contract PolicyDeployer is Script {
         NewtonPolicyDeploymentLib.DeploymentData memory deploymentData
     ) private pure returns (string memory) {
         string memory json = "{\n";
+
+        json = string.concat(
+            json, "  \"policyFactory\": \"", vm.toString(deploymentData.policyFactory), "\",\n"
+        );
+        json = string.concat(
+            json,
+            "  \"policyFactoryImpl\": \"",
+            vm.toString(deploymentData.policyFactoryImpl),
+            "\",\n"
+        );
         json = string.concat(json, "  \"policy\": \"", vm.toString(deploymentData.policy), "\",\n");
         json = string.concat(
+            json,
+            "  \"policyImplementation\": \"",
+            vm.toString(deploymentData.policyImplementation),
+            "\",\n"
+        );
+        json = string.concat(
+            json,
+            "  \"policyDataFactory\": \"",
+            vm.toString(deploymentData.policyDataFactory),
+            "\",\n"
+        );
+        json = string.concat(
+            json,
+            "  \"policyDataFactoryImpl\": \"",
+            vm.toString(deploymentData.policyDataFactoryImpl),
+            "\",\n"
+        );
+        json = string.concat(
             json, "  \"policyData\": \"", vm.toString(deploymentData.policyData), "\",\n"
+        );
+        json = string.concat(
+            json,
+            "  \"policyDataImplementation\": \"",
+            vm.toString(deploymentData.policyDataImplementation),
+            "\"\n"
         );
         json = string.concat(json, "}");
 

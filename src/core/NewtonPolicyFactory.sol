@@ -19,11 +19,14 @@ contract NewtonPolicyFactory is OwnableUpgradeable {
     mapping(address => address[]) public ownersToPolicies;
 
     event PolicyDeployed(address policy, INewtonPolicy.PolicyInfo policyInfo);
+    event ImplementationUpdated(
+        address indexed oldImplementation, address indexed newImplementation
+    );
     event PolicyVerificationUpdated(
         address policy, NewtonMessage.VerificationInfo verificationInfo
     );
-    event VerifierAdded(address verifier);
-    event VerifierRemoved(address verifier);
+    event VerifierAdded(address indexed verifier);
+    event VerifierRemoved(address indexed verifier);
     event OwnershipTransferredWithVerifierUpdate(
         address indexed previousOwner, address indexed newOwner
     );
@@ -44,6 +47,7 @@ contract NewtonPolicyFactory is OwnableUpgradeable {
 
     /* ERRORS */
     error OnlyVerifiers();
+    error InvalidImplementationAddress();
 
     /* Modifiers */
     modifier onlyVerifiers() {
@@ -112,6 +116,19 @@ contract NewtonPolicyFactory is OwnableUpgradeable {
                 policyAddr, _owner, _metadataCid, _policyCid, _schemaCid, _entrypoint, _policyData
             )
         );
+    }
+
+    /// @notice Updates the policy implementation used for newly deployed policy proxies.
+    /// @dev `upgradeContracts()` upgrades the factory proxy but does not re-run `initialize()`.
+    ///      Without this setter, the factory continues using the *old* `implementation` stored in
+    ///      storage, which can cause interface-id mismatches across deployments.
+    function setImplementation(
+        address newImplementation
+    ) external onlyOwner {
+        require(newImplementation.code.length > 0, InvalidImplementationAddress());
+        address old = implementation;
+        implementation = newImplementation;
+        emit ImplementationUpdated(old, newImplementation);
     }
 
     function computePolicyAddress(
