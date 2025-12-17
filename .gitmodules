@@ -7,4 +7,4 @@
 [submodule "lib/eigenlayer-middleware"]
 	path = lib/eigenlayer-middleware
 	url = https://github.com/layr-labs/eigenlayer-middleware.git
-	branch = tags/v1.5.0-testnet-final
+	tag = v1.5.0-testnet-final
