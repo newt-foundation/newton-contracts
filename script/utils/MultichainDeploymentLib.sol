@@ -30,6 +30,7 @@ import {
 import {PauserRegistry} from "@eigenlayer/contracts/permissions/PauserRegistry.sol";
 import {IPauserRegistry} from "@eigenlayer/contracts/interfaces/IPauserRegistry.sol";
 import {NewtonProverDestTaskManager} from "../../src/NewtonProverDestTaskManager.sol";
+import {IdentityRegistry} from "../../src/core/IdentityRegistry.sol";
 import {ChallengeVerifier} from "../../src/middlewares/ChallengeVerifier.sol";
 import {RegoVerifier} from "../../src/middlewares/RegoVerifier.sol";
 import {AttestationValidator} from "../../src/middlewares/AttestationValidator.sol";
@@ -38,12 +39,23 @@ import {
     DestinationTaskResponseHandler
 } from "../../src/middlewares/DestinationTaskResponseHandler.sol";
 import {ICertificateVerifier} from "../../src/interfaces/ICertificateVerifier.sol";
+import {ECDSAOperatorTableUpdater} from "../../src/middlewares/ECDSAOperatorTableUpdater.sol";
+import {
+    IOperatorTableCalculatorTypes
+} from "@eigenlayer/contracts/interfaces/IOperatorTableCalculator.sol";
+import {ICrossChainRegistryTypes} from "@eigenlayer/contracts/interfaces/ICrossChainRegistry.sol";
+import {IKeyRegistrarTypes} from "@eigenlayer/contracts/interfaces/IKeyRegistrar.sol";
+import {BN254} from "@eigenlayer/contracts/libraries/BN254.sol";
+import {OperatorSet} from "@eigenlayer/contracts/libraries/OperatorSetLib.sol";
+import {ChainLib} from "../../src/libraries/ChainLib.sol";
+import {PROTOCOL_VERSION} from "../../src/libraries/ProtocolVersion.sol";
 
 library MultichainDeploymentLib {
     using stdJson for *;
     using Strings for *;
     using UpgradeableProxyLib for address;
 
+    string internal constant MIDDLEWARE_VERSION = "v2.0.0";
     Vm internal constant VM = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
 
     error DeploymentFileDoesNotExist();
@@ -69,61 +81,103 @@ library MultichainDeploymentLib {
         address attestationValidatorImpl;
         address operatorRegistry;
         address operatorRegistryImpl;
+        address identityRegistry;
         uint256 sourceChainId;
+        address sourceChainAvsAddress;
     }
 
     function deployContracts(
         address proxyAdmin,
         uint256 sourceChainId,
-        address admin
+        address sourceChainAvsAddress,
+        address admin,
+        DeploymentLib.NewtonProverSetupConfig memory config,
+        CoreDeploymentLib.DeploymentData memory coreData
     ) internal returns (DeploymentData memory) {
         DeploymentData memory result;
         result.proxyAdmin = proxyAdmin;
         result.sourceChainId = sourceChainId;
+        result.sourceChainAvsAddress = sourceChainAvsAddress;
 
-        // deploy pauser registry
-        result.pauserRegistry = address(
-            new PauserRegistry(
-                new address[](0), // empty array for pausers
-                proxyAdmin // proxyAdmin as the unpauser
-            )
-        );
+        // use deployed from eigenlayer if exsting
+        if (coreData.operatorTableUpdater != address(0)) {
+            result.pauserRegistry = coreData.pauserRegistry;
+            result.operatorTableUpdater = coreData.operatorTableUpdater;
+            result.bn254CertificateVerifier = coreData.bn254CertificateVerifier;
+            result.ecdsaCertificateVerifier = coreData.ecdsaCertificateVerifier;
+            result.operatorTableUpdaterImpl = address(0);
+            result.bn254CertificateVerifierImpl = address(0);
+            result.ecdsaCertificateVerifierImpl = address(0);
+        } else {
+            // deploy pauser registry
+            result.pauserRegistry = address(
+                new PauserRegistry(
+                    new address[](0), // empty array for pausers
+                    proxyAdmin // proxyAdmin as the unpauser
+                )
+            );
 
-        // deploy empty proxies for eigenlayer multichain contracts
-        result.operatorTableUpdater = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
-        result.bn254CertificateVerifier = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
-        result.ecdsaCertificateVerifier = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
+            // deploy empty proxies for eigenlayer multichain contracts
+            result.operatorTableUpdater = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
+            result.bn254CertificateVerifier = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
+            result.ecdsaCertificateVerifier = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
 
-        // deploy eigenlayer multichain implementations
-        result.bn254CertificateVerifierImpl = address(
-            new BN254CertificateVerifier(
-                IOperatorTableUpdater(result.operatorTableUpdater), "1.0.0"
-            )
-        );
+            // deploy eigenlayer multichain implementations
+            result.bn254CertificateVerifierImpl = address(
+                new BN254CertificateVerifier(
+                    IOperatorTableUpdater(result.operatorTableUpdater), MIDDLEWARE_VERSION
+                )
+            );
 
-        result.ecdsaCertificateVerifierImpl = address(
-            new ECDSACertificateVerifier(
-                IOperatorTableUpdater(result.operatorTableUpdater), "1.0.0"
-            )
-        );
+            result.ecdsaCertificateVerifierImpl = address(
+                new ECDSACertificateVerifier(
+                    IOperatorTableUpdater(result.operatorTableUpdater), MIDDLEWARE_VERSION
+                )
+            );
 
-        result.operatorTableUpdaterImpl = address(
-            new OperatorTableUpdater(
-                IBN254CertificateVerifier(result.bn254CertificateVerifier),
-                IECDSACertificateVerifier(result.ecdsaCertificateVerifier),
-                IPauserRegistry(result.pauserRegistry),
-                "1.0.0"
-            )
-        );
+            // On non-local chains, there is transporter infrastructure that is
+            // permissioned to transport stake. The ECDSAOperatorTableUpdater
+            // lets us update the table via single eoa authorization instead
+            // of needing a separate AVS
+            if (ChainLib.isLocal()) {
+                result.operatorTableUpdaterImpl = address(
+                    new ECDSAOperatorTableUpdater(
+                        IBN254CertificateVerifier(result.bn254CertificateVerifier),
+                        IECDSACertificateVerifier(result.ecdsaCertificateVerifier),
+                        IPauserRegistry(result.pauserRegistry),
+                        MIDDLEWARE_VERSION
+                    )
+                );
+            } else {
+                result.operatorTableUpdaterImpl = address(
+                    new OperatorTableUpdater(
+                        IBN254CertificateVerifier(result.bn254CertificateVerifier),
+                        IECDSACertificateVerifier(result.ecdsaCertificateVerifier),
+                        IPauserRegistry(result.pauserRegistry),
+                        MIDDLEWARE_VERSION
+                    )
+                );
+            }
 
-        // upgrade eigenlayer proxies
-        UpgradeableProxyLib.upgrade(result.operatorTableUpdater, result.operatorTableUpdaterImpl);
-        UpgradeableProxyLib.upgrade(
-            result.bn254CertificateVerifier, result.bn254CertificateVerifierImpl
-        );
-        UpgradeableProxyLib.upgrade(
-            result.ecdsaCertificateVerifier, result.ecdsaCertificateVerifierImpl
-        );
+            // initialize ECDSAOperatorTableUpdater
+            bytes memory operatorTableUpdaterInitCall = abi.encodeWithSignature(
+                "initialize(address,uint256)",
+                admin,
+                0 // initialPausedStatus
+            );
+            UpgradeableProxyLib.upgradeAndCall(
+                result.operatorTableUpdater,
+                result.operatorTableUpdaterImpl,
+                operatorTableUpdaterInitCall
+            );
+
+            UpgradeableProxyLib.upgrade(
+                result.bn254CertificateVerifier, result.bn254CertificateVerifierImpl
+            );
+            UpgradeableProxyLib.upgrade(
+                result.ecdsaCertificateVerifier, result.ecdsaCertificateVerifierImpl
+            );
+        }
 
         // deploy empty proxies for newton avs contracts
         result.newtonProverTaskManager = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
@@ -141,14 +195,16 @@ library MultichainDeploymentLib {
                 ISocketRegistry(address(0)), // address(0) for destination chains
                 IAllocationManager(address(0)), // address(0) for destination chains
                 IPauserRegistry(result.pauserRegistry),
-                "1.0.0-destination"
+                MIDDLEWARE_VERSION
             )
         );
 
         // deploy newton avs implementations
         result.newtonProverTaskManagerImpl = address(
             new NewtonProverDestTaskManager(
-                OperatorRegistry(result.operatorRegistry), IPauserRegistry(result.pauserRegistry)
+                OperatorRegistry(result.operatorRegistry),
+                IPauserRegistry(result.pauserRegistry),
+                PROTOCOL_VERSION
             )
         );
 
@@ -188,20 +244,22 @@ library MultichainDeploymentLib {
         // deploy DestinationTaskResponseHandler for certificate verification on destination chains
         address taskResponseHandler = address(
             new DestinationTaskResponseHandler(
-                ICertificateVerifier(result.bn254CertificateVerifier)
+                ICertificateVerifier(result.bn254CertificateVerifier), result.sourceChainAvsAddress
             )
         );
 
         bytes memory taskManagerInitCall = abi.encodeWithSignature(
-            "initialize(address,address,address,address,address,address,address,uint32)",
+            "initialize(address,address,address,address,address,address,address,address,uint32,uint32)",
             admin, // initialOwner
-            admin, // aggregator
+            config.aggregatorAddr, // aggregator (DEPRECATED)
+            result.sourceChainAvsAddress, // serviceManager (source chain AVS)
             result.bn254CertificateVerifier, // certificateVerifier
             result.operatorRegistry,
             taskResponseHandler, // taskResponseHandler
             result.challengeVerifier,
             result.attestationValidator,
-            uint32(30) // taskResponseWindowBlock
+            config.taskResponseWindowBlock, // taskResponseWindowBlock
+            config.epochBlocks // epochBlocks
         );
         UpgradeableProxyLib.upgradeAndCall(
             result.newtonProverTaskManager, result.newtonProverTaskManagerImpl, taskManagerInitCall
@@ -232,14 +290,45 @@ library MultichainDeploymentLib {
         return result;
     }
 
+    /// @notice Initialize operator table for local test environment (chain_id 31337)
+    function initializeTestOperatorTable(
+        DeploymentData memory data,
+        address sourceChainAvsAddress,
+        address admin
+    ) internal {
+        require(ChainLib.isLocal(), "Only for local tests");
+        _initializeTestOperatorTable(data, sourceChainAvsAddress, admin);
+    }
+
     function upgradeContracts(
         CoreDeploymentLib.DeploymentData memory core,
         DeploymentData memory deploymentData,
-        DeploymentLib.NewtonProverSetupConfig memory config
+        DeploymentLib.NewtonProverSetupConfig memory config,
+        address admin
     ) internal returns (DeploymentData memory) {
         address avsdirectory = core.avsDirectory;
 
         DeploymentData memory result = deploymentData;
+
+        // Get the ProxyAdmin from an existing proxy
+        address proxyAdmin =
+            address(UpgradeableProxyLib.getProxyAdmin(result.newtonProverTaskManager));
+
+        /* Deploy or upgrade IdentityRegistry */
+        if (result.identityRegistry == address(0)) {
+            // Fresh deploy if missing
+            result.identityRegistry = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
+            address identityRegistryImpl = address(new IdentityRegistry());
+            UpgradeableProxyLib.upgradeAndCall(
+                result.identityRegistry,
+                identityRegistryImpl,
+                abi.encodeCall(IdentityRegistry.initialize, (admin))
+            );
+        } else {
+            // Upgrade existing contract
+            IdentityRegistry identityRegistryImpl = new IdentityRegistry();
+            UpgradeableProxyLib.upgrade(result.identityRegistry, address(identityRegistryImpl));
+        }
 
         /* Deploy newton prover service & task manager implementations */
 
@@ -273,6 +362,8 @@ library MultichainDeploymentLib {
         /* Upgrade NewtonProverTaskManager */
         NewtonProverDestTaskManager(result.newtonProverTaskManager)
             .updateTaskResponseWindowBlock(config.taskResponseWindowBlock);
+        NewtonProverDestTaskManager(result.newtonProverTaskManager)
+            .updateEpochBlocks(config.epochBlocks);
 
         return result;
     }
@@ -281,7 +372,7 @@ library MultichainDeploymentLib {
         uint256 chainId
     ) internal returns (DeploymentData memory) {
         string memory env = VM.envOr("DEPLOYMENT_ENV", string("stagef"));
-        return _readDeploymentJson("script/deployments/multichain-destination/", chainId, env);
+        return _readDeploymentJson("script/deployments/newton-prover-destination/", chainId, env);
     }
 
     function _readDeploymentJson(
@@ -327,7 +418,9 @@ library MultichainDeploymentLib {
         DeploymentData memory data
     ) internal {
         string memory env = VM.envOr("DEPLOYMENT_ENV", string("stagef"));
-        writeDeploymentJson("script/deployments/multichain-destination/", block.chainid, data, env);
+        writeDeploymentJson(
+            "script/deployments/newton-prover-destination/", block.chainid, data, env
+        );
     }
 
     function writeDeploymentJson(
@@ -406,5 +499,63 @@ library MultichainDeploymentLib {
             data.operatorRegistryImpl.toHexString(),
             '"}'
         );
+    }
+
+    function _initializeTestOperatorTable(
+        DeploymentData memory data,
+        address sourceChainAvsAddress,
+        address admin
+    ) internal {
+        // test operator set
+        OperatorSet memory operatorSet = OperatorSet({avs: sourceChainAvsAddress, id: 0});
+
+        uint32 referenceTimestamp = uint32(block.timestamp);
+        uint32 referenceBlockNumber = uint32(block.number);
+
+        // test operator set info
+        IOperatorTableCalculatorTypes.BN254OperatorSetInfo memory operatorSetInfo =
+            IOperatorTableCalculatorTypes.BN254OperatorSetInfo({
+                operatorInfoTreeRoot: bytes32(0),
+                numOperators: 0, // starts at 0 and increments when operators register
+                aggregatePubkey: BN254.G1Point(0, 0),
+                totalWeights: new uint256[](1)
+            });
+
+        // test operator set config
+        ICrossChainRegistryTypes.OperatorSetConfig memory operatorSetConfig =
+            ICrossChainRegistryTypes.OperatorSetConfig({
+                owner: admin,
+                maxStalenessPeriod: 0 // don't check staleness
+            });
+
+        // encode operator table bytes for merkle leaf calculation
+        ECDSAOperatorTableUpdater.OperatorTableData memory tableData =
+            ECDSAOperatorTableUpdater.OperatorTableData({
+                operatorSet: operatorSet,
+                curveType: IKeyRegistrarTypes.CurveType.BN254,
+                operatorSetConfig: operatorSetConfig,
+                operatorTableInfo: abi.encode(operatorSetInfo)
+            });
+        bytes memory operatorTableBytes = abi.encode(tableData);
+
+        // calculate leaf hash
+        bytes32 operatorTableLeaf = ECDSAOperatorTableUpdater(data.operatorTableUpdater)
+            .calculateOperatorTableLeaf(operatorTableBytes);
+
+        // single operator for test reasons
+        bytes32 globalTableRoot = operatorTableLeaf;
+
+        ECDSAOperatorTableUpdater(data.operatorTableUpdater)
+            .confirmGlobalTableRoot(globalTableRoot, referenceTimestamp, referenceBlockNumber);
+
+        // update operator table
+        ECDSAOperatorTableUpdater(data.operatorTableUpdater)
+            .updateOperatorTable(
+                referenceTimestamp,
+                globalTableRoot,
+                0, // operator set index 0
+                new bytes(0), // empty proof
+                operatorTableBytes
+            );
     }
 }

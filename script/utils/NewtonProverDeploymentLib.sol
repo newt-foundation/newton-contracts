@@ -17,7 +17,13 @@ import {SourceTaskResponseHandler} from "../../src/middlewares/SourceTaskRespons
 import {ChallengeVerifier} from "../../src/middlewares/ChallengeVerifier.sol";
 import {RegoVerifier} from "../../src/middlewares/RegoVerifier.sol";
 import {AttestationValidator} from "../../src/middlewares/AttestationValidator.sol";
+import {IdentityRegistry} from "../../src/core/IdentityRegistry.sol";
 import {IPermissionController} from "@eigenlayer/contracts/interfaces/IPermissionController.sol";
+import {
+    PROTOCOL_VERSION,
+    MIN_COMPATIBLE_POLICY_VERSION,
+    MIN_COMPATIBLE_POLICY_DATA_VERSION
+} from "../../src/libraries/ProtocolVersion.sol";
 import {NewtonProverServiceManager} from "../../src/NewtonProverServiceManager.sol";
 import {INewtonProverTaskManager} from "../../src/interfaces/INewtonProverTaskManager.sol";
 import {NewtonProverTaskManager} from "../../src/NewtonProverTaskManager.sol";
@@ -32,6 +38,10 @@ import {InstantSlasher} from "@eigenlayer-middleware/src/slashers/InstantSlasher
 import {StakeRegistry} from "@eigenlayer-middleware/src/StakeRegistry.sol";
 import {IAllocationManager} from "@eigenlayer/contracts/interfaces/IAllocationManager.sol";
 import {IStrategyManager} from "@eigenlayer/contracts/interfaces/IStrategyManager.sol";
+import {IKeyRegistrar} from "@eigenlayer/contracts/interfaces/IKeyRegistrar.sol";
+import {
+    BN254TableCalculator
+} from "@eigenlayer-middleware/src/middlewareV2/tableCalculator/BN254TableCalculator.sol";
 import {CoreDeploymentLib} from "./CoreDeploymentLib.sol";
 import {
     IBLSApkRegistry,
@@ -55,7 +65,7 @@ library NewtonProverDeploymentLib {
     error ContractNotDeployed(string contractName, address contractAddress);
     error ValidationFailed(string reason);
 
-    string internal constant MIDDLEWARE_VERSION = "v1.5.0-testnet-final";
+    string internal constant MIDDLEWARE_VERSION = "v2.0.0";
     Vm internal constant VM = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
 
     function deployContracts(
@@ -157,7 +167,9 @@ library NewtonProverDeploymentLib {
         // Deploy NewtonProver avs contracts - TaskManager first since other contracts depend on it
         // Now the operatorRegistry proxy is fully initialized, so we can create TaskManager
         NewtonProverTaskManager newtonProverTaskManagerImpl = new NewtonProverTaskManager(
-            OperatorRegistry(result.operatorRegistry), IPauserRegistry(address(pausercontract))
+            OperatorRegistry(result.operatorRegistry),
+            IPauserRegistry(address(pausercontract)),
+            PROTOCOL_VERSION
         );
         result.newtonProverTaskManagerImpl = address(newtonProverTaskManagerImpl);
 
@@ -206,6 +218,16 @@ library NewtonProverDeploymentLib {
         );
         result.challengeVerifierImpl = challengeVerifierImpl;
 
+        // deploy the IdentityRegistry
+        result.identityRegistry = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
+        address identityRegistryImpl = address(new IdentityRegistry());
+        UpgradeableProxyLib.upgradeAndCall(
+            result.identityRegistry,
+            identityRegistryImpl,
+            abi.encodeCall(IdentityRegistry.initialize, (admin))
+        );
+        result.identityRegistryImpl = address(identityRegistryImpl);
+
         // deploy SourceTaskResponseHandler for BLS signature verification on source chains
         address taskResponseHandler = address(
             new SourceTaskResponseHandler(ISlashingRegistryCoordinator(result.operatorRegistry))
@@ -221,7 +243,8 @@ library NewtonProverDeploymentLib {
                 taskResponseHandler, // taskResponseHandler
                 result.challengeVerifier,
                 result.attestationValidator,
-                config.taskResponseWindowBlock
+                config.taskResponseWindowBlock,
+                config.epochBlocks
             )
         );
         UpgradeableProxyLib.upgradeAndCall(
@@ -229,7 +252,6 @@ library NewtonProverDeploymentLib {
             address(newtonProverTaskManagerImpl),
             (taskmanagerupgradecall)
         );
-
         // Initialize ChallengeVerifier
         bytes memory challengeVerifierInitCall = abi.encodeCall(
             ChallengeVerifier.initialize,
@@ -259,6 +281,17 @@ library NewtonProverDeploymentLib {
             result.attestationValidator, attestationValidatorImpl, attestationValidatorInitCall
         );
 
+        // TableCalculator for multichain transport
+        if (core.keyRegistrar != address(0) && core.allocationManager != address(0)) {
+            result.operatorTableCalculator = address(
+                new BN254TableCalculator(
+                    IKeyRegistrar(core.keyRegistrar),
+                    IAllocationManager(core.allocationManager),
+                    0 // LOOKAHEAD_BLOCKS
+                )
+            );
+        }
+
         verifyDeployment(result);
 
         return result;
@@ -267,11 +300,33 @@ library NewtonProverDeploymentLib {
     function upgradeContracts(
         CoreDeploymentLib.DeploymentData memory core,
         DeploymentLib.DeploymentData memory deploymentData,
-        DeploymentLib.NewtonProverSetupConfig memory config
+        DeploymentLib.NewtonProverSetupConfig memory config,
+        address admin
     ) internal returns (DeploymentLib.DeploymentData memory) {
         address avsdirectory = core.avsDirectory;
 
         DeploymentLib.DeploymentData memory result = deploymentData;
+
+        // Get the ProxyAdmin from an existing proxy
+        address proxyAdmin =
+            address(UpgradeableProxyLib.getProxyAdmin(result.newtonProverServiceManager));
+
+        /* Deploy or upgrade IdentityRegistry */
+        if (result.identityRegistry == address(0)) {
+            result.identityRegistry = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
+            address identityRegistryImpl = address(new IdentityRegistry());
+            result.identityRegistryImpl = address(identityRegistryImpl);
+            UpgradeableProxyLib.upgradeAndCall(
+                result.identityRegistry,
+                identityRegistryImpl,
+                abi.encodeCall(IdentityRegistry.initialize, (admin))
+            );
+        } else {
+            // Upgrade existing contract
+            IdentityRegistry identityRegistryImpl = new IdentityRegistry();
+            result.identityRegistryImpl = address(identityRegistryImpl);
+            UpgradeableProxyLib.upgrade(result.identityRegistry, address(identityRegistryImpl));
+        }
 
         /* Deploy newton prover service & task manager implementations */
 
@@ -332,7 +387,9 @@ library NewtonProverDeploymentLib {
 
         /* Upgrade NewtonProverTaskManager */
         NewtonProverTaskManager newtonProverTaskManagerImpl = new NewtonProverTaskManager(
-            OperatorRegistry(result.operatorRegistry), IPauserRegistry(result.pauserRegistry)
+            OperatorRegistry(result.operatorRegistry),
+            IPauserRegistry(result.pauserRegistry),
+            PROTOCOL_VERSION
         );
         result.newtonProverTaskManagerImpl = address(newtonProverTaskManagerImpl);
 
@@ -340,9 +397,11 @@ library NewtonProverDeploymentLib {
             result.newtonProverTaskManager, address(newtonProverTaskManagerImpl)
         );
 
-        /* Upgrade NewtonProverTaskManager */
+        /* Update NewtonProverTaskManager config */
         NewtonProverTaskManager(result.newtonProverTaskManager)
             .updateTaskResponseWindowBlock(config.taskResponseWindowBlock);
+        NewtonProverTaskManager(result.newtonProverTaskManager)
+            .updateEpochBlocks(config.epochBlocks);
 
         verifyDeployment(result);
 
@@ -391,6 +450,7 @@ library NewtonProverDeploymentLib {
 
         // Additional infrastructure
         _validateContract("PauserRegistry", result.pauserRegistry);
+        _validateContract("IdentityRegistry", result.identityRegistry);
         _validateContract("Slasher", result.slasher);
 
         // Verify Eigenlayer Middleware contracts

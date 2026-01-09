@@ -131,7 +131,6 @@ contract NewtonPolicyData is
         return _expireAfter;
     }
 
-    // TODO: implement the attest function
     function attest(
         NewtonMessage.PolicyData calldata policyData
     ) external view returns (bool) {

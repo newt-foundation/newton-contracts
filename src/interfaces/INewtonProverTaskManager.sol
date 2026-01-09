@@ -2,7 +2,7 @@
 pragma solidity ^0.8.27;
 
 import "@eigenlayer-middleware/src/libraries/BN254.sol";
-import "@eigenlayer-middleware/src/interfaces/IBLSSignatureChecker.sol";
+import {IBLSSignatureChecker} from "@eigenlayer-middleware/src/interfaces/IBLSSignatureChecker.sol";
 import {NewtonMessage} from "../core/NewtonMessage.sol";
 import {INewtonPolicy} from "./INewtonPolicy.sol";
 
@@ -104,8 +104,8 @@ interface INewtonProverTaskManager {
         uint32 responseExpireBlock;
         // the hash of the non-signers
         bytes32 hashOfNonSigners;
-        // the non-signers and their stakes
-        IBLSSignatureChecker.NonSignerStakesAndSignature nonSignerStakesAndSignature;
+        // encoded signature data (NonSignerStakesAndSignature for source chains, BN254Certificate for destination)
+        bytes signatureData;
     }
 
     // Challenge data is submitted by the challenger.
@@ -130,7 +130,7 @@ interface INewtonProverTaskManager {
     function respondToTask(
         Task calldata task,
         TaskResponse calldata taskResponse,
-        IBLSSignatureChecker.NonSignerStakesAndSignature calldata nonSignerStakesAndSignature
+        bytes calldata signatureData
     ) external;
 
     // NOTE: this function raises challenge to existing tasks.

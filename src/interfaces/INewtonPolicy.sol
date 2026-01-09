@@ -99,4 +99,10 @@ interface INewtonPolicy is IERC165 {
      * @return The policy verified status.
      */
     function isPolicyVerified() external view returns (bool);
+
+    /**
+     * @notice Get the factory contract that deployed this policy
+     * @return The address of the factory contract
+     */
+    function factory() external view returns (address);
 }

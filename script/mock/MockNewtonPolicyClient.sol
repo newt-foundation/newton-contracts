@@ -37,10 +37,13 @@ contract MockNewtonPolicyClient is NewtonPolicyClient, OwnableUpgradeable {
         address _owner
     ) external onlyOwner {
         _transferOwnership(_owner);
-        NewtonPolicyClient(address(this)).setPolicyClientOwner(_owner);
+        setPolicyClientOwner(_owner);
     }
 
-    function deposit(address token, uint256 tokenAmount) external onlyOwner {
+    function deposit(
+        address token,
+        uint256 tokenAmount
+    ) external onlyOwner {
         IERC20(token).transferFrom(msg.sender, address(this), tokenAmount);
         emit Deposit(address(this), token, tokenAmount);
     }
@@ -51,7 +54,10 @@ contract MockNewtonPolicyClient is NewtonPolicyClient, OwnableUpgradeable {
         return IERC20(token).balanceOf(address(this));
     }
 
-    function withdraw(address token, uint256 tokenAmount) external onlyOwner {
+    function withdraw(
+        address token,
+        uint256 tokenAmount
+    ) external onlyOwner {
         IERC20(token).transfer(msg.sender, tokenAmount);
         emit Withdraw(address(this), token, tokenAmount);
     }

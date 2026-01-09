@@ -88,4 +88,10 @@ interface INewtonPolicyData is IERC165 {
      * @return The policy data verified status.
      */
     function isPolicyDataVerified() external view returns (bool);
+
+    /**
+     * @notice Get the factory contract that deployed this policy data
+     * @return The address of the factory contract
+     */
+    function factory() external view returns (address);
 }

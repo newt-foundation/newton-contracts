@@ -34,6 +34,8 @@ library TaskLib {
     error InvalidPolicyClient();
     error InterfaceNotSupported();
     error InvalidSourceOrDestination();
+    error InvalidPolicyVersion(string actual, string minimum);
+    error InvalidPolicyDataVersion(string actual, string minimum);
 
     /* FUNCTIONS */
 
@@ -49,6 +51,10 @@ library TaskLib {
         // Validate policy client and get basic info
         (address policyAddress, bytes32 policyId) =
             PolicyValidationLib.checkVerifiedPolicy(params.policyClient, params.policyTaskData);
+
+        // NOTE: Version validation is performed off-chain by the gateway/operator
+        // to reduce contract size and gas costs. See gateway/src/rpc/api/sync.rs
+        // and operator/src/builder.rs for version compatibility checks.
 
         uint32 currentBlock = uint32(block.number);
 

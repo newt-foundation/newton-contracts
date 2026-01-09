@@ -14,6 +14,10 @@ import {MockNewtonPolicyClient} from "../mock/MockNewtonPolicyClient.sol";
 import {NewtonPolicyLib} from "./NewtonPolicyLib.sol";
 import {UpgradeableProxyLib} from "./UpgradeableProxyLib.sol";
 import {ArrayLib} from "./ArrayLib.sol";
+import {
+    MIN_COMPATIBLE_POLICY_VERSION,
+    MIN_COMPATIBLE_POLICY_DATA_VERSION
+} from "../../src/libraries/ProtocolVersion.sol";
 
 library NewtonPolicyDeploymentLib {
     using stdJson for *;
@@ -43,6 +47,184 @@ library NewtonPolicyDeploymentLib {
         address policyClientImpl;
         bytes32 policyId;
     }
+
+    // ============================================================================
+    // Factory-Only Deployment Functions
+    // ============================================================================
+
+    /// @notice Deploy only the policy and policy data factories (no test policy/client)
+    function deployFactoriesOnly(
+        address proxyAdmin,
+        address admin
+    ) internal returns (DeploymentData memory) {
+        DeploymentData memory result;
+
+        // Deploy PolicyDataFactory
+        result.policyDataFactory = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
+        result.policyDataFactoryImpl =
+            address(new NewtonPolicyDataFactory(MIN_COMPATIBLE_POLICY_DATA_VERSION));
+        bytes memory policyDataFactoryUpgradeCall =
+            abi.encodeCall(NewtonPolicyDataFactory.initialize, (admin));
+        UpgradeableProxyLib.upgradeAndCall(
+            result.policyDataFactory, result.policyDataFactoryImpl, policyDataFactoryUpgradeCall
+        );
+
+        // Deploy PolicyFactory
+        result.policyFactory = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
+        result.policyFactoryImpl = address(new NewtonPolicyFactory(MIN_COMPATIBLE_POLICY_VERSION));
+        bytes memory policyFactoryUpgradeCall =
+            abi.encodeCall(NewtonPolicyFactory.initialize, (admin));
+        UpgradeableProxyLib.upgradeAndCall(
+            result.policyFactory, result.policyFactoryImpl, policyFactoryUpgradeCall
+        );
+
+        verifyFactoriesDeployment(result);
+
+        return result;
+    }
+
+    /// @notice Upgrade only the policy and policy data factories (preserves test policy/client)
+    function upgradeFactoriesOnly(
+        DeploymentData memory existingData
+    ) internal returns (DeploymentData memory) {
+        DeploymentData memory result = existingData;
+
+        // Upgrade PolicyDataFactory
+        result.policyDataFactoryImpl =
+            address(new NewtonPolicyDataFactory(MIN_COMPATIBLE_POLICY_DATA_VERSION));
+        UpgradeableProxyLib.upgrade(result.policyDataFactory, result.policyDataFactoryImpl);
+
+        // Rotate the persisted implementation so newly deployed PolicyData proxies use latest bytecode
+        NewtonPolicyDataFactory(result.policyDataFactory)
+            .setImplementation(address(new NewtonPolicyData()));
+
+        // Upgrade PolicyFactory
+        result.policyFactoryImpl = address(new NewtonPolicyFactory(MIN_COMPATIBLE_POLICY_VERSION));
+        UpgradeableProxyLib.upgrade(result.policyFactory, result.policyFactoryImpl);
+
+        // Rotate the persisted implementation so newly deployed Policy proxies use latest bytecode
+        NewtonPolicyFactory(result.policyFactory).setImplementation(address(new NewtonPolicy()));
+
+        verifyFactoriesDeployment(result);
+
+        return result;
+    }
+
+    // ============================================================================
+    // Test Policy Deployment Functions
+    // ============================================================================
+
+    /// @notice Deploy test policy, policy data, and policy client using existing factories
+    function deployTestPolicy(
+        DeploymentData memory existingData,
+        NewtonPolicyLib.PolicyCids memory policyCids,
+        address admin,
+        address newtonProverTaskManager,
+        string memory policyParams,
+        address[] memory taskGenerators,
+        uint32 policyDataExpireAfter
+    ) internal returns (DeploymentData memory) {
+        require(taskGenerators.length > 0, TaskGeneratorAddressesEmpty());
+        require(policyCids.attester != address(0), AttesterCannotBeZero());
+
+        DeploymentData memory result = existingData;
+
+        address[] memory attesters = new address[](1);
+        attesters[0] = policyCids.attester;
+        attesters = attesters.addToArray(taskGenerators);
+
+        // Deploy PolicyData via factory
+        address policyData = NewtonPolicyDataFactory(result.policyDataFactory)
+            .deployPolicyData(
+                policyCids.wasmCid,
+                policyCids.secretsSchemaCid,
+                policyDataExpireAfter,
+                policyCids.policyDataMetadataCid,
+                admin
+            );
+        if (policyData == address(0) || policyData.code.length == 0) {
+            revert ContractNotDeployed("PolicyData", policyData);
+        }
+
+        result.policyData = policyData;
+        result.policyDataImplementation =
+            NewtonPolicyDataFactory(result.policyDataFactory).implementation();
+
+        INewtonPolicyData(policyData)
+            .setAttestationInfo(
+                INewtonPolicyData.AttestationInfo({
+                    attesters: attesters,
+                    attestationType: INewtonPolicyData.AttestationType.ECDSA,
+                    verifier: address(0),
+                    verificationKey: bytes32(0)
+                })
+            );
+
+        // Deploy Policy via factory
+        address[] memory policyDataArray = new address[](1);
+        policyDataArray[0] = policyData;
+
+        address policy = NewtonPolicyFactory(result.policyFactory)
+            .deployPolicy(
+                policyCids.entrypoint,
+                policyCids.policyCid,
+                policyCids.schemaCid,
+                policyDataArray,
+                policyCids.policyMetadataCid,
+                admin
+            );
+        result.policy = policy;
+        result.policyImplementation = NewtonPolicyFactory(result.policyFactory).implementation();
+
+        // Deploy PolicyClient
+        address proxyAdmin = address(UpgradeableProxyLib.getProxyAdmin(result.policyFactory));
+        result.policyClient = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
+        result.policyClientImpl = address(new MockNewtonPolicyClient());
+        bytes memory upgradeCall = abi.encodeCall(
+            MockNewtonPolicyClient.initialize, (newtonProverTaskManager, result.policy, admin)
+        );
+        UpgradeableProxyLib.upgradeAndCall(
+            result.policyClient, result.policyClientImpl, upgradeCall
+        );
+
+        result.policyId = MockNewtonPolicyClient(result.policyClient)
+            .setPolicy(
+                INewtonPolicy.PolicyConfig({
+                    policyParams: bytes(policyParams), expireAfter: uint32(1 minutes)
+                })
+            );
+
+        verifyTestPolicyDeployment(result);
+
+        return result;
+    }
+
+    /// @notice Upgrade/redeploy test policy, policy data, and policy client
+    function upgradeTestPolicy(
+        DeploymentData memory existingData,
+        NewtonPolicyLib.PolicyCids memory policyCids,
+        address admin,
+        address newtonProverTaskManager,
+        string memory policyParams,
+        address[] memory taskGenerators,
+        uint32 policyDataExpireAfter
+    ) internal returns (DeploymentData memory) {
+        // For test policy upgrade, we deploy new instances (not upgrade existing proxies)
+        // This matches the current behavior where each upgrade creates new policy/data/client
+        return deployTestPolicy(
+            existingData,
+            policyCids,
+            admin,
+            newtonProverTaskManager,
+            policyParams,
+            taskGenerators,
+            policyDataExpireAfter
+        );
+    }
+
+    // ============================================================================
+    // Original Functions (kept for backward compatibility)
+    // ============================================================================
 
     /// @notice Deploy a single policy using existing policy data factory and policy factory
     function deployPolicy(
@@ -122,7 +304,8 @@ library NewtonPolicyDeploymentLib {
         result.policyFactory = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
         result.policyDataFactory = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
 
-        result.policyDataFactoryImpl = address(new NewtonPolicyDataFactory());
+        result.policyDataFactoryImpl =
+            address(new NewtonPolicyDataFactory(MIN_COMPATIBLE_POLICY_DATA_VERSION));
         bytes memory policyDataFactoryUpgradeCall =
             abi.encodeCall(NewtonPolicyDataFactory.initialize, (admin));
         UpgradeableProxyLib.upgradeAndCall(
@@ -172,7 +355,7 @@ library NewtonPolicyDeploymentLib {
         address[] memory policyDataArray = new address[](1);
         policyDataArray[0] = policyData;
 
-        result.policyFactoryImpl = address(new NewtonPolicyFactory());
+        result.policyFactoryImpl = address(new NewtonPolicyFactory(MIN_COMPATIBLE_POLICY_VERSION));
         bytes memory policyFactoryUpgradeCall =
             abi.encodeCall(NewtonPolicyFactory.initialize, (admin));
         UpgradeableProxyLib.upgradeAndCall(
@@ -230,7 +413,8 @@ library NewtonPolicyDeploymentLib {
         DeploymentData memory result = deploymentData;
 
         // Upgrade PolicyDataFactory
-        result.policyDataFactoryImpl = address(new NewtonPolicyDataFactory());
+        result.policyDataFactoryImpl =
+            address(new NewtonPolicyDataFactory(MIN_COMPATIBLE_POLICY_DATA_VERSION));
         UpgradeableProxyLib.upgrade(result.policyDataFactory, result.policyDataFactoryImpl);
 
         // IMPORTANT: Upgrading the factory proxy does NOT re-run `initialize()`, so the factory's
@@ -273,7 +457,7 @@ library NewtonPolicyDeploymentLib {
         policyDataArray[0] = policyData;
 
         // Upgrade PolicyFactory
-        result.policyFactoryImpl = address(new NewtonPolicyFactory());
+        result.policyFactoryImpl = address(new NewtonPolicyFactory(MIN_COMPATIBLE_POLICY_VERSION));
         UpgradeableProxyLib.upgrade(result.policyFactory, result.policyFactoryImpl);
 
         // Same rationale as above: rotate the persisted `implementation` so newly deployed Policy
@@ -450,5 +634,129 @@ library NewtonPolicyDeploymentLib {
         _validateContract("PolicyDataImplementation", result.policyDataImplementation);
         _validateContract("PolicyClient", result.policyClient);
         _validateContract("PolicyClientImpl", result.policyClientImpl);
+    }
+
+    /// @notice Verify only factory contracts are deployed
+    function verifyFactoriesDeployment(
+        DeploymentData memory result
+    ) internal view {
+        _validateContract("PolicyFactory", result.policyFactory);
+        _validateContract("PolicyFactoryImpl", result.policyFactoryImpl);
+        _validateContract("PolicyDataFactory", result.policyDataFactory);
+        _validateContract("PolicyDataFactoryImpl", result.policyDataFactoryImpl);
+    }
+
+    /// @notice Verify only test policy contracts are deployed
+    function verifyTestPolicyDeployment(
+        DeploymentData memory result
+    ) internal view {
+        _validateContract("Policy", result.policy);
+        _validateContract("PolicyImplementation", result.policyImplementation);
+        _validateContract("PolicyData", result.policyData);
+        _validateContract("PolicyDataImplementation", result.policyDataImplementation);
+        _validateContract("PolicyClient", result.policyClient);
+        _validateContract("PolicyClientImpl", result.policyClientImpl);
+    }
+
+    // ============================================================================
+    // Read/Write Functions with Merge Support
+    // ============================================================================
+
+    /// @notice Try to read existing deployment JSON, returns empty DeploymentData if file doesn't exist
+    function tryReadDeploymentJson(
+        uint256 chainId
+    ) internal returns (DeploymentData memory, bool exists) {
+        string memory env = VM.envOr("DEPLOYMENT_ENV", string("stagef"));
+        string memory fileName =
+            string.concat("script/deployments/policy/", VM.toString(chainId), "-", env, ".json");
+
+        if (!VM.exists(fileName)) {
+            return (
+                DeploymentData({
+                    policyFactory: address(0),
+                    policyFactoryImpl: address(0),
+                    policy: address(0),
+                    policyImplementation: address(0),
+                    policyDataFactory: address(0),
+                    policyDataFactoryImpl: address(0),
+                    policyData: address(0),
+                    policyDataImplementation: address(0),
+                    policyClient: address(0),
+                    policyClientImpl: address(0),
+                    policyId: bytes32(0)
+                }),
+                false
+            );
+        }
+
+        return (_readDeploymentJson("script/deployments/policy/", chainId, env), true);
+    }
+
+    /// @notice Write factory deployment data, preserving existing test policy data if present
+    function writeFactoryDeploymentJson(
+        string memory outputPath,
+        uint256 chainId,
+        DeploymentData memory factoryData,
+        string memory env
+    ) internal {
+        string memory fileName = string.concat(outputPath, VM.toString(chainId), "-", env, ".json");
+
+        // Try to read existing data to preserve test policy fields
+        DeploymentData memory mergedData = factoryData;
+        if (VM.exists(fileName)) {
+            DeploymentData memory existingData = _readDeploymentJson(outputPath, chainId, env);
+            // Preserve test policy fields from existing data
+            mergedData.policy = existingData.policy;
+            mergedData.policyImplementation = existingData.policyImplementation;
+            mergedData.policyData = existingData.policyData;
+            mergedData.policyDataImplementation = existingData.policyDataImplementation;
+            mergedData.policyClient = existingData.policyClient;
+            mergedData.policyClientImpl = existingData.policyClientImpl;
+            mergedData.policyId = existingData.policyId;
+        }
+
+        address proxyAdmin = address(UpgradeableProxyLib.getProxyAdmin(mergedData.policyFactory));
+        string memory deploymentData = _generateDeploymentJson(mergedData, proxyAdmin);
+
+        if (!VM.exists(outputPath)) {
+            VM.createDir(outputPath, true);
+        }
+
+        VM.writeFile(fileName, deploymentData);
+    }
+
+    /// @notice Write test policy deployment data, preserving existing factory data
+    function writeTestPolicyDeploymentJson(
+        string memory outputPath,
+        uint256 chainId,
+        DeploymentData memory testPolicyData,
+        string memory env
+    ) internal {
+        string memory fileName = string.concat(outputPath, VM.toString(chainId), "-", env, ".json");
+
+        // Factory data must exist (test policy deployer requires factories)
+        require(VM.exists(fileName), DeploymentFileDoesNotExist());
+
+        DeploymentData memory existingData = _readDeploymentJson(outputPath, chainId, env);
+
+        // Merge: keep factory fields from existing, use test policy fields from new data
+        DeploymentData memory mergedData = DeploymentData({
+            policyFactory: existingData.policyFactory,
+            policyFactoryImpl: existingData.policyFactoryImpl,
+            policyDataFactory: existingData.policyDataFactory,
+            policyDataFactoryImpl: existingData.policyDataFactoryImpl,
+            policy: testPolicyData.policy,
+            policyImplementation: testPolicyData.policyImplementation,
+            policyData: testPolicyData.policyData,
+            policyDataImplementation: testPolicyData.policyDataImplementation,
+            policyClient: testPolicyData.policyClient,
+            policyClientImpl: testPolicyData.policyClientImpl,
+            policyId: testPolicyData.policyId
+        });
+
+        address proxyAdmin = address(UpgradeableProxyLib.getProxyAdmin(mergedData.policyFactory));
+        string memory deploymentData = _generateDeploymentJson(mergedData, proxyAdmin);
+
+        VM.writeFile(fileName, deploymentData);
     }
 }

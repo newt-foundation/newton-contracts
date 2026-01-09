@@ -41,17 +41,21 @@ library DeploymentLib {
         address socketRegistryImpl;
         address strategy;
         address pauserRegistry;
+        address identityRegistry;
+        address identityRegistryImpl;
         address token;
         address tokenImpl;
         address slasher;
         address instantSlasherImpl;
+        address operatorTableCalculator;
     }
 
     struct NewtonProverSetupConfig {
-        address taskGeneratorAddr;
+        address[] taskGenerators;
         address aggregatorAddr;
         uint32 taskResponseWindowBlock;
         uint32 taskChallengeWindowBlock;
+        uint32 epochBlocks;
         bool isChallengeEnabled;
         address sp1Verifier;
         bytes32 sp1ProgramVkey;
@@ -64,8 +68,7 @@ library DeploymentLib {
         uint256[] operatorParams;
         uint96 minimumStake;
         uint32 lookAheadPeriod;
-        address operatorAddr;
-        address operator2Addr;
+        address[] operators;
     }
 
     function readDeploymentJson(
@@ -76,37 +79,51 @@ library DeploymentLib {
     }
 
     function readNewtonStakingConfigJson(
-        string memory directoryPath
+        uint256 chainId,
+        string memory env
     ) internal returns (NewtonStakingConfig memory) {
-        string memory fileName = string.concat(directoryPath, ".json");
+        string memory fileName = string.concat("newton_prover_config.", env, ".json");
         require(VM.exists(fileName), DeploymentConfigDoesNotExist());
         string memory json = VM.readFile(fileName);
+        string memory keyPrefix = string.concat(".", VM.toString(chainId));
 
         NewtonStakingConfig memory data;
-        data.token = json.readAddressOr(".token", address(0));
-        data.tokenImpl = json.readAddressOr(".tokenImpl", address(0));
-        data.numQuorums = json.readUint(".num_quorums");
-        data.operatorParams = json.readUintArray(".operator_params");
-        data.operatorAddr = json.readAddressOr(".operator_addr", address(0));
-        data.operator2Addr = json.readAddressOr(".operator_2_addr", address(0));
+        data.token = json.readAddressOr(string.concat(keyPrefix, ".token"), address(0));
+        data.tokenImpl = json.readAddressOr(string.concat(keyPrefix, ".tokenImpl"), address(0));
+        data.numQuorums = json.readUint(string.concat(keyPrefix, ".num_quorums"));
+        data.operatorParams = json.readUintArray(string.concat(keyPrefix, ".operator_params"));
+
+        data.operators =
+            json.readAddressArrayOr(string.concat(keyPrefix, ".operator"), new address[](0));
         return data;
     }
 
     function readNewtonProverConfigJson(
-        string memory directoryPath
+        uint256 chainId,
+        string memory env
     ) internal returns (NewtonProverSetupConfig memory) {
-        string memory fileName = string.concat(directoryPath, ".json");
+        string memory fileName = string.concat("newton_prover_config.", env, ".json");
         require(VM.exists(fileName), DeploymentConfigDoesNotExist());
         string memory json = VM.readFile(fileName);
+        string memory keyPrefix = string.concat(".", VM.toString(chainId));
 
         NewtonProverSetupConfig memory data;
-        data.aggregatorAddr = json.readAddressOr(".aggregator_addr", address(0));
-        data.taskGeneratorAddr = json.readAddressOr(".task_generator_addr", address(0));
-        data.taskResponseWindowBlock = uint32(json.readUintOr(".task_response_window_block", 30));
-        data.taskChallengeWindowBlock = uint32(json.readUintOr(".task_challenge_window_block", 30));
-        data.isChallengeEnabled = json.readBoolOr(".is_challenge_enabled", false);
-        data.sp1Verifier = json.readAddressOr(".sp1_verifier", address(0));
-        data.sp1ProgramVkey = json.readBytes32Or(".sp1_program_vkey", bytes32(0));
+        data.aggregatorAddr =
+            json.readAddressOr(string.concat(keyPrefix, ".aggregator_addr"), address(0));
+
+        data.taskGenerators =
+            json.readAddressArrayOr(string.concat(keyPrefix, ".taskGenerator"), new address[](0));
+
+        data.taskResponseWindowBlock =
+            uint32(json.readUintOr(string.concat(keyPrefix, ".task_response_window_block"), 30));
+        data.taskChallengeWindowBlock =
+            uint32(json.readUintOr(string.concat(keyPrefix, ".task_challenge_window_block"), 30));
+        data.epochBlocks = uint32(json.readUintOr(string.concat(keyPrefix, ".epoch_blocks"), 7200));
+        data.isChallengeEnabled =
+            json.readBoolOr(string.concat(keyPrefix, ".is_challenge_enabled"), false);
+        data.sp1Verifier = json.readAddressOr(string.concat(keyPrefix, ".sp1_verifier"), address(0));
+        data.sp1ProgramVkey =
+            json.readBytes32Or(string.concat(keyPrefix, ".sp1_program_vkey"), bytes32(0));
         return data;
     }
 
@@ -149,12 +166,17 @@ library DeploymentLib {
         data.socketRegistryImpl = json.readAddress(".addresses.socketRegistryImpl");
         data.strategy = json.readAddress(".addresses.strategy");
         data.pauserRegistry = json.readAddress(".addresses.pauserRegistry");
-        data.token = json.readAddress(".addresses.token");
-        data.tokenImpl = json.readAddress(".addresses.tokenImpl");
+        data.identityRegistry = json.readAddressOr(".addresses.identityRegistry", address(0));
+        data.identityRegistryImpl =
+            json.readAddressOr(".addresses.identityRegistryImpl", address(0));
+        data.token = json.readAddressOr(".addresses.token", address(0));
+        data.tokenImpl = json.readAddressOr(".addresses.tokenImpl", address(0));
         data.slasher = json.readAddress(".addresses.slasher");
         data.instantSlasherImpl = json.readAddress(".addresses.instantSlasherImpl");
         data.regoVerifier = json.readAddressOr(".addresses.regoVerifier", address(0));
         data.regoVerifierImpl = json.readAddressOr(".addresses.regoVerifierImpl", address(0));
+        data.operatorTableCalculator =
+            json.readAddressOr(".addresses.operatorTableCalculator", address(0));
 
         return data;
     }
@@ -213,6 +235,8 @@ library DeploymentLib {
         string memory attestationValidatorImpl = "";
         string memory regoVerifier = "";
         string memory regoVerifierImpl = "";
+        string memory identityRegistry = "";
+        string memory identityRegistryImpl = "";
         if (data.challengeVerifier != address(0)) {
             challengeVerifier = data.challengeVerifier.toHexString();
             challengeVerifierImpl = data.challengeVerifier.getImplementation().toHexString();
@@ -225,6 +249,11 @@ library DeploymentLib {
             regoVerifier = data.regoVerifier.toHexString();
             regoVerifierImpl = data.regoVerifier.getImplementation().toHexString();
         }
+        if (data.identityRegistry != address(0)) {
+            identityRegistry = data.identityRegistry.toHexString();
+            identityRegistryImpl = data.identityRegistry.getImplementation().toHexString();
+        }
+        string memory operatorTableCalculator = data.operatorTableCalculator.toHexString();
         return string.concat(
             '{"proxyAdmin":"',
             proxyAdmin.toHexString(),
@@ -274,6 +303,10 @@ library DeploymentLib {
             data.strategy.toHexString(),
             '","pauserRegistry":"',
             data.pauserRegistry.toHexString(),
+            '","identityRegistry":"',
+            identityRegistry,
+            '","identityRegistryImpl":"',
+            identityRegistryImpl,
             '","token":"',
             data.token.toHexString(),
             '","tokenImpl":"',
@@ -282,6 +315,8 @@ library DeploymentLib {
             data.slasher.toHexString(),
             '","instantSlasherImpl":"',
             data.slasher.getImplementation().toHexString(),
+            '","operatorTableCalculator":"',
+            operatorTableCalculator,
             '"}'
         );
     }
