@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.27;
+/* eslint-disable no-console */
+// solhint-disable no-console
 
 import {console2} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
@@ -33,32 +35,27 @@ library AdminLib {
 
     function readAddresses(
         string memory path,
-        bool add
+        uint256 chainId
     ) internal returns (AdminAddresses memory) {
         require(VM.exists(path), AddressesFileDoesNotExist());
         string memory json = VM.readFile(path);
+        string memory keyPrefix = string.concat(".", Strings.toString(chainId));
+
         AdminAddresses memory addresses;
-        if (add) {
-            addresses.taskGenerator =
-                json.readAddressArrayOr(".add.taskGenerator", new address[](0));
-            addresses.operator = json.readAddressArrayOr(".add.operator", new address[](0));
-            addresses.policyVerifier =
-                json.readAddressArrayOr(".add.policyVerifier", new address[](0));
-            addresses.policyDataVerifier =
-                json.readAddressArrayOr(".add.policyDataVerifier", new address[](0));
-            addresses.policy = json.readAddressArrayOr(".add.policy", new address[](0));
-            addresses.policyData = json.readAddressArrayOr(".add.policyData", new address[](0));
-        } else {
-            addresses.taskGenerator =
-                json.readAddressArrayOr(".remove.taskGenerator", new address[](0));
-            addresses.operator = json.readAddressArrayOr(".remove.operator", new address[](0));
-            addresses.policyVerifier =
-                json.readAddressArrayOr(".remove.policyVerifier", new address[](0));
-            addresses.policyDataVerifier =
-                json.readAddressArrayOr(".remove.policyDataVerifier", new address[](0));
-            addresses.policy = json.readAddressArrayOr(".remove.policy", new address[](0));
-            addresses.policyData = json.readAddressArrayOr(".remove.policyData", new address[](0));
-        }
+        addresses.taskGenerator =
+            json.readAddressArrayOr(string.concat(keyPrefix, ".taskGenerator"), new address[](0));
+        addresses.operator =
+            json.readAddressArrayOr(string.concat(keyPrefix, ".operator"), new address[](0));
+        addresses.policyVerifier =
+            json.readAddressArrayOr(string.concat(keyPrefix, ".policyVerifier"), new address[](0));
+        addresses.policyDataVerifier = json.readAddressArrayOr(
+            string.concat(keyPrefix, ".policyDataVerifier"), new address[](0)
+        );
+        addresses.policy =
+            json.readAddressArrayOr(string.concat(keyPrefix, ".policy"), new address[](0));
+        addresses.policyData =
+            json.readAddressArrayOr(string.concat(keyPrefix, ".policyData"), new address[](0));
+
         return addresses;
     }
 
@@ -83,216 +80,273 @@ library AdminLib {
         return false;
     }
 
-    function updateTaskGenerator(
-        address[] memory addresses,
-        bool add,
-        address operatorRegistry,
-        address policyDataFactory,
-        address policyDataOwner
-    ) internal {
-        // Validate all addresses first
-        for (uint256 i = 0; i < addresses.length; i++) {
-            require(addresses[i] != address(0), AddressCannotBeZero());
-        }
-
-        // Update operator registry for each address
-        for (uint256 i = 0; i < addresses.length; i++) {
-            if (add) {
-                if (!OperatorRegistry(operatorRegistry).isTaskGenerator(addresses[i])) {
-                    OperatorRegistry(operatorRegistry).addTaskGenerator(addresses[i]);
-                    // solhint-disable-next-line no-console
-                    console2.log("Task generator added", addresses[i]);
-                } else {
-                    // solhint-disable-next-line no-console
-                    console2.log("Task generator already exists", addresses[i]);
+    // Helper to find diff between two arrays: target - current = toAdd, current - target = toRemove
+    function diffAddresses(
+        address[] memory target,
+        address[] memory current
+    ) internal pure returns (address[] memory toAdd, address[] memory toRemove) {
+        // Calculate toAdd
+        address[] memory tempAdd = new address[](target.length);
+        uint256 addCount = 0;
+        for (uint256 i = 0; i < target.length; i++) {
+            bool found = false;
+            for (uint256 j = 0; j < current.length; j++) {
+                if (target[i] == current[j]) {
+                    found = true;
+                    break;
                 }
-            } else {
-                if (OperatorRegistry(operatorRegistry).isTaskGenerator(addresses[i])) {
-                    OperatorRegistry(operatorRegistry).removeTaskGenerator(addresses[i]);
-                    // solhint-disable-next-line no-console
-                    console2.log("Task generator removed", addresses[i]);
-                } else {
-                    // solhint-disable-next-line no-console
-                    console2.log("Task generator does not exist", addresses[i]);
-                }
+            }
+            if (!found) {
+                tempAdd[addCount] = target[i];
+                addCount++;
             }
         }
 
-        address[] memory policyDataOwners =
-            NewtonPolicyDataFactory(policyDataFactory).getAllPolicyDataOwners();
-
-        if (policyDataOwner != address(0)) {
-            policyDataOwners = new address[](1);
-            policyDataOwners[0] = policyDataOwner;
+        // Resize toAdd
+        toAdd = new address[](addCount);
+        for (uint256 i = 0; i < addCount; i++) {
+            toAdd[i] = tempAdd[i];
         }
 
+        // Calculate toRemove
+        address[] memory tempRemove = new address[](current.length);
+        uint256 removeCount = 0;
+        for (uint256 i = 0; i < current.length; i++) {
+            bool found = false;
+            for (uint256 j = 0; j < target.length; j++) {
+                if (current[i] == target[j]) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                tempRemove[removeCount] = current[i];
+                removeCount++;
+            }
+        }
+
+        // Resize toRemove
+        toRemove = new address[](removeCount);
+        for (uint256 i = 0; i < removeCount; i++) {
+            toRemove[i] = tempRemove[i];
+        }
+    }
+
+    function syncTaskGenerator(
+        address[] memory targetAddresses,
+        address operatorRegistry,
+        address policyDataFactory
+    ) internal {
+        // 1. Sync OperatorRegistry
+        address[] memory currentAddresses =
+            OperatorRegistry(operatorRegistry).getAllTaskGenerators();
+        (address[] memory toAdd, address[] memory toRemove) =
+            diffAddresses(targetAddresses, currentAddresses);
+
+        if (toAdd.length > 0) {
+            OperatorRegistry(operatorRegistry).addMultipleToTaskGenerators(toAdd);
+            console2.log("Added task generators:", toAdd.length);
+        }
+
+        for (uint256 i = 0; i < toRemove.length; i++) {
+            OperatorRegistry(operatorRegistry).removeTaskGenerator(toRemove[i]);
+            console2.log("Removed task generator:", toRemove[i]);
+        }
+
+        // 2. Sync PolicyData attesters
+        address[] memory policyDataOwners =
+            NewtonPolicyDataFactory(policyDataFactory).getAllPolicyDataOwners();
         for (uint256 i = 0; i < policyDataOwners.length; i++) {
-            // solhint-disable-next-line no-console
-            console2.log("Adding to attesters for policy data owner", policyDataOwners[i]);
-            // Update policy data attesters
             address[] memory policyData = NewtonPolicyDataFactory(policyDataFactory)
                 .getAllPolicyDataByOwner(policyDataOwners[i]);
+
             for (uint256 j = 0; j < policyData.length; j++) {
                 INewtonPolicyData.AttestationInfo memory attestationInfo =
                     NewtonPolicyData(policyData[j]).getAttestationInfo();
 
-                address[] memory updatedAttesters;
-                if (add) {
-                    updatedAttesters = attestationInfo.attesters.addToArray(addresses);
-                } else {
-                    updatedAttesters = attestationInfo.attesters.removeFromArray(addresses);
+                // Current attesters on this PolicyData
+                address[] memory currentAttesters = attestationInfo.attesters;
+
+                // We want the attesters list to match targetAddresses (for task generators)
+                // Note: Attesters might include other roles too? The original code implies we just add/remove the passed list.
+                // But "sync" implies overwrite. If attesters are *only* task generators, we can overwrite.
+                // Assuming attesters == task generators for now based on original logic scope.
+
+                // However, strictly overwriting might remove non-task-generator attesters if any exist.
+                // The prompt says "sync on-chain state with JSON config".
+                // Let's replicate the add/remove logic but applied to the diff we calculated globally.
+                // This ensures we only add/remove the task generators we know about, leaving others intact if any.
+
+                address[] memory updatedAttesters = currentAttesters;
+
+                if (toAdd.length > 0) {
+                    updatedAttesters = updatedAttesters.addToArray(toAdd);
+                }
+                if (toRemove.length > 0) {
+                    updatedAttesters = updatedAttesters.removeFromArray(toRemove);
                 }
 
-                // solhint-disable-next-line no-console
-                console2.log("Updating attesters for policy data", policyData[j]);
-                NewtonPolicyData(policyData[j])
-                    .setAttestationInfo(
-                        INewtonPolicyData.AttestationInfo({
-                            attesters: updatedAttesters,
-                            attestationType: attestationInfo.attestationType,
-                            verifier: attestationInfo.verifier,
-                            verificationKey: attestationInfo.verificationKey
-                        })
-                    );
-
-                if (add) {
-                    // solhint-disable-next-line no-console
-                    console2.log("Task generators added to policy data attesters", addresses.length);
-                } else {
-                    // solhint-disable-next-line no-console
-                    console2.log(
-                        "Task generators removed from policy data attesters", addresses.length
-                    );
+                // Only update if changed
+                if (
+                    keccak256(abi.encode(currentAttesters))
+                        != keccak256(abi.encode(updatedAttesters))
+                ) {
+                    NewtonPolicyData(policyData[j])
+                        .setAttestationInfo(
+                            INewtonPolicyData.AttestationInfo({
+                                attesters: updatedAttesters,
+                                attestationType: attestationInfo.attestationType,
+                                verifier: attestationInfo.verifier,
+                                verificationKey: attestationInfo.verificationKey
+                            })
+                        );
+                    console2.log("Updated attesters for policy data:", policyData[j]);
                 }
             }
         }
     }
 
-    function updateOperatorWhitelist(
-        address[] memory addresses,
-        bool add,
+    function syncOperatorWhitelist(
+        address[] memory targetAddresses,
         address operatorRegistry
     ) internal {
-        for (uint256 i = 0; i < addresses.length; i++) {
-            require(addresses[i] != address(0), AddressCannotBeZero());
-            if (add) {
-                if (!OperatorRegistry(operatorRegistry).isOperatorWhitelisted(addresses[i])) {
-                    OperatorRegistry(operatorRegistry).addToWhitelist(addresses[i]);
-                    // solhint-disable-next-line no-console
-                    console2.log("Operator added to whitelist", addresses[i]);
-                } else {
-                    // solhint-disable-next-line no-console
-                    console2.log("Operator already in whitelist", addresses[i]);
-                }
-            } else {
-                if (OperatorRegistry(operatorRegistry).isOperatorWhitelisted(addresses[i])) {
-                    OperatorRegistry(operatorRegistry).removeFromWhitelist(addresses[i]);
-                    // solhint-disable-next-line no-console
-                    console2.log("Operator removed from whitelist", addresses[i]);
-                } else {
-                    // solhint-disable-next-line no-console
-                    console2.log("Operator not in whitelist", addresses[i]);
-                }
-            }
+        address[] memory currentAddresses =
+            OperatorRegistry(operatorRegistry).getAllWhitelistedOperators();
+        (address[] memory toAdd, address[] memory toRemove) =
+            diffAddresses(targetAddresses, currentAddresses);
+
+        if (toAdd.length > 0) {
+            OperatorRegistry(operatorRegistry).addMultipleToWhitelist(toAdd);
+            console2.log("Added operators to whitelist:", toAdd.length);
+        }
+
+        for (uint256 i = 0; i < toRemove.length; i++) {
+            OperatorRegistry(operatorRegistry).removeFromWhitelist(toRemove[i]);
+            console2.log("Removed operator from whitelist:", toRemove[i]);
         }
     }
 
-    function updatePolicyVerification(
-        address[] memory addresses,
-        bool add,
+    function syncPolicyVerifier(
+        address[] memory targetAddresses,
         address policyFactory
     ) internal {
-        for (uint256 i = 0; i < addresses.length; i++) {
-            require(addresses[i] != address(0), AddressCannotBeZero());
-            if (
-                NewtonPolicyFactory(policyFactory).getPolicyVerificationInfo(addresses[i]).verified
-                    != add
-            ) {
-                NewtonPolicyFactory(policyFactory).setPolicyVerification(addresses[i], add);
-                // solhint-disable-next-line no-console
-                console2.log("Policy verification updated", addresses[i], add);
-            } else {
-                // solhint-disable-next-line no-console
-                console2.log("Policy verification already up to date", addresses[i], add);
+        address[] memory currentAddresses = NewtonPolicyFactory(policyFactory).getAllVerifiers();
+        (address[] memory toAdd, address[] memory toRemove) =
+            diffAddresses(targetAddresses, currentAddresses);
+
+        for (uint256 i = 0; i < toAdd.length; i++) {
+            NewtonPolicyFactory(policyFactory).addVerifier(toAdd[i]);
+            console2.log("Added policy verifier:", toAdd[i]);
+        }
+
+        for (uint256 i = 0; i < toRemove.length; i++) {
+            // Check if it's owner before removing (safety check, though contract handles logic)
+            NewtonPolicyFactory(policyFactory).removeVerifier(toRemove[i]);
+            console2.log("Removed policy verifier:", toRemove[i]);
+        }
+    }
+
+    function syncPolicyDataVerifier(
+        address[] memory targetAddresses,
+        address policyDataFactory
+    ) internal {
+        address[] memory currentAddresses =
+            NewtonPolicyDataFactory(policyDataFactory).getAllVerifiers();
+        (address[] memory toAdd, address[] memory toRemove) =
+            diffAddresses(targetAddresses, currentAddresses);
+
+        for (uint256 i = 0; i < toAdd.length; i++) {
+            NewtonPolicyDataFactory(policyDataFactory).addVerifier(toAdd[i]);
+            console2.log("Added policy data verifier:", toAdd[i]);
+        }
+
+        for (uint256 i = 0; i < toRemove.length; i++) {
+            NewtonPolicyDataFactory(policyDataFactory).removeVerifier(toRemove[i]);
+            console2.log("Removed policy data verifier:", toRemove[i]);
+        }
+    }
+
+    function syncPolicyVerification(
+        address[] memory targetAddresses, // List of policies that SHOULD be verified
+        address policyFactory
+    ) internal {
+        // 1. Set verified = true for all target addresses
+        for (uint256 i = 0; i < targetAddresses.length; i++) {
+            if (!NewtonPolicyFactory(policyFactory)
+                .getPolicyVerificationInfo(targetAddresses[i])
+                .verified) {
+                NewtonPolicyFactory(policyFactory).setPolicyVerification(targetAddresses[i], true);
+                console2.log("Set policy verified:", targetAddresses[i]);
+            }
+        }
+
+        // 2. Set verified = false for all other policies that are currently verified
+        address[] memory owners = NewtonPolicyFactory(policyFactory).getAllPolicyOwners();
+        for (uint256 i = 0; i < owners.length; i++) {
+            address[] memory policies =
+                NewtonPolicyFactory(policyFactory).getAllPoliciesByOwner(owners[i]);
+            for (uint256 j = 0; j < policies.length; j++) {
+                address policy = policies[j];
+                bool shouldBeVerified = false;
+                for (uint256 k = 0; k < targetAddresses.length; k++) {
+                    if (targetAddresses[k] == policy) {
+                        shouldBeVerified = true;
+                        break;
+                    }
+                }
+
+                if (
+                    !shouldBeVerified
+                        && NewtonPolicyFactory(policyFactory)
+                        .getPolicyVerificationInfo(policy)
+                        .verified
+                ) {
+                    NewtonPolicyFactory(policyFactory).setPolicyVerification(policy, false);
+                    console2.log("Set policy unverified:", policy);
+                }
             }
         }
     }
 
-    function updatePolicyDataVerification(
-        address[] memory addresses,
-        bool add,
+    function syncPolicyDataVerification(
+        address[] memory targetAddresses, // List of policy data that SHOULD be verified
         address policyDataFactory
     ) internal {
-        for (uint256 i = 0; i < addresses.length; i++) {
-            require(addresses[i] != address(0), AddressCannotBeZero());
-            if (
+        // 1. Set verified = true for all target addresses
+        for (uint256 i = 0; i < targetAddresses.length; i++) {
+            if (!NewtonPolicyDataFactory(policyDataFactory)
+                .getPolicyDataVerificationInfo(targetAddresses[i])
+                .verified) {
                 NewtonPolicyDataFactory(policyDataFactory)
-                    .getPolicyDataVerificationInfo(addresses[i])
-                    .verified != add
-            ) {
-                NewtonPolicyDataFactory(policyDataFactory).setPolicyDataVerified(addresses[i], add);
-                // solhint-disable-next-line no-console
-                console2.log("Policy data verification updated", addresses[i], add);
-            } else {
-                // solhint-disable-next-line no-console
-                console2.log("Policy data verification already up to date", addresses[i], add);
+                    .setPolicyDataVerified(targetAddresses[i], true);
+                console2.log("Set policy data verified:", targetAddresses[i]);
             }
         }
-    }
 
-    function updatePolicyVerifier(
-        address[] memory addresses,
-        bool add,
-        address policyFactory
-    ) internal {
-        for (uint256 i = 0; i < addresses.length; i++) {
-            require(addresses[i] != address(0), AddressCannotBeZero());
-            if (add) {
-                if (!NewtonPolicyFactory(policyFactory).verifiers(addresses[i])) {
-                    NewtonPolicyFactory(policyFactory).addVerifier(addresses[i]);
-                    // solhint-disable-next-line no-console
-                    console2.log("Policy verifier added", addresses[i]);
-                } else {
-                    // solhint-disable-next-line no-console
-                    console2.log("Policy verifier already exists", addresses[i]);
+        // 2. Set verified = false for all others
+        address[] memory owners =
+            NewtonPolicyDataFactory(policyDataFactory).getAllPolicyDataOwners();
+        for (uint256 i = 0; i < owners.length; i++) {
+            address[] memory policyDataList =
+                NewtonPolicyDataFactory(policyDataFactory).getAllPolicyDataByOwner(owners[i]);
+            for (uint256 j = 0; j < policyDataList.length; j++) {
+                address pd = policyDataList[j];
+                bool shouldBeVerified = false;
+                for (uint256 k = 0; k < targetAddresses.length; k++) {
+                    if (targetAddresses[k] == pd) {
+                        shouldBeVerified = true;
+                        break;
+                    }
                 }
-            } else {
-                if (NewtonPolicyFactory(policyFactory).verifiers(addresses[i])) {
-                    NewtonPolicyFactory(policyFactory).removeVerifier(addresses[i]);
-                    // solhint-disable-next-line no-console
-                    console2.log("Policy verifier removed", addresses[i]);
-                } else {
-                    // solhint-disable-next-line no-console
-                    console2.log("Policy verifier does not exist", addresses[i]);
-                }
-            }
-        }
-    }
 
-    function updatePolicyDataVerifier(
-        address[] memory addresses,
-        bool add,
-        address policyDataFactory
-    ) internal {
-        for (uint256 i = 0; i < addresses.length; i++) {
-            require(addresses[i] != address(0), AddressCannotBeZero());
-            if (add) {
-                if (!NewtonPolicyDataFactory(policyDataFactory).verifiers(addresses[i])) {
-                    NewtonPolicyDataFactory(policyDataFactory).addVerifier(addresses[i]);
-                    // solhint-disable-next-line no-console
-                    console2.log("Policy data verifier added", addresses[i]);
-                } else {
-                    // solhint-disable-next-line no-console
-                    console2.log("Policy data verifier already exists", addresses[i]);
-                }
-            } else {
-                if (NewtonPolicyDataFactory(policyDataFactory).verifiers(addresses[i])) {
-                    NewtonPolicyDataFactory(policyDataFactory).removeVerifier(addresses[i]);
-                    // solhint-disable-next-line no-console
-                    console2.log("Policy data verifier removed", addresses[i]);
-                } else {
-                    // solhint-disable-next-line no-console
-                    console2.log("Policy data verifier does not exist", addresses[i]);
+                if (
+                    !shouldBeVerified
+                        && NewtonPolicyDataFactory(policyDataFactory)
+                        .getPolicyDataVerificationInfo(pd)
+                        .verified
+                ) {
+                    NewtonPolicyDataFactory(policyDataFactory).setPolicyDataVerified(pd, false);
+                    console2.log("Set policy data unverified:", pd);
                 }
             }
         }

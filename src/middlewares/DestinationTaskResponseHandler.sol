@@ -3,9 +3,12 @@ pragma solidity ^0.8.27;
 
 import {ITaskResponseHandler} from "../interfaces/ITaskResponseHandler.sol";
 import {ICertificateVerifier} from "../interfaces/ICertificateVerifier.sol";
+import {
+    IBN254CertificateVerifier,
+    IBN254CertificateVerifierTypes
+} from "@eigenlayer/contracts/interfaces/IBN254CertificateVerifier.sol";
 import {INewtonProverTaskManager} from "../interfaces/INewtonProverTaskManager.sol";
-import {IBLSSignatureChecker} from "@eigenlayer-middleware/src/interfaces/IBLSSignatureChecker.sol";
-import "@eigenlayer-middleware/src/libraries/BN254.sol";
+import {OperatorVerifierLib} from "../libraries/OperatorVerifierLib.sol";
 
 /**
  * @title DestinationTaskResponseHandler
@@ -16,17 +19,22 @@ contract DestinationTaskResponseHandler is ITaskResponseHandler {
     /// @notice The certificate verifier for verifying certificates from source chains
     ICertificateVerifier public immutable certificateVerifier;
 
+    /// @notice The source chain AVS address (service manager on source chain)
+    address public immutable sourceChainAvsAddress;
+
     constructor(
-        ICertificateVerifier _certificateVerifier
+        ICertificateVerifier _certificateVerifier,
+        address _sourceChainAvsAddress
     ) {
         certificateVerifier = _certificateVerifier;
+        sourceChainAvsAddress = _sourceChainAvsAddress;
     }
 
     /**
      * @notice Verify task response using certificate verification from source chain
      * @param task The task being responded to
      * @param taskResponse The task response to verify
-     * @param nonSignerStakesAndSignature Not used for destination chains (should be empty)
+     * @param signatureData ABI-encoded BN254Certificate
      * @return hashOfNonSigners The hash of non-signers derived from certificate verification
      * @dev For destination chains, we verify certificates rather than BLS signatures directly
      *      The certificate contains proof of operator consensus from the source chain
@@ -34,19 +42,34 @@ contract DestinationTaskResponseHandler is ITaskResponseHandler {
     function verifyTaskResponse(
         INewtonProverTaskManager.Task calldata task,
         INewtonProverTaskManager.TaskResponse calldata taskResponse,
-        IBLSSignatureChecker.NonSignerStakesAndSignature memory nonSignerStakesAndSignature
+        bytes memory signatureData
     ) external override returns (bytes32 hashOfNonSigners) {
-        // For destination chains, we extract certificate data from nonSignerStakesAndSignature
-        // The certificate data format depends on the ICertificateVerifier implementation
-        // For now, we encode the nonSignerStakesAndSignature as certificate data
-        // TODO: Define proper certificate data format based on ICertificateVerifier implementation
+        // decode certificate from signatureData with error handling
+        IBN254CertificateVerifierTypes.BN254Certificate memory certificate;
+        try this.decodeCertificate(signatureData) returns (
+            IBN254CertificateVerifierTypes.BN254Certificate memory _certificate
+        ) {
+            certificate = _certificate;
+        } catch (bytes memory errorData) {
+            revert InvalidTaskResponse(signatureData, errorData);
+        }
 
-        // Encode the certificate data (this will be replaced with proper certificate format)
-        bytes memory certificateData = abi.encode(nonSignerStakesAndSignature);
+        hashOfNonSigners = OperatorVerifierLib.verifyTaskResponseCertificate(
+            task,
+            taskResponse,
+            certificate,
+            IBN254CertificateVerifier(address(certificateVerifier)),
+            sourceChainAvsAddress
+        );
 
-        // Verify the certificate using the certificate verifier
-        hashOfNonSigners =
-            certificateVerifier.verifyCertificate(task, taskResponse, certificateData);
+        return hashOfNonSigners;
+    }
+
+    /// @notice helper function to decode certificate
+    function decodeCertificate(
+        bytes memory signatureData
+    ) external pure returns (IBN254CertificateVerifierTypes.BN254Certificate memory) {
+        return abi.decode(signatureData, (IBN254CertificateVerifierTypes.BN254Certificate));
     }
 }
 

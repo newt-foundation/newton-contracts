@@ -72,7 +72,7 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient {
      */
     function setPolicyClientOwner(
         address policyClientOwner
-    ) external onlyPolicyClientOwner {
+    ) public onlyPolicyClientOwner {
         NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
         $.policyClientOwner = policyClientOwner;
     }

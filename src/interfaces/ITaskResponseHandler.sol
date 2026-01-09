@@ -2,7 +2,6 @@
 pragma solidity ^0.8.27;
 
 import {INewtonProverTaskManager} from "./INewtonProverTaskManager.sol";
-import {IBLSSignatureChecker} from "@eigenlayer-middleware/src/interfaces/IBLSSignatureChecker.sol";
 
 /**
  * @title ITaskResponseHandler
@@ -11,19 +10,23 @@ import {IBLSSignatureChecker} from "@eigenlayer-middleware/src/interfaces/IBLSSi
  *      and destination chain (certificate) verification
  */
 interface ITaskResponseHandler {
+    /// @notice Thrown when signatureData cannot be decoded as valid signature data
+    error InvalidTaskResponse(bytes signatureData, bytes errorData);
+
     /**
      * @notice Verify a task response based on chain type
      * @param task The task being responded to
      * @param taskResponse The task response to verify
-     * @param nonSignerStakesAndSignature BLS signature data (for source chains) or empty (for destination)
+     * @param signatureData Encoded signature data - NonSignerStakesAndSignature for source chains,
+     *        BN254Certificate for destination chains
      * @return hashOfNonSigners The hash of non-signers after verification
-     * @dev For source chains: verifies BLS signatures against stake registry
-     *      For destination chains: verifies certificates from source chain
+     * @dev For source chains: decodes as NonSignerStakesAndSignature and verifies BLS signatures
+     *      For destination chains: decodes as BN254Certificate and verifies certificate
      */
     function verifyTaskResponse(
         INewtonProverTaskManager.Task calldata task,
         INewtonProverTaskManager.TaskResponse calldata taskResponse,
-        IBLSSignatureChecker.NonSignerStakesAndSignature memory nonSignerStakesAndSignature
+        bytes memory signatureData
     ) external returns (bytes32 hashOfNonSigners);
 }
 

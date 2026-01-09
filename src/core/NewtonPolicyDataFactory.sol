@@ -10,8 +10,9 @@ import {NewtonMessage} from "./NewtonMessage.sol";
 import {INewtonPolicyData} from "../interfaces/INewtonPolicyData.sol";
 import {NewtonPolicyData} from "./NewtonPolicyData.sol";
 import {ChainLib} from "../libraries/ChainLib.sol";
+import {SemVerMixin} from "../mixins/SemVerMixin.sol";
 
-contract NewtonPolicyDataFactory is OwnableUpgradeable {
+contract NewtonPolicyDataFactory is OwnableUpgradeable, SemVerMixin {
     address public implementation;
     ProxyAdmin public proxyAdmin;
 
@@ -19,6 +20,11 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable {
     mapping(address => bool) public verifiers;
     mapping(address => address[]) public ownersToPolicyData;
     address[] public policyDataOwners;
+
+    // Added at the end for upgrade compatibility
+    // TODO: Use OpenZeppelin's EnumerableSet for verifiers in V2 upgrade or new deployment
+    address[] public verifiersList;
+    mapping(address => uint256) private _verifiersIndex;
 
     /// @notice Struct used for salt generation to ensure consistent encoding
     struct SaltData {
@@ -33,14 +39,20 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable {
     event PolicyDataVerificationUpdated(
         address policyData, NewtonMessage.VerificationInfo verificationInfo
     );
-    event PolicyDataDeployed(address policyData, INewtonPolicyData.PolicyDataInfo policyDataInfo);
+    event PolicyDataDeployed(
+        address policyData,
+        INewtonPolicyData.PolicyDataInfo policyDataInfo,
+        string implementationVersion
+    );
     event ImplementationUpdated(
         address indexed oldImplementation, address indexed newImplementation
     );
     event VerifierAdded(address indexed verifier);
     event VerifierRemoved(address indexed verifier);
 
-    constructor() {
+    constructor(
+        string memory _version
+    ) SemVerMixin(_version) {
         _disableInitializers();
     }
 
@@ -52,6 +64,8 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable {
         implementation = address(new NewtonPolicyData());
         proxyAdmin = new ProxyAdmin();
         verifiers[owner] = true;
+        _verifiersIndex[owner] = verifiersList.length;
+        verifiersList.push(owner);
     }
 
     /* ERRORS */
@@ -150,7 +164,8 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable {
             policyDataAddr,
             INewtonPolicyData.PolicyDataInfo(
                 policyDataAddr, _owner, _metadataCid, _wasmCid, _secretsSchemaCid, _expireAfter
-            )
+            ),
+            version()
         );
     }
 
@@ -230,14 +245,31 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable {
     function addVerifier(
         address verifier
     ) external onlyOwner {
+        if (verifiers[verifier]) return;
         verifiers[verifier] = true;
+        _verifiersIndex[verifier] = verifiersList.length;
+        verifiersList.push(verifier);
         emit VerifierAdded(verifier);
     }
 
     function removeVerifier(
         address verifier
     ) external onlyOwner {
+        if (!verifiers[verifier]) return;
         verifiers[verifier] = false;
+
+        uint256 index = _verifiersIndex[verifier];
+        uint256 lastIndex = verifiersList.length - 1;
+
+        if (index != lastIndex) {
+            address lastVerifier = verifiersList[lastIndex];
+            verifiersList[index] = lastVerifier;
+            _verifiersIndex[lastVerifier] = index;
+        }
+
+        verifiersList.pop();
+        delete _verifiersIndex[verifier];
+
         emit VerifierRemoved(verifier);
     }
 
@@ -249,5 +281,9 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable {
 
     function getAllPolicyDataOwners() external view returns (address[] memory) {
         return policyDataOwners;
+    }
+
+    function getAllVerifiers() external view returns (address[] memory) {
+        return verifiersList;
     }
 }

@@ -39,12 +39,19 @@ contract OperatorRegistry is SlashingRegistryCoordinator, IOperatorRegistry {
     /// @notice Mapping to track if an operator is in the whitelist array (for efficient removal)
     mapping(address => uint256) private _whitelistedOperatorsIndex;
 
+    // TODO: Use OpenZeppelin's EnumerableSet for task generators in V2 upgrade or new deployment
     /// @notice Task generator management
     mapping(address => bool) public taskGenerators;
 
     /// @notice mapping from quorum number to registered operators
     mapping(bytes32 => mapping(address => ISlashingRegistryCoordinatorTypes.OperatorInfo)) private
         _quorumNumberToOperators;
+
+    /// @notice Array to keep track of all task generators for enumeration
+    address[] public taskGeneratorsList;
+
+    /// @notice Mapping to track if a generator is in the list (for efficient removal)
+    mapping(address => uint256) private _taskGeneratorsIndex;
 
     /* EVENTS */
     event OperatorWhitelisted(address indexed operator, bool isWhitelisted);
@@ -255,6 +262,10 @@ contract OperatorRegistry is SlashingRegistryCoordinator, IOperatorRegistry {
         if (generator == address(0)) revert InvalidAddress();
         if (taskGenerators[generator]) revert GeneratorAlreadyExists();
         taskGenerators[generator] = true;
+
+        _taskGeneratorsIndex[generator] = taskGeneratorsList.length;
+        taskGeneratorsList.push(generator);
+
         emit TaskGeneratorAdded(generator);
     }
 
@@ -271,6 +282,10 @@ contract OperatorRegistry is SlashingRegistryCoordinator, IOperatorRegistry {
             if (generator == address(0)) revert InvalidAddress();
             if (taskGenerators[generator]) revert GeneratorAlreadyExists();
             taskGenerators[generator] = true;
+
+            _taskGeneratorsIndex[generator] = taskGeneratorsList.length;
+            taskGeneratorsList.push(generator);
+
             emit TaskGeneratorAdded(generator);
         }
     }
@@ -285,6 +300,20 @@ contract OperatorRegistry is SlashingRegistryCoordinator, IOperatorRegistry {
     ) external onlyOwner {
         if (!taskGenerators[generator]) revert GeneratorDoesNotExist();
         delete taskGenerators[generator];
+
+        // Remove from array efficiently
+        uint256 index = _taskGeneratorsIndex[generator];
+        uint256 lastIndex = taskGeneratorsList.length - 1;
+
+        if (index != lastIndex) {
+            address lastGenerator = taskGeneratorsList[lastIndex];
+            taskGeneratorsList[index] = lastGenerator;
+            _taskGeneratorsIndex[lastGenerator] = index;
+        }
+
+        taskGeneratorsList.pop();
+        delete _taskGeneratorsIndex[generator];
+
         emit TaskGeneratorRemoved(generator);
     }
 
@@ -297,5 +326,13 @@ contract OperatorRegistry is SlashingRegistryCoordinator, IOperatorRegistry {
         address generator
     ) external view returns (bool) {
         return taskGenerators[generator];
+    }
+
+    /**
+     * @notice Get all task generators
+     * @return An array of task generator addresses
+     */
+    function getAllTaskGenerators() external view returns (address[] memory) {
+        return taskGeneratorsList;
     }
 }

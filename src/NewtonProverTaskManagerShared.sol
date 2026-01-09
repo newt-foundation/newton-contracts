@@ -22,16 +22,7 @@ import {BLSSignatureChecker} from "@eigenlayer-middleware/src/BLSSignatureChecke
  */
 abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, ReentrancyGuardUpgradeable {
     /* MODIFIERS */
-    modifier onlyAggregator() {
-        require(
-            msg.sender == aggregator
-                || IOperatorRegistry(operatorRegistry).isTaskGenerator(msg.sender),
-            TaskManagerErrors.OnlyAggregator()
-        );
-        _;
-    }
-
-    // onlyTaskGenerator is used to restrict createNewTask from only being called by a permissioned entity
+    // onlyTaskGenerator is used to restrict createNewTask and respondToTask from only being called by a permissioned entity
     // in a real world scenario, this would be removed by instead making createNewTask a payable function
     modifier onlyTaskGenerator() {
         require(
@@ -73,8 +64,8 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
     function respondToTask(
         Task calldata task,
         TaskResponse calldata taskResponse,
-        IBLSSignatureChecker.NonSignerStakesAndSignature calldata nonSignerStakesAndSignature
-    ) external onlyAggregator onlyValidTaskResponse(task, taskResponse) whenNotPaused {
+        bytes calldata signatureData
+    ) external onlyTaskGenerator onlyValidTaskResponse(task, taskResponse) whenNotPaused {
         bytes32 taskId = taskResponse.taskId;
         require(
             TaskLib.taskHash(task) == allTaskHashes[taskId],
@@ -84,12 +75,12 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
 
         // Delegate verification to task response handler
         bytes32 hashOfNonSigners = ITaskResponseHandler(taskResponseHandler)
-            .verifyTaskResponse(task, taskResponse, nonSignerStakesAndSignature);
+            .verifyTaskResponse(task, taskResponse, signatureData);
 
         uint32 referenceBlock = uint32(block.number);
         uint32 responseExpireBlock = referenceBlock + task.policyConfig.expireAfter;
         ResponseCertificate memory responseCertificate = ResponseCertificate(
-            referenceBlock, responseExpireBlock, hashOfNonSigners, nonSignerStakesAndSignature
+            referenceBlock, responseExpireBlock, hashOfNonSigners, signatureData
         );
         bytes32 responseHash = keccak256(abi.encode(taskResponse, responseCertificate));
         allTaskResponses[taskId] = responseHash;
@@ -144,19 +135,16 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
         return isAttestationValid;
     }
 
-    function updateAggregator(
-        address _aggregator
-    ) external onlyOwner {
-        if (_aggregator == address(0)) revert TaskManagerErrors.InvalidAggregatorAddress();
-        address previousAggregator = aggregator;
-        aggregator = _aggregator;
-        emit AggregatorUpdated(previousAggregator, _aggregator);
-    }
-
     function updateTaskResponseWindowBlock(
         uint32 _taskResponseWindowBlock
     ) external onlyOwner {
         taskResponseWindowBlock = _taskResponseWindowBlock;
+    }
+
+    function updateEpochBlocks(
+        uint32 _epochBlocks
+    ) external onlyOwner {
+        epochBlocks = _epochBlocks;
     }
 
     function validateAttestationDirect(

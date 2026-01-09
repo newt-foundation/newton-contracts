@@ -1,0 +1,12 @@
+{
+  "lastUpdate": {
+    "timestamp": "0",
+    "block_number": "0"
+  },
+  "addresses": {
+    "operatorTableUpdater": "0xB02A15c6Bd0882b35e9936A9579f35FB26E11476",
+    "bn254CertificateVerifier": "0xff58A373c18268F483C1F5cA03Cf885c0C43373a",
+    "ecdsaCertificateVerifier": "0xb3Cd1A457dEa9A9A6F6406c6419B1c326670A96F",
+    "pauserRegistry": "0x63AAe451780090f50Ad323aAEF155F63a29D20f3"
+  }
+}

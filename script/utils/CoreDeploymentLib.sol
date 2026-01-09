@@ -91,6 +91,12 @@ library CoreDeploymentLib {
         address strategyFactory;
         address strategyBeacon;
         address permissionController;
+        // multichain
+        address operatorTableUpdater;
+        address bn254CertificateVerifier;
+        address ecdsaCertificateVerifier;
+        address keyRegistrar;
+        address crossChainRegistry;
     }
 
     function deployContracts(
@@ -444,6 +450,16 @@ library CoreDeploymentLib {
         data.allocationManager = json.readAddress(".addresses.allocationManager");
         data.permissionController = json.readAddress(".addresses.permissionController");
         data.pauserRegistry = json.readAddress(".addresses.pauserRegistry");
+
+        // multichain contracts
+        data.operatorTableUpdater =
+            json.readAddressOr(".addresses.operatorTableUpdater", address(0));
+        data.bn254CertificateVerifier =
+            json.readAddressOr(".addresses.bn254CertificateVerifier", address(0));
+        data.ecdsaCertificateVerifier =
+            json.readAddressOr(".addresses.ecdsaCertificateVerifier", address(0));
+        data.keyRegistrar = json.readAddressOr(".addresses.keyRegistrar", address(0));
+        data.crossChainRegistry = json.readAddressOr(".addresses.crossChainRegistry", address(0));
 
         return data;
     }

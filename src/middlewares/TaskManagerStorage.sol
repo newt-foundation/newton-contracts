@@ -48,9 +48,11 @@ abstract contract TaskManagerStorage is
     uint32 public nonce;
 
     /// @notice Core entity addresses
-    /// @dev For source chains: serviceManager is set, certificateVerifier is address(0)
-    ///      For destination chains: serviceManager is address(0), certificateVerifier is set
+    /// @dev For source chains: serviceManager is set to local AVS, certificateVerifier is address(0)
+    ///      For destination chains: serviceManager is set to source chain AVS, certificateVerifier is set
     address public serviceManager;
+    /// @notice DEPRECATED: Previously used for aggregator access control. Do not remove - required for upgrade safety.
+    /// @dev This field is kept for storage layout compatibility. Access control now uses onlyTaskGenerator.
     address public aggregator;
     address public certificateVerifier;
 
@@ -75,6 +77,9 @@ abstract contract TaskManagerStorage is
     /// @notice The task response window block
     uint32 public taskResponseWindowBlock;
 
+    /// @notice The epoch time in number of blocks
+    uint32 public epochBlocks;
+
     // Conditional inheritance based on chain type
     // Source chains extend BLSSignatureChecker and OperatorStateRetriever for stake registry verification
     // Destination chains do not extend these (they use certificate verification instead)
@@ -93,6 +98,7 @@ abstract contract TaskManagerStorage is
         operatorRegistry = address(_operatorRegistry);
         isDestinationChain = _isDestinationChain;
         taskResponseWindowBlock = 30; // default to 30 blocks
+        epochBlocks = 7200; // default to 7200 blocks (matches current hardcoded value)
     }
 
     // storage gap for upgradeability

@@ -48,12 +48,12 @@ contract PolicyDeployer is Script {
             NewtonPolicyLib.readPolicyCids(_policyCidsPath);
 
         address[] memory taskGenerators =
-            AdminLib.readAddresses(_taskGeneratorsPath, true).taskGenerator;
+        AdminLib.readAddresses(_taskGeneratorsPath, block.chainid).taskGenerator;
 
         NewtonPolicyDeploymentLib.DeploymentData memory policyDeploymentData =
-        NewtonPolicyDeploymentLib.deployPolicy(
-            _deployer, deploymentData, policyCids, taskGenerators, uint32(300 seconds)
-        );
+            NewtonPolicyDeploymentLib.deployPolicy(
+                _deployer, deploymentData, policyCids, taskGenerators, uint32(300 seconds)
+            );
 
         // solhint-disable-next-line no-console
         console2.log(_prettyPrintDeploymentJson(policyDeploymentData));
