@@ -7,152 +7,137 @@ interface IIdentityRegistry {
 
     /// mapping that holds the encrypted identity.
     function identityData(
-        address policyClient,
-        bytes32 indexIdentifier
-    ) external returns (string memory identityData);
+        address identityOwner,
+        bytes32 identityDomain
+    ) external view returns (string memory identityData);
 
-    /// mapping that holds the ownership of the data for linking
-    function dataHashOwnership(
-        bytes32 indexHash,
-        address signer
-    ) external returns (bool isSigner);
+    /// mapping that holds the linking of client to data
+    function policyClientLinks(
+        address policyClientAddress,
+        address clientUser,
+        bytes32 identityDomain
+    ) external view returns (address linkedSigner);
 
     // typehashes for ERC-712 signature parsing
-    function SIGNER_ADD_TYPEHASH() external returns (bytes32);
-    function LINK_SIGNER_TYPEHASH() external returns (bytes32);
-    function LINK_OWNER_TYPEHASH() external returns (bytes32);
+    function LINK_SIGNER_TYPEHASH() external view returns (bytes32);
+    function LINK_USER_TYPEHASH() external view returns (bytes32);
 
     /// event for when an identity is registered for indexing the data
-    event IdentityBound(
-        address indexed signer,
-        address indexed policyClient,
-        bytes32 indexIdentifier,
-        string identityData
-    );
+    event IdentityBound(address indexed identityOwner, bytes32 identityDomain, string identityData);
 
-    /// event for when a signer is added to an existing policy client's piece of data
-    event SignerAdded(
-        address indexed policyClient,
-        address indexed approvingSigner,
-        address indexed addedSigner,
-        bytes32 indexIdentifier
-    );
-
-    /// event for when a an identity is linked to a new policy client
+    /// event for when an identity is linked to a new policy client
     event IdentityLinked(
-        address indexed oldSigner,
-        address indexed policyClientNew,
-        address policyClientOld,
-        bytes32 indexIdentifier,
-        string data
+        address indexed identityOwner,
+        address indexed policyClient,
+        address indexed policyClientUser,
+        bytes32 identityDomain
     );
 
-    /// error when someone tries to add a signer to an identity, but is not themselves a signer and did not provide a signature
-    error InvalidSignerSelf();
+    /// error when identity data is submitted for the zero address
+    error InvalidIdentityAddress();
 
-    /// error when someone tries to add themselves as a signer, but does not provide a valid signature from an authorized signer
-    error InvalidSignerAdd();
+    /// error when identity data is submitted for the zero domain
+    error InvalidIdentityDomain();
 
-    /// error when someone tries to link an identity, but does not provide a valid signature from an authorized signer
-    error InvalidSignerLink();
+    /// error when someone tries to link an identity, but provides an empty array of domains to link
+    error NoEmptyDomainsArray();
 
-    /// error when someone tries to link an identity, but is not the owner of the new client and did not provide a signature
-    error InvalidOwner();
+    /// error when someone tries to link more than MAX_LINKS domains at once
+    error TooManyLinksAtOnce();
 
-    /// error when someone tries to link an identity, but does not provide a valid signature from the new client owner
-    error InvalidOwnerLinkSignature();
+    /// error when someone tries to link an identity, but does not provide a valid signature
+    error InvalidSignature();
 
-    /// error when someone tries to link an identity, but does not provide a valid signature from the old client signer
-    error InvalidSignerLinkSignature();
+    /// error when the signature deadline has already passed (according to block.timestamp)
+    error SignatureExpired();
 
     /**
      * submits a new identity to the registry
      * @notice this function is callable only by the trusted owner
      *
-     * @param _signer this is the user address who will control signing permissions for linking this data
-     * @param _policyClient this is the address of the policy client to have the associated data, it is the top level lookup
-     * @param _indexIdentifier this marks what type of data is associated
-     * @param _identityData this is the actual data to be stored and to be looked up for the policy client during task execution
+     * @param _identityOwner this is the user address who will control signing permissions for linking this data
+     * @param _identityDomain this marks what type of data is associated
+     * @param _identityData this is the actual encrypted data to be stored and to be looked up during task execution
      */
     function submitIdentity(
-        address _signer,
-        address _policyClient,
-        bytes32 _indexIdentifier,
+        address _identityOwner,
+        bytes32 _identityDomain,
         string memory _identityData
     ) external;
 
     /**
-     * adds a new signer for an existing identity data record
-     * @notice this function requires the caller to be a signer and trusts them if they are
+     * function to link data if the msg.sender controls all elements of the system
      *
-     * @param _policyClient this is the address of the policy client that has the associated data
-     * @param _indexIdentifier this specifies what type of data is associated
-     * @param _newSigner this is the new address to add as a signer for this pairing
+     * @param _policyClient the policy client where the data is to be associated
+     * @param _identityDomains this specifies what type of data is associated
      */
-    function addSigner(
+    function linkIdentityAsSignerAndUser(
         address _policyClient,
-        bytes32 _indexIdentifier,
-        address _newSigner
+        bytes32[] calldata _identityDomains
     ) external;
 
     /**
-     * adds the caller as a new signer for an existing identity data record
-     * @notice uses the signature of an existing signer
+     * function to link existing data to a NewtonPolicyClient as the identityOwner for that data
      *
-     * @param _policyClient this is the address of the policy client that has the associated data
-     * @param _indexIdentifier this specifies what type of data is associated
-     * @param _signature sig from an existing signer for the data
-     */
-    function addSelfAsSigner(
-        address _policyClient,
-        bytes32 _indexIdentifier,
-        bytes memory _signature
-    ) external;
-
-    /**
-     * function to link data if the msg.sender owns all elements of the system
-     *
-     * @param _policyClientOld the old policy client where the data was previously associated
-     * @param _policyClientNew the new policy client where the data is to be associated
-     * @param _indexIdentifier this specifies what type of data is associated
-     */
-    function linkIdentityAsSignerAndOwner(
-        address _policyClientOld,
-        address _policyClientNew,
-        bytes32 _indexIdentifier
-    ) external;
-
-    /**
-     * function to link existing data to a new NewtonPolicyClient as the signer for that data
-     *
-     * @param _policyClientOld the old policy client where the data was previously associated
-     * @param _policyClientNew the new policy client where the data is to be associated
-     * @param _indexIdentifier this specifies what type of data is associated
-     * @param _newSigner the additional signer to add as the signer for the new linkage
-     * @param _signature signature by the _oldSigner to prove that this linking should be allowed
+     * @param _policyClient the policy client where the data is to be associated
+     * @param _identityDomains this specifies what type of data is associated
+     * @param _clientUser the address that will use the data on this policy client
+     * @param _signature signature by the identityOwner (msg.sender) to prove that this linking should be allowed
+     * @param _nonce the nonce for the signature
+     * @param _deadline the deadline for the signature
      */
     function linkIdentityAsSigner(
-        address _policyClientOld,
-        address _policyClientNew,
-        bytes32 _indexIdentifier,
-        address _newSigner,
-        bytes calldata _signature
+        address _policyClient,
+        bytes32[] calldata _identityDomains,
+        address _clientUser,
+        bytes calldata _signature,
+        uint256 _nonce,
+        uint256 _deadline
     ) external;
 
     /**
-     * function to link existing data to a new NewtonPolicyClient as the owner of that client
+     * function to link existing data to a NewtonPolicyClient as the user of that client
      *
-     * @param _policyClientOld the old policy client where the data was previously associated
-     * @param _policyClientNew the new policy client where the data is to be associated
-     * @param _indexIdentifier this specifies what type of data is associated
-     * @param _oldSigner the signer being used to authorize access to the existing identity
-     * @param _signature signature by the _oldSigner to prove that this linking should be allowed
+     * @param _policyClient the policy client where the data is to be associated
+     * @param _identityDomains this specifies what type of data is associated
+     * @param _identityOwner the identityOwner being used to authorize access to the existing identity
+     * @param _signature signature by the _identityOwner to prove that this linking should be allowed
+     * @param _nonce the nonce for the signature
+     * @param _deadline the deadline for the signature
      */
-    function linkIdentityAsOwner(
-        address _policyClientOld,
-        address _policyClientNew,
-        bytes32 _indexIdentifier,
-        address _oldSigner,
-        bytes calldata _signature
+    function linkIdentityAsUser(
+        address _identityOwner,
+        address _policyClient,
+        bytes32[] calldata _identityDomains,
+        bytes calldata _signature,
+        uint256 _nonce,
+        uint256 _deadline
+    ) external;
+
+    /**
+     * function to link existing data to a NewtonPolicyClient as a 3rd party using signatures from both addresses involved
+     *
+     * @param _identityOwner the identityOwner being used to authorize access to the existing identity
+     * @param _clientUser the address that will use the data on this policy client
+     * @param _policyClient the policy client where the data is to be associated
+     * @param _identityDomains this specifies what type of data is associated
+     * @param _identityOwnerSignature signature by the _identityOwner to prove that this linking should be allowed
+     * @param _identityOwnerNonce the nonce for the identityOwner signature
+     * @param _identityOwnerDeadline the deadline for the identityOwner signature
+     * @param _clientUserSignature signature by the _clientUser to prove that this linking should be allowed
+     * @param _clientUserNonce the nonce for the user signature
+     * @param _clientUserDeadline the deadline for the user signature
+     */
+    function linkIdentity(
+        address _identityOwner,
+        address _clientUser,
+        address _policyClient,
+        bytes32[] calldata _identityDomains,
+        bytes calldata _identityOwnerSignature,
+        uint256 _identityOwnerNonce,
+        uint256 _identityOwnerDeadline,
+        bytes calldata _clientUserSignature,
+        uint256 _clientUserNonce,
+        uint256 _clientUserDeadline
     ) external;
 }

@@ -54,7 +54,7 @@ contract OperatorRegistry is SlashingRegistryCoordinator, IOperatorRegistry {
     mapping(address => uint256) private _taskGeneratorsIndex;
 
     /* EVENTS */
-    event OperatorWhitelisted(address indexed operator, bool isWhitelisted);
+    event OperatorWhitelisted(address indexed operator, bool indexed isWhitelisted);
 
     constructor(
         IStakeRegistry _stakeRegistry,
@@ -147,7 +147,7 @@ contract OperatorRegistry is SlashingRegistryCoordinator, IOperatorRegistry {
     ) public view returns (address[] memory) {
         bytes32 quorumNumberHash = keccak256(quorumNumbers);
         address[] memory operators = new address[](whitelistedOperatorsList.length);
-        for (uint256 i = 0; i < operators.length; i++) {
+        for (uint256 i = 0; i < operators.length; ++i) {
             address operator = whitelistedOperatorsList[i];
             if (
                 _quorumNumberToOperators[quorumNumberHash][operator].status
@@ -225,7 +225,7 @@ contract OperatorRegistry is SlashingRegistryCoordinator, IOperatorRegistry {
     function addMultipleToWhitelist(
         address[] calldata operators
     ) external onlyOwner {
-        for (uint256 i = 0; i < operators.length; i++) {
+        for (uint256 i = 0; i < operators.length; ++i) {
             address operator = operators[i];
             if (operator == address(0)) revert InvalidAddress();
             if (whitelistedOperators[operator]) {
@@ -277,7 +277,7 @@ contract OperatorRegistry is SlashingRegistryCoordinator, IOperatorRegistry {
     function addMultipleToTaskGenerators(
         address[] calldata generators
     ) external onlyOwner {
-        for (uint256 i = 0; i < generators.length; i++) {
+        for (uint256 i = 0; i < generators.length; ++i) {
             address generator = generators[i];
             if (generator == address(0)) revert InvalidAddress();
             if (taskGenerators[generator]) revert GeneratorAlreadyExists();

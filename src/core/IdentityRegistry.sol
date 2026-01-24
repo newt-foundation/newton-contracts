@@ -2,42 +2,48 @@
 
 pragma solidity ^0.8.27;
 
-import {INewtonPolicyClient} from "../interfaces/INewtonPolicyClient.sol";
 import {IIdentityRegistry} from "../interfaces/IIdentityRegistry.sol";
 
 import {OwnableUpgradeable} from "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
 import {
     EIP712Upgradeable
 } from "@openzeppelin-upgrades/contracts/utils/cryptography/EIP712Upgradeable.sol";
+import {Nonces} from "../mixins/Nonces.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 /// @title Registry for identity data
 ///
 /// @notice Relies on an admin address to add data for veracity
-contract IdentityRegistry is OwnableUpgradeable, EIP712Upgradeable, IIdentityRegistry {
+///
+/// @dev Important terminology
+/// @dev Signer: the eoa that has ownership over the identity data. No linkage can happen without their signature
+/// @dev Identity Domain: a bytes32 hash that denotes the different types of identity data. Same across users. Defined and used offchain
+/// @dev Identity Data: encrypted data from users, stored for use in task evaluation for identity requiring policies
+/// @dev Policy Client: any policy client that wants to link user data. The usage of that data depends on the newton policy attached to that client
+/// @dev Policy Client User (user): the address used by the Signer for the policy client. Usually an embedded wallet within the PolicyClient owner's domain
+contract IdentityRegistry is OwnableUpgradeable, EIP712Upgradeable, Nonces, IIdentityRegistry {
     /// mapping that holds the encrypted identity.
-    /// The policy client address maps to an identity index identifier which maps to the encrypted data
+    /// The owner eoa address maps to an identity domain identifier which maps to the encrypted data
     mapping(address => mapping(bytes32 => string)) public override identityData;
-    /// mapping that holds the ownership of the data for linking
-    /// the bytes32 key is computed by taking keccak256(abi.encode(policyClient, indexIdentifier))
-    /// this key is what's signed for the signature check
-    /// the mapping holds approved addresses. switching uint256 to bool would allow for a hierarchical system if desired
-    mapping(bytes32 => mapping(address => bool)) public override dataHashOwnership;
+    /// mapping that holds the linking of the data to the policy clients
+    /// the mapping is policy client address -> client user -> identity domain -> owner eoa whose data is linked/used
+    /// the process for using this is to first look up the address whose data is linked to the user, and then look up the data in the identityData mapping
+    mapping(address => mapping(address => mapping(bytes32 => address)))
+        public
+        override policyClientLinks;
 
-    // slither-disable-next-line gas-small-strings
-    bytes32 public constant override SIGNER_ADD_TYPEHASH = keccak256(
-        "addSelfAsSigner(address newSigner,address policyClient,bytes32 indexIdentifier)"
-    );
-
-    // slither-disable-next-line gas-small-strings
+    /// typehash for doing signTypedData for as the identityOwner to provide to the user for linkIdentityAsUser
     bytes32 public constant override LINK_SIGNER_TYPEHASH = keccak256(
-        "linkIdentitySigner(address oldPolicyClient,address newPolicyClient,address oldSigner,address newSigner,address newClientOwner,bytes32 indexIdentifier)"
+        "linkIdentitySigner(address identityOwner,address policyClient,address clientUser,bytes32[] identityDomains,uint256 identityOwnerNonce,uint256 deadline)"
     );
 
-    // slither-disable-next-line gas-small-strings
-    bytes32 public constant override LINK_OWNER_TYPEHASH = keccak256(
-        "linkIdentityOwner(address oldPolicyClient,address newPolicyClient,address oldSigner,address newSigner,address newClientOwner,bytes32 indexIdentifier)"
+    /// typehash for doing signTypedData for as the user to provide to the identityOwner for linkIdentityAsSigner
+    bytes32 public constant override LINK_USER_TYPEHASH = keccak256(
+        "linkIdentityUser(address identityOwner,address policyClient,address clientUser,bytes32[] identityDomains,uint256 clientUserNonce,uint256 deadline)"
     );
+
+    /// a sanity check upper bound on the max number of links at once
+    uint256 public constant MAX_LINKS = 50;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -46,7 +52,7 @@ contract IdentityRegistry is OwnableUpgradeable, EIP712Upgradeable, IIdentityReg
 
     /**
      * @notice Initialize the identity registry
-     * @param _admin The admin address that will own the contract
+     * @param _admin The admin address that is the only address that can submit data
      */
     function initialize(
         address _admin
@@ -62,254 +68,222 @@ contract IdentityRegistry is OwnableUpgradeable, EIP712Upgradeable, IIdentityReg
      * @inheritdoc IIdentityRegistry
      */
     function submitIdentity(
-        address _signer,
-        address _policyClient,
-        bytes32 _indexIdentifier,
+        address _identityOwner,
+        bytes32 _identityDomain,
         string calldata _identityData
     ) external override onlyOwner {
+        require(_identityOwner != address(0), InvalidIdentityAddress());
+        require(_identityDomain != bytes32(0), InvalidIdentityDomain());
+
         // it's ok if this overwrites, users should be able to update their identity and the owner is trusted
-        identityData[_policyClient][_indexIdentifier] = _identityData;
-        // this hash is unique because only one value can be stored in the mapping above
-        bytes32 identityHash = keccak256(abi.encode(_policyClient, _indexIdentifier));
-        // authorize the signer for linking this data to other policy clients
-        dataHashOwnership[identityHash][_signer] = true;
+        identityData[_identityOwner][_identityDomain] = _identityData;
 
-        emit IdentityBound(_signer, _policyClient, _indexIdentifier, _identityData);
+        emit IdentityBound(_identityOwner, _identityDomain, _identityData);
     }
-
-    /**
-     * adds a new signer for an existing identity data record
-     *
-     * @inheritdoc IIdentityRegistry
-     */
-    function addSigner(
-        address _policyClient,
-        bytes32 _indexIdentifier,
-        address _newSigner
-    ) external override {
-        bytes32 identityHash = keccak256(abi.encode(_policyClient, _indexIdentifier));
-
-        require(dataHashOwnership[identityHash][msg.sender], InvalidSignerSelf());
-
-        dataHashOwnership[identityHash][_newSigner] = true;
-
-        emit SignerAdded(_policyClient, msg.sender, _newSigner, _indexIdentifier);
-    }
-
-    /**
-     * adds the caller as a new signer for an existing identity data record
-     *
-     * @inheritdoc IIdentityRegistry
-     */
-    function addSelfAsSigner(
-        address _policyClient,
-        bytes32 _indexIdentifier,
-        bytes calldata _signature
-    ) external override {
-        // compute the hash identifier for the data
-        bytes32 identityHash = keccak256(abi.encode(_policyClient, _indexIdentifier));
-
-        // compute the typed hash of the adding event
-        bytes32 typedData =
-            keccak256(abi.encode(SIGNER_ADD_TYPEHASH, msg.sender, _policyClient, _indexIdentifier));
-
-        address signer = ECDSA.recover(_hashTypedDataV4(typedData), _signature);
-
-        require(dataHashOwnership[identityHash][signer], InvalidSignerAdd());
-        dataHashOwnership[identityHash][msg.sender] = true;
-
-        emit SignerAdded(_policyClient, signer, msg.sender, _indexIdentifier);
-    }
-
-    // see what condition to use for remove signer functions
-
-    // do we need remove data functions too? or just rely on the admin to overwrite
 
     /**
      * function to link data if the msg.sender owns all elements of the system
      *
      * @inheritdoc IIdentityRegistry
      */
-    function linkIdentityAsSignerAndOwner(
-        address _policyClientOld,
-        address _policyClientNew,
-        bytes32 _indexIdentifier
+    function linkIdentityAsSignerAndUser(
+        address _policyClient,
+        bytes32[] calldata _identityDomains
     ) external override {
-        address oldSigner = msg.sender;
+        address identityOwner = msg.sender;
+        address clientUser = msg.sender;
 
-        // check that the caller is the owner
-        address newClientOwner = INewtonPolicyClient(_policyClientNew).getOwner();
-        require(newClientOwner == msg.sender, InvalidOwner());
-        // check that the caller is a signer
-        bytes32 identityHashOld = keccak256(abi.encode(_policyClientOld, _indexIdentifier));
-        require(dataHashOwnership[identityHashOld][oldSigner], InvalidSignerLink());
+        uint256 numDomains = _identityDomains.length;
+        require(numDomains > 0, NoEmptyDomainsArray());
+        require(numDomains <= MAX_LINKS, TooManyLinksAtOnce());
 
-        _linkIdentity(oldSigner, _policyClientNew, _policyClientOld, _indexIdentifier);
+        for (uint256 i; i < numDomains; ++i) {
+            _linkIdentity(identityOwner, _policyClient, clientUser, _identityDomains[i]);
+        }
     }
 
     /**
-     * function to link existing data to a new NewtonPolicyClient as the signer for that data
+     * function to link existing data to a NewtonPolicyClient as the identityOwner for that data
      *
      * @inheritdoc IIdentityRegistry
      */
     function linkIdentityAsSigner(
-        address _policyClientOld,
-        address _policyClientNew,
-        bytes32 _indexIdentifier,
-        address _newSigner,
-        bytes calldata _signature
+        address _policyClient,
+        bytes32[] calldata _identityDomains,
+        address _clientUser,
+        bytes calldata _signature,
+        uint256 _nonce,
+        uint256 _deadline
     ) external override {
-        address oldSigner = msg.sender;
-        address newClientOwner = INewtonPolicyClient(_policyClientNew).getOwner();
+        address identityOwner = msg.sender;
 
-        // check that the caller is a signer
-        bytes32 identityHashOld = keccak256(abi.encode(_policyClientOld, _indexIdentifier));
-        require(dataHashOwnership[identityHashOld][oldSigner], InvalidSignerLink());
+        uint256 numDomains = _identityDomains.length;
+        require(numDomains > 0, NoEmptyDomainsArray());
+        require(numDomains <= MAX_LINKS, TooManyLinksAtOnce());
 
-        // check signature by the client owner
-        _confirmOwnerSignature(
-            _policyClientOld,
-            _policyClientNew,
-            oldSigner,
-            _newSigner,
-            newClientOwner,
-            _indexIdentifier,
-            _signature
+        // check signature by the client user
+        _confirmSignature(
+            identityOwner,
+            _policyClient,
+            _clientUser,
+            _identityDomains,
+            _signature,
+            _nonce,
+            _deadline,
+            LINK_USER_TYPEHASH,
+            _clientUser
         );
 
-        _linkIdentity(oldSigner, _policyClientNew, _policyClientOld, _indexIdentifier);
+        for (uint256 i; i < numDomains; ++i) {
+            _linkIdentity(identityOwner, _policyClient, _clientUser, _identityDomains[i]);
+        }
     }
 
     /**
-     * function to link existing data to a new NewtonPolicyClient as the owner of that client
+     * function to link existing data to a NewtonPolicyClient as the user of that client
      *
      * @inheritdoc IIdentityRegistry
      */
-    function linkIdentityAsOwner(
-        address _policyClientOld,
-        address _policyClientNew,
-        bytes32 _indexIdentifier,
-        address _oldSigner,
-        bytes calldata _signature
+    function linkIdentityAsUser(
+        address _identityOwner,
+        address _policyClient,
+        bytes32[] calldata _identityDomains,
+        bytes calldata _signature,
+        uint256 _nonce,
+        uint256 _deadline
     ) external override {
-        address newSigner = msg.sender;
+        address clientUser = msg.sender;
 
-        // check ownership of new client
-        address newClientOwner = INewtonPolicyClient(_policyClientNew).getOwner();
-        require(newClientOwner == msg.sender, InvalidOwner());
+        uint256 numDomains = _identityDomains.length;
+        require(numDomains > 0, NoEmptyDomainsArray());
+        require(numDomains <= MAX_LINKS, TooManyLinksAtOnce());
 
-        // check signature by the old signer
-        _confirmSignerSignature(
-            _policyClientOld,
-            _policyClientNew,
-            _oldSigner,
-            newSigner,
-            newClientOwner,
-            _indexIdentifier,
-            _signature
+        // check signature by the identityOwner
+        _confirmSignature(
+            _identityOwner,
+            _policyClient,
+            clientUser,
+            _identityDomains,
+            _signature,
+            _nonce,
+            _deadline,
+            LINK_SIGNER_TYPEHASH,
+            _identityOwner
         );
 
-        _linkIdentity(_oldSigner, _policyClientNew, _policyClientOld, _indexIdentifier);
+        for (uint256 i; i < numDomains; ++i) {
+            _linkIdentity(_identityOwner, _policyClient, clientUser, _identityDomains[i]);
+        }
     }
 
     /**
-     * internal function for confirming the signature by the _oldSigner
+     * function to link existing data to a NewtonPolicyClient as the user of that client
      *
-     * @param _policyClientOld the old policy client where the data was previously associated
-     * @param _policyClientNew the new policy client where the data is to be associated
-     * @param _oldSigner the signer being used to authorize access to the existing identity
-     * @param _newSigner signer to be added for the new policy client being linked
-     * @param _newClientOwner the owner address to the new policy client being linked
-     * @param _indexIdentifier the index that denotes what the data is stored under
-     * @param _signature signature by the _oldSigner to prove that this linking should be allowed
+     * @inheritdoc IIdentityRegistry
      */
-    function _confirmSignerSignature(
-        address _policyClientOld,
-        address _policyClientNew,
-        address _oldSigner,
-        address _newSigner,
-        address _newClientOwner,
-        bytes32 _indexIdentifier,
-        bytes memory _signature
-    ) internal view {
-        bytes32 typedData = keccak256(
-            abi.encode(
-                LINK_SIGNER_TYPEHASH,
-                _policyClientOld,
-                _policyClientNew,
-                _oldSigner,
-                _newSigner,
-                _newClientOwner,
-                _indexIdentifier
-            )
+    function linkIdentity(
+        address _identityOwner,
+        address _clientUser,
+        address _policyClient,
+        bytes32[] calldata _identityDomains,
+        bytes calldata _identityOwnerSignature,
+        uint256 _identityOwnerNonce,
+        uint256 _identityOwnerDeadline,
+        bytes calldata _clientUserSignature,
+        uint256 _clientUserNonce,
+        uint256 _clientUserDeadline
+    ) external override {
+        uint256 numDomains = _identityDomains.length;
+        require(numDomains > 0, NoEmptyDomainsArray());
+        require(numDomains <= MAX_LINKS, TooManyLinksAtOnce());
+
+        // check signature by the identityOwner
+        _confirmSignature(
+            _identityOwner,
+            _policyClient,
+            _clientUser,
+            _identityDomains,
+            _identityOwnerSignature,
+            _identityOwnerNonce,
+            _identityOwnerDeadline,
+            LINK_SIGNER_TYPEHASH,
+            _identityOwner
         );
-        address signer = ECDSA.recover(_hashTypedDataV4(typedData), _signature);
-        bytes32 identityHashOld = keccak256(abi.encode(_policyClientOld, _indexIdentifier));
-        require(
-            signer == _oldSigner && dataHashOwnership[identityHashOld][_oldSigner],
-            InvalidSignerLinkSignature()
+
+        // check signature by the user
+        _confirmSignature(
+            _identityOwner,
+            _policyClient,
+            _clientUser,
+            _identityDomains,
+            _clientUserSignature,
+            _clientUserNonce,
+            _clientUserDeadline,
+            LINK_USER_TYPEHASH,
+            _clientUser
         );
+
+        for (uint256 i; i < numDomains; ++i) {
+            _linkIdentity(_identityOwner, _policyClient, _clientUser, _identityDomains[i]);
+        }
     }
 
     /**
-     * internal function for confirming the signature by the _newClientOwner
+     * internal function for confirming the signature by the identity data identityOwner
      *
-     * @param _policyClientOld the old policy client where the data was previously associated
-     * @param _policyClientNew the new policy client where the data is to be associated
-     * @param _oldSigner the signer being used to authorize access to the existing identity
-     * @param _newSigner signer to be added for the new policy client being linked
-     * @param _newClientOwner the owner address to the new policy client being linked
-     * @param _indexIdentifier the index that denotes what the data is stored under
-     * @param _signature signature by the _newClientOwner to prove that this linking should be allowed
+     * @param _policyClient the policy client where the data is to be associated
+     * @param _identityOwner the identityOwner being used to authorize access to the existing identity
+     * @param _clientUser the user address to the new policy client being linked
+     * @param _identityDomains the hash idenifier that denotes what the data is stored under
+     * @param _signature signature by the _clientUser to prove that this linking should be allowed
+     * @param _typehash the typehash for the signature
+     * @param _requiredSigner the address that must have performed the signature
      */
-    function _confirmOwnerSignature(
-        address _policyClientOld,
-        address _policyClientNew,
-        address _oldSigner,
-        address _newSigner,
-        address _newClientOwner,
-        bytes32 _indexIdentifier,
-        bytes memory _signature
-    ) internal view {
+    function _confirmSignature(
+        address _identityOwner,
+        address _policyClient,
+        address _clientUser,
+        bytes32[] calldata _identityDomains,
+        bytes calldata _signature,
+        uint256 _nonce,
+        uint256 _deadline,
+        bytes32 _typehash,
+        address _requiredSigner
+    ) internal {
         bytes32 typedData = keccak256(
             abi.encode(
-                LINK_OWNER_TYPEHASH,
-                _policyClientOld,
-                _policyClientNew,
-                _oldSigner,
-                _newSigner,
-                _newClientOwner,
-                _indexIdentifier
+                _typehash,
+                _identityOwner,
+                _policyClient,
+                _clientUser,
+                keccak256(abi.encode(_identityDomains)),
+                _nonce,
+                _deadline
             )
         );
-        address signer = ECDSA.recover(_hashTypedDataV4(typedData), _signature);
-        require(
-            signer == _newClientOwner
-                && INewtonPolicyClient(_policyClientNew).getOwner() == _newClientOwner,
-            InvalidOwnerLinkSignature()
-        );
+        address recoveredSigner = ECDSA.recover(_hashTypedDataV4(typedData), _signature);
+        require(recoveredSigner == _requiredSigner, InvalidSignature());
+        _useCheckedNonce(_requiredSigner, _nonce);
+        require(_deadline > block.timestamp, SignatureExpired());
     }
 
     /**
      * internal function for updating the storage after all authorization has been checked
      *
-     * @param _oldSigner also added as a signer for the new policy client
-     * @param _policyClientNew the new policy client where the data is to be associated
-     * @param _policyClientOld the old policy client where the data was previously associated, included just for the event
-     * @param _indexIdentifier this specifies what type of data is associated
+     * @param _identityOwner the identityOwner that owns the identity data in the other mapping
+     * @param _policyClient the policy client where the data is to be associated
+     * @param _clientUser the user of the policy client who will be submitting tasks
+     * @param _identityDomain this specifies what type of data is associated
      */
     function _linkIdentity(
-        address _oldSigner,
-        address _policyClientNew,
-        address _policyClientOld,
-        bytes32 _indexIdentifier
+        address _identityOwner,
+        address _policyClient,
+        address _clientUser,
+        bytes32 _identityDomain
     ) internal {
         // update storage
-        string memory data = identityData[_policyClientOld][_indexIdentifier];
-        identityData[_policyClientNew][_indexIdentifier] = data;
-        bytes32 identityHashNew = keccak256(abi.encode(_policyClientNew, _indexIdentifier));
-        dataHashOwnership[identityHashNew][_oldSigner] = true;
+        policyClientLinks[_policyClient][_clientUser][_identityDomain] = _identityOwner;
 
-        emit IdentityLinked(_oldSigner, _policyClientNew, _policyClientOld, _indexIdentifier, data);
+        emit IdentityLinked(_identityOwner, _policyClient, _clientUser, _identityDomain);
     }
 }
