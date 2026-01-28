@@ -10,7 +10,7 @@ import {NewtonPolicyData} from "../../src/core/NewtonPolicyData.sol";
 import {NewtonPolicy} from "../../src/core/NewtonPolicy.sol";
 import {INewtonPolicy} from "../../src/interfaces/INewtonPolicy.sol";
 import {INewtonPolicyData} from "../../src/interfaces/INewtonPolicyData.sol";
-import {MockNewtonPolicyClient} from "../mock/MockNewtonPolicyClient.sol";
+import {MockNewtonPolicyClient} from "../../script/mock/MockNewtonPolicyClient.sol";
 import {NewtonPolicyLib} from "./NewtonPolicyLib.sol";
 import {UpgradeableProxyLib} from "./UpgradeableProxyLib.sol";
 import {ArrayLib} from "./ArrayLib.sol";
@@ -29,7 +29,7 @@ library NewtonPolicyDeploymentLib {
     error DeploymentFileDoesNotExist();
     error ContractNotDeployed(string contractName, address contractAddress);
     error ValidationFailed(string reason);
-    error TaskGeneratorAddressesEmpty();
+    error OperatorAddressesEmpty();
     error AttesterCannotBeZero();
 
     Vm internal constant VM = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
@@ -115,23 +115,26 @@ library NewtonPolicyDeploymentLib {
     // ============================================================================
 
     /// @notice Deploy test policy, policy data, and policy client using existing factories
+    /// @dev Operators are added as attesters since they generate PolicyTaskData and sign attestations
     function deployTestPolicy(
         DeploymentData memory existingData,
         NewtonPolicyLib.PolicyCids memory policyCids,
         address admin,
         address newtonProverTaskManager,
         string memory policyParams,
-        address[] memory taskGenerators,
+        address[] memory operators,
         uint32 policyDataExpireAfter
     ) internal returns (DeploymentData memory) {
-        require(taskGenerators.length > 0, TaskGeneratorAddressesEmpty());
+        require(operators.length > 0, OperatorAddressesEmpty());
         require(policyCids.attester != address(0), AttesterCannotBeZero());
 
         DeploymentData memory result = existingData;
 
+        // Build attesters list: attester + operators
+        // Operators generate PolicyTaskData during task evaluation and sign attestations
         address[] memory attesters = new address[](1);
         attesters[0] = policyCids.attester;
-        attesters = attesters.addToArray(taskGenerators);
+        attesters = attesters.addToArray(operators);
 
         // Deploy PolicyData via factory
         address policyData = NewtonPolicyDataFactory(result.policyDataFactory)
@@ -206,7 +209,7 @@ library NewtonPolicyDeploymentLib {
         address admin,
         address newtonProverTaskManager,
         string memory policyParams,
-        address[] memory taskGenerators,
+        address[] memory operators,
         uint32 policyDataExpireAfter
     ) internal returns (DeploymentData memory) {
         // For test policy upgrade, we deploy new instances (not upgrade existing proxies)
@@ -217,7 +220,7 @@ library NewtonPolicyDeploymentLib {
             admin,
             newtonProverTaskManager,
             policyParams,
-            taskGenerators,
+            operators,
             policyDataExpireAfter
         );
     }
@@ -227,19 +230,22 @@ library NewtonPolicyDeploymentLib {
     // ============================================================================
 
     /// @notice Deploy a single policy using existing policy data factory and policy factory
+    /// @dev Operators are added as attesters since they generate PolicyTaskData and sign attestations
     function deployPolicy(
         address owner,
         DeploymentData memory deploymentData,
         NewtonPolicyLib.PolicyCids memory policyCids,
-        address[] memory taskGenerators,
+        address[] memory operators,
         uint32 policyDataExpireAfter
     ) internal returns (DeploymentData memory) {
-        require(taskGenerators.length > 0, TaskGeneratorAddressesEmpty());
+        require(operators.length > 0, OperatorAddressesEmpty());
         require(policyCids.attester != address(0), AttesterCannotBeZero());
 
+        // Build attesters list: attester + operators
+        // Operators generate PolicyTaskData during task evaluation and sign attestations
         address[] memory attesters = new address[](1);
         attesters[0] = policyCids.attester;
-        attesters = attesters.addToArray(taskGenerators);
+        attesters = attesters.addToArray(operators);
 
         DeploymentData memory result = deploymentData;
 
@@ -286,16 +292,17 @@ library NewtonPolicyDeploymentLib {
     }
 
     /// @notice Complete deployment of all policy related contracts including factories
+    /// @dev Operators are added as attesters since they generate PolicyTaskData and sign attestations
     function deployContracts(
         address proxyAdmin,
         NewtonPolicyLib.PolicyCids memory policyCids,
         address admin,
         address newtonProverTaskManager,
         string memory policyParams,
-        address[] memory taskGenerators,
+        address[] memory operators,
         uint32 policyDataExpireAfter
     ) internal returns (DeploymentData memory) {
-        require(taskGenerators.length > 0, TaskGeneratorAddressesEmpty());
+        require(operators.length > 0, OperatorAddressesEmpty());
         require(policyCids.attester != address(0), AttesterCannotBeZero());
 
         DeploymentData memory result;
@@ -312,9 +319,11 @@ library NewtonPolicyDeploymentLib {
             result.policyDataFactory, result.policyDataFactoryImpl, policyDataFactoryUpgradeCall
         );
 
+        // Build attesters list: attester + operators
+        // Operators generate PolicyTaskData during task evaluation and sign attestations
         address[] memory attesters = new address[](1);
         attesters[0] = policyCids.attester;
-        attesters = attesters.addToArray(taskGenerators);
+        attesters = attesters.addToArray(operators);
 
         address policyData = NewtonPolicyDataFactory(result.policyDataFactory)
             .deployPolicyData(
@@ -398,16 +407,17 @@ library NewtonPolicyDeploymentLib {
     }
 
     /// @notice Upgrade policy and policy data factories and deploy new policy and policy data
+    /// @dev Operators are added as attesters since they generate PolicyTaskData and sign attestations
     function upgradeContracts(
         DeploymentData memory deploymentData,
         NewtonPolicyLib.PolicyCids memory policyCids,
         address admin,
         address newtonProverTaskManager,
         string memory policyParams,
-        address[] memory taskGenerators,
+        address[] memory operators,
         uint32 policyDataExpireAfter
     ) internal returns (DeploymentData memory) {
-        require(taskGenerators.length > 0, TaskGeneratorAddressesEmpty());
+        require(operators.length > 0, OperatorAddressesEmpty());
         require(policyCids.attester != address(0), AttesterCannotBeZero());
 
         DeploymentData memory result = deploymentData;
@@ -423,9 +433,11 @@ library NewtonPolicyDeploymentLib {
         NewtonPolicyDataFactory(result.policyDataFactory)
             .setImplementation(address(new NewtonPolicyData()));
 
+        // Build attesters list: attester + operators
+        // Operators generate PolicyTaskData during task evaluation and sign attestations
         address[] memory attesters = new address[](1);
         attesters[0] = policyCids.attester;
-        attesters = attesters.addToArray(taskGenerators);
+        attesters = attesters.addToArray(operators);
 
         address policyData = NewtonPolicyDataFactory(result.policyDataFactory)
             .deployPolicyData(

@@ -48,7 +48,7 @@ library StakeQuorumLib {
             });
 
             quorumsStrategyParams[i] = new IStakeRegistryTypes.StrategyParams[](numStrategies);
-            for (uint256 j = 0; j < numStrategies; j++) {
+            for (uint256 j = 0; j < numStrategies; ++j) {
                 quorumsStrategyParams[i][j] = IStakeRegistryTypes.StrategyParams({
                     strategy: deployedStrategyArray[j], multiplier: multiplier
                 });

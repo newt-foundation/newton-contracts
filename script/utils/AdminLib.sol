@@ -134,10 +134,8 @@ library AdminLib {
 
     function syncTaskGenerator(
         address[] memory targetAddresses,
-        address operatorRegistry,
-        address policyDataFactory
+        address operatorRegistry
     ) internal {
-        // 1. Sync OperatorRegistry
         address[] memory currentAddresses =
             OperatorRegistry(operatorRegistry).getAllTaskGenerators();
         (address[] memory toAdd, address[] memory toRemove) =
@@ -152,8 +150,30 @@ library AdminLib {
             OperatorRegistry(operatorRegistry).removeTaskGenerator(toRemove[i]);
             console2.log("Removed task generator:", toRemove[i]);
         }
+    }
 
-        // 2. Sync PolicyData attesters
+    function syncOperatorWhitelist(
+        address[] memory targetAddresses,
+        address operatorRegistry,
+        address policyDataFactory
+    ) internal {
+        // 1. Sync OperatorRegistry whitelist
+        address[] memory currentAddresses =
+            OperatorRegistry(operatorRegistry).getAllWhitelistedOperators();
+        (address[] memory toAdd, address[] memory toRemove) =
+            diffAddresses(targetAddresses, currentAddresses);
+
+        if (toAdd.length > 0) {
+            OperatorRegistry(operatorRegistry).addMultipleToWhitelist(toAdd);
+            console2.log("Added operators to whitelist:", toAdd.length);
+        }
+
+        for (uint256 i = 0; i < toRemove.length; i++) {
+            OperatorRegistry(operatorRegistry).removeFromWhitelist(toRemove[i]);
+            console2.log("Removed operator from whitelist:", toRemove[i]);
+        }
+
+        // 2. Sync PolicyData attesters (operators generate policy data during task evaluation)
         address[] memory policyDataOwners =
             NewtonPolicyDataFactory(policyDataFactory).getAllPolicyDataOwners();
         for (uint256 i = 0; i < policyDataOwners.length; i++) {
@@ -164,19 +184,7 @@ library AdminLib {
                 INewtonPolicyData.AttestationInfo memory attestationInfo =
                     NewtonPolicyData(policyData[j]).getAttestationInfo();
 
-                // Current attesters on this PolicyData
                 address[] memory currentAttesters = attestationInfo.attesters;
-
-                // We want the attesters list to match targetAddresses (for task generators)
-                // Note: Attesters might include other roles too? The original code implies we just add/remove the passed list.
-                // But "sync" implies overwrite. If attesters are *only* task generators, we can overwrite.
-                // Assuming attesters == task generators for now based on original logic scope.
-
-                // However, strictly overwriting might remove non-task-generator attesters if any exist.
-                // The prompt says "sync on-chain state with JSON config".
-                // Let's replicate the add/remove logic but applied to the diff we calculated globally.
-                // This ensures we only add/remove the task generators we know about, leaving others intact if any.
-
                 address[] memory updatedAttesters = currentAttesters;
 
                 if (toAdd.length > 0) {
@@ -186,7 +194,6 @@ library AdminLib {
                     updatedAttesters = updatedAttesters.removeFromArray(toRemove);
                 }
 
-                // Only update if changed
                 if (
                     keccak256(abi.encode(currentAttesters))
                         != keccak256(abi.encode(updatedAttesters))
@@ -203,26 +210,6 @@ library AdminLib {
                     console2.log("Updated attesters for policy data:", policyData[j]);
                 }
             }
-        }
-    }
-
-    function syncOperatorWhitelist(
-        address[] memory targetAddresses,
-        address operatorRegistry
-    ) internal {
-        address[] memory currentAddresses =
-            OperatorRegistry(operatorRegistry).getAllWhitelistedOperators();
-        (address[] memory toAdd, address[] memory toRemove) =
-            diffAddresses(targetAddresses, currentAddresses);
-
-        if (toAdd.length > 0) {
-            OperatorRegistry(operatorRegistry).addMultipleToWhitelist(toAdd);
-            console2.log("Added operators to whitelist:", toAdd.length);
-        }
-
-        for (uint256 i = 0; i < toRemove.length; i++) {
-            OperatorRegistry(operatorRegistry).removeFromWhitelist(toRemove[i]);
-            console2.log("Removed operator from whitelist:", toRemove[i]);
         }
     }
 

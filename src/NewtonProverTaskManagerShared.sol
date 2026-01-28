@@ -51,9 +51,9 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
     }
 
     function createNewTask(
-        INewtonProverTaskManager.TaskParams calldata params
+        INewtonProverTaskManager.Task calldata task
     ) external onlyTaskGenerator whenNotPaused {
-        INewtonProverTaskManager.Task memory newTask = TaskLib.createTask(params, nonce);
+        INewtonProverTaskManager.Task memory newTask = TaskLib.createTask(task, nonce);
         allTaskHashes[newTask.taskId] = TaskLib.taskHash(newTask);
         emit NewTaskCreated(newTask.taskId, newTask);
         unchecked {
@@ -73,12 +73,17 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
         );
         require(allTaskResponses[taskId] == bytes32(0), TaskLib.TaskAlreadyResponded());
 
+        // Validate policyTaskData from TaskResponse (moved from createTask)
+        // Operators generate policyTaskData independently; this validates the aggregated result
+        TaskLib.validateTaskResponsePolicyData(taskResponse);
+
         // Delegate verification to task response handler
         bytes32 hashOfNonSigners = ITaskResponseHandler(taskResponseHandler)
             .verifyTaskResponse(task, taskResponse, signatureData);
 
         uint32 referenceBlock = uint32(block.number);
-        uint32 responseExpireBlock = referenceBlock + task.policyConfig.expireAfter;
+        // Use taskResponse.policyConfig (from operator-generated data) instead of task.policyConfig
+        uint32 responseExpireBlock = referenceBlock + taskResponse.policyConfig.expireAfter;
         ResponseCertificate memory responseCertificate = ResponseCertificate(
             referenceBlock, responseExpireBlock, hashOfNonSigners, signatureData
         );

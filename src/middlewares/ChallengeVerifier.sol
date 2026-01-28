@@ -115,7 +115,8 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
             ChallengePeriodExpired()
         );
 
-        INewtonPolicy policy = INewtonPolicy(task.policyTaskData.policyAddress);
+        // Use taskResponse.policyTaskData (operators now generate policyTaskData independently)
+        INewtonPolicy policy = INewtonPolicy(taskResponse.policyTaskData.policyAddress);
         require(policy.isPolicyVerified(), TaskLib.PolicyNotVerified());
 
         // Verify the rego proof. Reverts if the proof is invalid.

@@ -39,7 +39,7 @@ library CoreDeploymentLib {
     using Strings for *;
     using UpgradeableProxyLib for address;
 
-    string internal constant EIGENLAYER_VERSION = "v1.5.0-testnet-final";
+    string internal constant EIGENLAYER_VERSION = "v1.5.0";
     Vm internal constant VM = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
 
     struct StrategyManagerConfig {
@@ -451,20 +451,9 @@ library CoreDeploymentLib {
         data.permissionController = json.readAddress(".addresses.permissionController");
         data.pauserRegistry = json.readAddress(".addresses.pauserRegistry");
 
-        // multichain contracts
-        data.operatorTableUpdater =
-            json.readAddressOr(".addresses.operatorTableUpdater", address(0));
-        data.bn254CertificateVerifier =
-            json.readAddressOr(".addresses.bn254CertificateVerifier", address(0));
-        data.ecdsaCertificateVerifier =
-            json.readAddressOr(".addresses.ecdsaCertificateVerifier", address(0));
-        data.keyRegistrar = json.readAddressOr(".addresses.keyRegistrar", address(0));
-        data.crossChainRegistry = json.readAddressOr(".addresses.crossChainRegistry", address(0));
-
         return data;
     }
 
-    /// TODO: Need to be able to read json from eigenlayer-contracts repo for holesky/mainnet and output the json here
     function writeDeploymentJson(
         DeploymentData memory data
     ) internal {
@@ -510,7 +499,6 @@ library CoreDeploymentLib {
         DeploymentData memory data,
         address proxyAdmin
     ) private view returns (string memory) {
-        /// TODO: namespace contracts -> {avs, core}
         return string.concat(
             '{"proxyAdmin":"',
             proxyAdmin.toHexString(),

@@ -7,10 +7,10 @@ pragma solidity ^0.8.27;
 // @dev To update versions, modify the workspace version in the root Cargo.toml
 
 // Protocol version following SemVer 2.0.0 (MAJOR.MINOR.PATCH)
-string constant PROTOCOL_VERSION = "0.1.2";
+string constant PROTOCOL_VERSION = "0.1.3";
 
 // Minimum compatible policy factory version
-string constant MIN_COMPATIBLE_POLICY_VERSION = "0.1.2";
+string constant MIN_COMPATIBLE_POLICY_VERSION = "0.1.3";
 
 // Minimum compatible policy data factory version
-string constant MIN_COMPATIBLE_POLICY_DATA_VERSION = "0.1.2";
+string constant MIN_COMPATIBLE_POLICY_DATA_VERSION = "0.1.3";

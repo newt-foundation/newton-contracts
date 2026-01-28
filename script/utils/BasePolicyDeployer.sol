@@ -18,7 +18,7 @@ abstract contract BasePolicyDeployer is Script {
     address internal _deployer;
     string internal _policyCidsPath;
     string internal _policyParamPath;
-    string internal _taskGeneratorsPath;
+    string internal _operatorsConfigPath;
     bool internal _upgrade;
 
     /// @notice Load deployer private key
@@ -49,15 +49,15 @@ abstract contract BasePolicyDeployer is Script {
         }
     }
 
-    /// @notice Load task generators path with optional default
-    function _loadTaskGeneratorsPath(
+    /// @notice Load operators config path with optional default
+    function _loadOperatorsConfigPath(
         string memory defaultPath
     ) internal {
-        try vm.envString("TASK_GENERATORS_PATH") returns (string memory taskGeneratorsPath) {
-            _taskGeneratorsPath =
-                bytes(taskGeneratorsPath).length > 0 ? taskGeneratorsPath : defaultPath;
+        try vm.envString("OPERATORS_CONFIG_PATH") returns (string memory operatorsConfigPath) {
+            _operatorsConfigPath =
+                bytes(operatorsConfigPath).length > 0 ? operatorsConfigPath : defaultPath;
         } catch {
-            _taskGeneratorsPath = defaultPath;
+            _operatorsConfigPath = defaultPath;
         }
     }
 
@@ -89,9 +89,10 @@ abstract contract BasePolicyDeployer is Script {
         return NewtonPolicyLib.readPolicyCids(_policyCidsPath);
     }
 
-    /// @notice Read task generators from configured path
-    function _readTaskGenerators() internal returns (address[] memory) {
-        return AdminLib.readAddresses(_taskGeneratorsPath, block.chainid).taskGenerator;
+    /// @notice Read operators from configured path
+    /// @dev Operators are added as attesters since they generate PolicyTaskData and sign attestations
+    function _readOperators() internal returns (address[] memory) {
+        return AdminLib.readAddresses(_operatorsConfigPath, block.chainid).operator;
     }
 
     /// @notice Read policy params from configured path

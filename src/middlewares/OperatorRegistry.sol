@@ -13,10 +13,13 @@ import {IIndexRegistry} from "@eigenlayer-middleware/src/interfaces/IIndexRegist
 import {ISocketRegistry} from "@eigenlayer-middleware/src/interfaces/ISocketRegistry.sol";
 import {IAllocationManager} from "@eigenlayer/contracts/interfaces/IAllocationManager.sol";
 import {IPauserRegistry} from "@eigenlayer/contracts/interfaces/IPauserRegistry.sol";
+import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {ChainLib} from "../libraries/ChainLib.sol";
 import {IOperatorRegistry} from "../interfaces/IOperatorRegistry.sol";
 
 contract OperatorRegistry is SlashingRegistryCoordinator, IOperatorRegistry {
+    using EnumerableSet for EnumerableSet.AddressSet;
+
     /* CUSTOM ERRORS */
     error GeneratorDoesNotExist();
     error GeneratorAlreadyExists();
@@ -28,33 +31,15 @@ contract OperatorRegistry is SlashingRegistryCoordinator, IOperatorRegistry {
     /* EVENTS */
     event TaskGeneratorAdded(address indexed generator);
     event TaskGeneratorRemoved(address indexed generator);
+    event OperatorWhitelisted(address indexed operator, bool indexed isWhitelisted);
 
     /* STORAGE */
-    /// @notice Mapping to track whitelisted operators
-    mapping(address => bool) public whitelistedOperators;
-
-    /// @notice Array to keep track of all whitelisted operators for enumeration
-    address[] public whitelistedOperatorsList;
-
-    /// @notice Mapping to track if an operator is in the whitelist array (for efficient removal)
-    mapping(address => uint256) private _whitelistedOperatorsIndex;
-
-    // TODO: Use OpenZeppelin's EnumerableSet for task generators in V2 upgrade or new deployment
-    /// @notice Task generator management
-    mapping(address => bool) public taskGenerators;
-
     /// @notice mapping from quorum number to registered operators
     mapping(bytes32 => mapping(address => ISlashingRegistryCoordinatorTypes.OperatorInfo)) private
         _quorumNumberToOperators;
 
-    /// @notice Array to keep track of all task generators for enumeration
-    address[] public taskGeneratorsList;
-
-    /// @notice Mapping to track if a generator is in the list (for efficient removal)
-    mapping(address => uint256) private _taskGeneratorsIndex;
-
-    /* EVENTS */
-    event OperatorWhitelisted(address indexed operator, bool indexed isWhitelisted);
+    EnumerableSet.AddressSet private _whitelistedOperators;
+    EnumerableSet.AddressSet private _taskGenerators;
 
     constructor(
         IStakeRegistry _stakeRegistry,
@@ -85,9 +70,8 @@ contract OperatorRegistry is SlashingRegistryCoordinator, IOperatorRegistry {
         /* quorumNumbers */
         uint192 /* currentBitmap */
     ) internal virtual override {
-        // Check if operator is whitelisted
         ChainLib.requireSupportedChain();
-        if (ChainLib.isMainnet() && !whitelistedOperators[operator]) {
+        if (ChainLib.isMainnet() && !_whitelistedOperators.contains(operator)) {
             revert OperatorNotWhitelisted(operator);
         }
     }
@@ -146,9 +130,10 @@ contract OperatorRegistry is SlashingRegistryCoordinator, IOperatorRegistry {
         bytes memory quorumNumbers
     ) public view returns (address[] memory) {
         bytes32 quorumNumberHash = keccak256(quorumNumbers);
-        address[] memory operators = new address[](whitelistedOperatorsList.length);
-        for (uint256 i = 0; i < operators.length; ++i) {
-            address operator = whitelistedOperatorsList[i];
+        uint256 length = _whitelistedOperators.length();
+        address[] memory operators = new address[](length);
+        for (uint256 i = 0; i < length; ++i) {
+            address operator = _whitelistedOperators.at(i);
             if (
                 _quorumNumberToOperators[quorumNumberHash][operator].status
                     == ISlashingRegistryCoordinatorTypes.OperatorStatus.REGISTERED
@@ -164,7 +149,7 @@ contract OperatorRegistry is SlashingRegistryCoordinator, IOperatorRegistry {
      * @return An array of whitelisted operator addresses
      */
     function getAllWhitelistedOperators() public view returns (address[] memory) {
-        return whitelistedOperatorsList;
+        return _whitelistedOperators.values();
     }
 
     /**
@@ -176,14 +161,9 @@ contract OperatorRegistry is SlashingRegistryCoordinator, IOperatorRegistry {
         address operator
     ) external onlyOwner {
         if (operator == address(0)) revert InvalidAddress();
-        if (whitelistedOperators[operator]) {
+        if (!_whitelistedOperators.add(operator)) {
             revert OperatorAlreadyWhitelisted(operator);
         }
-
-        whitelistedOperators[operator] = true;
-        _whitelistedOperatorsIndex[operator] = whitelistedOperatorsList.length;
-        whitelistedOperatorsList.push(operator);
-
         emit OperatorWhitelisted(operator, true);
     }
 
@@ -195,25 +175,9 @@ contract OperatorRegistry is SlashingRegistryCoordinator, IOperatorRegistry {
     function removeFromWhitelist(
         address operator
     ) external onlyOwner {
-        if (!whitelistedOperators[operator]) {
+        if (!_whitelistedOperators.remove(operator)) {
             revert OperatorNotInWhitelist(operator);
         }
-
-        whitelistedOperators[operator] = false;
-
-        // Remove from array efficiently
-        uint256 index = _whitelistedOperatorsIndex[operator];
-        uint256 lastIndex = whitelistedOperatorsList.length - 1;
-
-        if (index != lastIndex) {
-            address lastOperator = whitelistedOperatorsList[lastIndex];
-            whitelistedOperatorsList[index] = lastOperator;
-            _whitelistedOperatorsIndex[lastOperator] = index;
-        }
-
-        whitelistedOperatorsList.pop();
-        delete _whitelistedOperatorsIndex[operator];
-
         emit OperatorWhitelisted(operator, false);
     }
 
@@ -228,14 +192,9 @@ contract OperatorRegistry is SlashingRegistryCoordinator, IOperatorRegistry {
         for (uint256 i = 0; i < operators.length; ++i) {
             address operator = operators[i];
             if (operator == address(0)) revert InvalidAddress();
-            if (whitelistedOperators[operator]) {
+            if (!_whitelistedOperators.add(operator)) {
                 revert OperatorAlreadyWhitelisted(operator);
             }
-
-            whitelistedOperators[operator] = true;
-            _whitelistedOperatorsIndex[operator] = whitelistedOperatorsList.length;
-            whitelistedOperatorsList.push(operator);
-
             emit OperatorWhitelisted(operator, true);
         }
     }
@@ -248,7 +207,7 @@ contract OperatorRegistry is SlashingRegistryCoordinator, IOperatorRegistry {
     function isOperatorWhitelisted(
         address operator
     ) external view returns (bool) {
-        return whitelistedOperators[operator];
+        return _whitelistedOperators.contains(operator);
     }
 
     /**
@@ -260,12 +219,7 @@ contract OperatorRegistry is SlashingRegistryCoordinator, IOperatorRegistry {
         address generator
     ) external onlyOwner {
         if (generator == address(0)) revert InvalidAddress();
-        if (taskGenerators[generator]) revert GeneratorAlreadyExists();
-        taskGenerators[generator] = true;
-
-        _taskGeneratorsIndex[generator] = taskGeneratorsList.length;
-        taskGeneratorsList.push(generator);
-
+        if (!_taskGenerators.add(generator)) revert GeneratorAlreadyExists();
         emit TaskGeneratorAdded(generator);
     }
 
@@ -280,12 +234,7 @@ contract OperatorRegistry is SlashingRegistryCoordinator, IOperatorRegistry {
         for (uint256 i = 0; i < generators.length; ++i) {
             address generator = generators[i];
             if (generator == address(0)) revert InvalidAddress();
-            if (taskGenerators[generator]) revert GeneratorAlreadyExists();
-            taskGenerators[generator] = true;
-
-            _taskGeneratorsIndex[generator] = taskGeneratorsList.length;
-            taskGeneratorsList.push(generator);
-
+            if (!_taskGenerators.add(generator)) revert GeneratorAlreadyExists();
             emit TaskGeneratorAdded(generator);
         }
     }
@@ -298,22 +247,7 @@ contract OperatorRegistry is SlashingRegistryCoordinator, IOperatorRegistry {
     function removeTaskGenerator(
         address generator
     ) external onlyOwner {
-        if (!taskGenerators[generator]) revert GeneratorDoesNotExist();
-        delete taskGenerators[generator];
-
-        // Remove from array efficiently
-        uint256 index = _taskGeneratorsIndex[generator];
-        uint256 lastIndex = taskGeneratorsList.length - 1;
-
-        if (index != lastIndex) {
-            address lastGenerator = taskGeneratorsList[lastIndex];
-            taskGeneratorsList[index] = lastGenerator;
-            _taskGeneratorsIndex[lastGenerator] = index;
-        }
-
-        taskGeneratorsList.pop();
-        delete _taskGeneratorsIndex[generator];
-
+        if (!_taskGenerators.remove(generator)) revert GeneratorDoesNotExist();
         emit TaskGeneratorRemoved(generator);
     }
 
@@ -325,7 +259,7 @@ contract OperatorRegistry is SlashingRegistryCoordinator, IOperatorRegistry {
     function isTaskGenerator(
         address generator
     ) external view returns (bool) {
-        return taskGenerators[generator];
+        return _taskGenerators.contains(generator);
     }
 
     /**
@@ -333,6 +267,6 @@ contract OperatorRegistry is SlashingRegistryCoordinator, IOperatorRegistry {
      * @return An array of task generator addresses
      */
     function getAllTaskGenerators() external view returns (address[] memory) {
-        return taskGeneratorsList;
+        return _taskGenerators.values();
     }
 }

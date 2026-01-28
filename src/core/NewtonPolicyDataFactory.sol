@@ -6,6 +6,7 @@ import "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
 import "@openzeppelin/contracts/utils/Create2.sol";
 import {IERC165} from "@openzeppelin/contracts/interfaces/IERC165.sol";
+import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {NewtonMessage} from "./NewtonMessage.sol";
 import {INewtonPolicyData} from "../interfaces/INewtonPolicyData.sol";
 import {NewtonPolicyData} from "./NewtonPolicyData.sol";
@@ -13,18 +14,16 @@ import {ChainLib} from "../libraries/ChainLib.sol";
 import {SemVerMixin} from "../mixins/SemVerMixin.sol";
 
 contract NewtonPolicyDataFactory is OwnableUpgradeable, SemVerMixin {
+    using EnumerableSet for EnumerableSet.AddressSet;
+
     address public implementation;
     ProxyAdmin public proxyAdmin;
 
     mapping(address => NewtonMessage.VerificationInfo) public policyDataVerifications;
-    mapping(address => bool) public verifiers;
     mapping(address => address[]) public ownersToPolicyData;
     address[] public policyDataOwners;
 
-    // Added at the end for upgrade compatibility
-    // TODO: Use OpenZeppelin's EnumerableSet for verifiers in V2 upgrade or new deployment
-    address[] public verifiersList;
-    mapping(address => uint256) private _verifiersIndex;
+    EnumerableSet.AddressSet private _verifiers;
 
     /// @notice Struct used for salt generation to ensure consistent encoding
     struct SaltData {
@@ -63,9 +62,7 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable, SemVerMixin {
         _transferOwnership(owner);
         implementation = address(new NewtonPolicyData());
         proxyAdmin = new ProxyAdmin();
-        verifiers[owner] = true;
-        _verifiersIndex[owner] = verifiersList.length;
-        verifiersList.push(owner);
+        _verifiers.add(owner);
     }
 
     /* ERRORS */
@@ -91,7 +88,7 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable, SemVerMixin {
     }
 
     modifier onlyVerifiers() {
-        require(msg.sender == owner() || verifiers[msg.sender], OnlyVerifiers());
+        require(msg.sender == owner() || _verifiers.contains(msg.sender), OnlyVerifiers());
         _;
     }
 
@@ -245,32 +242,17 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable, SemVerMixin {
     function addVerifier(
         address verifier
     ) external onlyOwner {
-        if (verifiers[verifier]) return;
-        verifiers[verifier] = true;
-        _verifiersIndex[verifier] = verifiersList.length;
-        verifiersList.push(verifier);
-        emit VerifierAdded(verifier);
+        if (_verifiers.add(verifier)) {
+            emit VerifierAdded(verifier);
+        }
     }
 
     function removeVerifier(
         address verifier
     ) external onlyOwner {
-        if (!verifiers[verifier]) return;
-        verifiers[verifier] = false;
-
-        uint256 index = _verifiersIndex[verifier];
-        uint256 lastIndex = verifiersList.length - 1;
-
-        if (index != lastIndex) {
-            address lastVerifier = verifiersList[lastIndex];
-            verifiersList[index] = lastVerifier;
-            _verifiersIndex[lastVerifier] = index;
+        if (_verifiers.remove(verifier)) {
+            emit VerifierRemoved(verifier);
         }
-
-        verifiersList.pop();
-        delete _verifiersIndex[verifier];
-
-        emit VerifierRemoved(verifier);
     }
 
     function getAllPolicyDataByOwner(
@@ -284,6 +266,12 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable, SemVerMixin {
     }
 
     function getAllVerifiers() external view returns (address[] memory) {
-        return verifiersList;
+        return _verifiers.values();
+    }
+
+    function isVerifier(
+        address verifier
+    ) external view returns (bool) {
+        return _verifiers.contains(verifier);
     }
 }
