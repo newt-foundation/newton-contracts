@@ -44,7 +44,9 @@ abstract contract TaskManagerStorage is
      *
      */
 
-    /// @notice The current task nonce
+    /// @notice DEPRECATED: Previously used for task sequencing. Do not remove - required for upgrade safety.
+    /// @dev This field is kept for storage layout compatibility. Use taskCreatedBlock for ordering.
+    /// Replay protection is now handled by taskId uniqueness check in createNewTask.
     uint32 public nonce;
 
     /// @notice Core entity addresses

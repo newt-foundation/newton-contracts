@@ -53,12 +53,10 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
     function createNewTask(
         INewtonProverTaskManager.Task calldata task
     ) external onlyTaskGenerator whenNotPaused {
-        INewtonProverTaskManager.Task memory newTask = TaskLib.createTask(task, nonce);
+        require(allTaskHashes[task.taskId] == bytes32(0), TaskLib.TaskAlreadyExists());
+        INewtonProverTaskManager.Task memory newTask = TaskLib.createTask(task);
         allTaskHashes[newTask.taskId] = TaskLib.taskHash(newTask);
         emit NewTaskCreated(newTask.taskId, newTask);
-        unchecked {
-            ++nonce;
-        }
     }
 
     function respondToTask(
