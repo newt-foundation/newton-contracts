@@ -29,8 +29,6 @@ interface INewtonProverTaskManager {
         bytes32 taskId;
         // policy client address
         address policyClient;
-        // the nonce of the task
-        uint32 nonce;
         // the block number when the task was created
         uint32 taskCreatedBlock;
         // the quorum threshold percentage of the task
