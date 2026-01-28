@@ -22,6 +22,7 @@ library PolicyValidationLib {
 
     /**
      * @dev Checks if the policy is a verified policy. Only used for mainnet.
+     * @notice Used during respondToTask to validate operator-generated policyTaskData
      */
     function checkVerifiedPolicy(
         address policyClient,
@@ -38,6 +39,7 @@ library PolicyValidationLib {
 
     /**
      * @dev Validates policy data attestations
+     * @notice Called during respondToTask to validate operator-generated policyTaskData
      */
     function validatePolicyData(
         address policyAddress,

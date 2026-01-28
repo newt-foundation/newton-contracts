@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.so
 import "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
 import "@openzeppelin/contracts/utils/Create2.sol";
+import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {NewtonMessage} from "./NewtonMessage.sol";
 import {INewtonPolicy} from "../interfaces/INewtonPolicy.sol";
 import {NewtonPolicy} from "./NewtonPolicy.sol";
@@ -12,19 +13,16 @@ import {ChainLib} from "../libraries/ChainLib.sol";
 import {SemVerMixin} from "../mixins/SemVerMixin.sol";
 
 contract NewtonPolicyFactory is OwnableUpgradeable, SemVerMixin {
+    using EnumerableSet for EnumerableSet.AddressSet;
+
     address public implementation;
     ProxyAdmin public proxyAdmin;
 
-    mapping(address => bool) public verifiers;
     mapping(address => NewtonMessage.VerificationInfo) public policyVerifications;
     mapping(address => address[]) public ownersToPolicies;
 
-    // Added at the end to be upgrade safe
-    // TODO: Use OpenZeppelin's EnumerableSet for verifiers and policy owners in V2 upgrade or new deployment
-    address[] public verifiersList;
-    mapping(address => uint256) private _verifiersIndex;
-    address[] public policyOwners;
-    mapping(address => bool) private _policyOwnersMap;
+    EnumerableSet.AddressSet private _verifiers;
+    EnumerableSet.AddressSet private _policyOwners;
 
     event PolicyDeployed(
         address policy, INewtonPolicy.PolicyInfo policyInfo, string implementationVersion
@@ -54,9 +52,7 @@ contract NewtonPolicyFactory is OwnableUpgradeable, SemVerMixin {
         _transferOwnership(owner);
         implementation = address(new NewtonPolicy());
         proxyAdmin = new ProxyAdmin();
-        verifiers[owner] = true;
-        _verifiersIndex[owner] = verifiersList.length;
-        verifiersList.push(owner);
+        _verifiers.add(owner);
     }
 
     /* ERRORS */
@@ -65,7 +61,7 @@ contract NewtonPolicyFactory is OwnableUpgradeable, SemVerMixin {
 
     /* Modifiers */
     modifier onlyVerifiers() {
-        require(msg.sender == owner() || verifiers[msg.sender], OnlyVerifiers());
+        require(msg.sender == owner() || _verifiers.contains(msg.sender), OnlyVerifiers());
         _;
     }
 
@@ -123,10 +119,7 @@ contract NewtonPolicyFactory is OwnableUpgradeable, SemVerMixin {
         }
 
         ownersToPolicies[_owner].push(policyAddr);
-        if (!_policyOwnersMap[_owner]) {
-            _policyOwnersMap[_owner] = true;
-            policyOwners.push(_owner);
-        }
+        _policyOwners.add(_owner);
 
         emit PolicyDeployed(
             policyAddr,
@@ -207,32 +200,17 @@ contract NewtonPolicyFactory is OwnableUpgradeable, SemVerMixin {
     function addVerifier(
         address verifier
     ) external onlyOwner {
-        if (verifiers[verifier]) return;
-        verifiers[verifier] = true;
-        _verifiersIndex[verifier] = verifiersList.length;
-        verifiersList.push(verifier);
-        emit VerifierAdded(verifier);
+        if (_verifiers.add(verifier)) {
+            emit VerifierAdded(verifier);
+        }
     }
 
     function removeVerifier(
         address verifier
     ) external onlyOwner {
-        if (!verifiers[verifier]) return;
-        verifiers[verifier] = false;
-
-        uint256 index = _verifiersIndex[verifier];
-        uint256 lastIndex = verifiersList.length - 1;
-
-        if (index != lastIndex) {
-            address lastVerifier = verifiersList[lastIndex];
-            verifiersList[index] = lastVerifier;
-            _verifiersIndex[lastVerifier] = index;
+        if (_verifiers.remove(verifier)) {
+            emit VerifierRemoved(verifier);
         }
-
-        verifiersList.pop();
-        delete _verifiersIndex[verifier];
-
-        emit VerifierRemoved(verifier);
     }
 
     function getAllPoliciesByOwner(
@@ -242,11 +220,17 @@ contract NewtonPolicyFactory is OwnableUpgradeable, SemVerMixin {
     }
 
     function getAllVerifiers() external view returns (address[] memory) {
-        return verifiersList;
+        return _verifiers.values();
     }
 
     function getAllPolicyOwners() external view returns (address[] memory) {
-        return policyOwners;
+        return _policyOwners.values();
+    }
+
+    function isVerifier(
+        address verifier
+    ) external view returns (bool) {
+        return _verifiers.contains(verifier);
     }
 
     /**
@@ -258,35 +242,13 @@ contract NewtonPolicyFactory is OwnableUpgradeable, SemVerMixin {
     ) public override onlyOwner {
         address previousOwner = owner();
 
-        // Remove verifier privileges from the previous owner
-        if (verifiers[previousOwner]) {
-            // Remove from mapping
-            verifiers[previousOwner] = false;
-
-            // Remove from list
-            uint256 index = _verifiersIndex[previousOwner];
-            uint256 lastIndex = verifiersList.length - 1;
-
-            if (index != lastIndex) {
-                address lastVerifier = verifiersList[lastIndex];
-                verifiersList[index] = lastVerifier;
-                _verifiersIndex[lastVerifier] = index;
-            }
-
-            verifiersList.pop();
-            delete _verifiersIndex[previousOwner];
-
+        if (_verifiers.remove(previousOwner)) {
             emit VerifierRemoved(previousOwner);
         }
 
-        // Transfer ownership
         _transferOwnership(newOwner);
 
-        // Add verifier privileges to the new owner
-        if (!verifiers[newOwner]) {
-            verifiers[newOwner] = true;
-            _verifiersIndex[newOwner] = verifiersList.length;
-            verifiersList.push(newOwner);
+        if (_verifiers.add(newOwner)) {
             emit VerifierAdded(newOwner);
         }
 
