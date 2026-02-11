@@ -4,11 +4,7 @@ pragma solidity ^0.8.27;
 import {INewtonProverTaskManager} from "../interfaces/INewtonProverTaskManager.sol";
 import {NewtonMessage} from "../core/NewtonMessage.sol";
 import {TaskLib} from "../libraries/TaskLib.sol";
-import {OperatorVerifierLib} from "../libraries/OperatorVerifierLib.sol";
-import {
-    ISlashingRegistryCoordinator
-} from "@eigenlayer-middleware/src/interfaces/ISlashingRegistryCoordinator.sol";
-import {IBLSSignatureChecker} from "@eigenlayer-middleware/src/interfaces/IBLSSignatureChecker.sol";
+import {ITaskResponseHandler} from "../interfaces/ITaskResponseHandler.sol";
 import "@openzeppelin-upgrades/contracts/proxy/utils/Initializable.sol";
 import "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
 
@@ -19,12 +15,26 @@ contract AttestationValidator is Initializable, OwnableUpgradeable {
     error AttestationAlreadySpent();
     error OnlyTaskManager();
 
+    /* CONSTANTS */
+    /// @notice Sentinel value indicating an attestation has been spent
+    /// @dev Uses max uint32 as sentinel since valid expirations are always < current block + reasonable expireAfter
+    uint32 public constant ATTESTATION_SPENT_SENTINEL = type(uint32).max;
+
     /* STORAGE */
     address public immutable taskManager;
     address public immutable operatorRegistry;
     mapping(bytes32 => bytes32) public attestations;
     mapping(bytes32 => bool) public directlyVerifiedAttestations;
+    /// @notice Tracks attestation expirations. Values:
+    /// - 0: never created
+    /// - ATTESTATION_SPENT_SENTINEL: spent (via validateAttestation or validateAttestationDirect)
+    /// - other: valid expiration block
     mapping(bytes32 => uint32) public attestationExpirations;
+    /// @dev New mappings appended after existing storage to preserve upgrade safety
+    mapping(bytes32 => bytes32) public directTaskHashes;
+    mapping(bytes32 => bytes32) public directTaskResponseHashes;
+
+    uint256[45] private __gap;
 
     /* MODIFIERS */
     modifier onlyTaskManager() {
@@ -53,14 +63,25 @@ contract AttestationValidator is Initializable, OwnableUpgradeable {
     function validateAttestation(
         NewtonMessage.Attestation calldata attestation
     ) external onlyTaskManager returns (bool) {
+        return _validateAttestation(attestation);
+    }
+
+    /* INTERNAL FUNCTIONS */
+    function _validateAttestation(
+        NewtonMessage.Attestation memory attestation
+    ) internal returns (bool) {
         TaskLib.sanityCheckAttestation(attestation);
+        // Prevent double spending (covers both regular and direct validation flows)
+        require(
+            attestationExpirations[attestation.taskId] != ATTESTATION_SPENT_SENTINEL,
+            AttestationAlreadySpent()
+        );
         bytes32 hash = keccak256(abi.encode(attestation));
         require(attestations[attestation.taskId] == hash, AttestationHashMismatch());
         require(uint32(block.number) < attestation.expiration, AttestationExpired());
-        // Prevent double spending of the same attestation by setting the attestation hash to 0
-        require(attestations[attestation.taskId] != bytes32(0), AttestationAlreadySpent());
+        // Clear hash for gas refund and mark as spent via sentinel
         attestations[attestation.taskId] = bytes32(0);
-        attestationExpirations[attestation.taskId] = 0;
+        attestationExpirations[attestation.taskId] = ATTESTATION_SPENT_SENTINEL;
         return true;
     }
 
@@ -68,7 +89,8 @@ contract AttestationValidator is Initializable, OwnableUpgradeable {
         bytes32 taskId
     ) external onlyTaskManager {
         attestations[taskId] = bytes32(0);
-        attestationExpirations[taskId] = 0;
+        // Use sentinel to prevent any future validation of this taskId
+        attestationExpirations[taskId] = ATTESTATION_SPENT_SENTINEL;
     }
 
     function createAttestationHash(
@@ -79,6 +101,11 @@ contract AttestationValidator is Initializable, OwnableUpgradeable {
         bytes calldata intentSignature,
         uint32 expiration
     ) external onlyTaskManager returns (bytes32) {
+        // If attestation already spent (e.g., via validateAttestationDirect),
+        // preserve spent state to avoid overwriting the sentinel
+        if (attestationExpirations[taskId] == ATTESTATION_SPENT_SENTINEL) {
+            return bytes32(0);
+        }
         NewtonMessage.Attestation memory attestation = NewtonMessage.Attestation(
             taskId, policyId, policyClient, expiration, intent, intentSignature
         );
@@ -116,35 +143,29 @@ contract AttestationValidator is Initializable, OwnableUpgradeable {
         return directlyVerifiedAttestations[taskId];
     }
 
+    // solhint-disable-next-line function-max-lines
     function validateAttestationDirect(
         INewtonProverTaskManager.Task calldata task,
         INewtonProverTaskManager.TaskResponse calldata taskResponse,
-        IBLSSignatureChecker.NonSignerStakesAndSignature calldata nonSignerStakesAndSignature,
-        function(bytes32, bytes memory, uint32, IBLSSignatureChecker
-                        .NonSignerStakesAndSignature memory)
-            external
-            view returns (IBLSSignatureChecker.QuorumStakeTotals memory, bytes32) checkSignatures
+        bytes calldata signatureData,
+        address _taskResponseHandler
     ) external onlyTaskManager returns (bool) {
         bytes32 taskId = taskResponse.taskId;
 
-        // Verify task hash matches the one stored in TaskManager
-        bytes32 expectedTaskHash = INewtonProverTaskManager(taskManager).taskHash(taskId);
-        require(
-            TaskLib.taskHash(task) == expectedTaskHash,
-            TaskLib.TaskMismatch(expectedTaskHash, TaskLib.taskHash(task))
-        );
-
-        // Check if attestation already exists from regular flow (respondToTask was called)
-        // If it exists, validate it using the existing attestation instead of direct validation flow
+        // If attestation already exists from regular flow, validate using it instead
         bytes32 existingAttestationHash = attestations[taskId];
         if (existingAttestationHash != bytes32(0)) {
-            // Attestation already exists from respondToTask
-            // Use the stored expiration (which was referenceBlock + task.policyConfig.expireAfter from respondToTask)
+            bytes32 expectedTaskHash = INewtonProverTaskManager(taskManager).taskHash(taskId);
+            require(
+                TaskLib.taskHash(task) == expectedTaskHash,
+                TaskLib.TaskMismatch(expectedTaskHash, TaskLib.taskHash(task))
+            );
+
+            // Stored expiration was set as referenceBlock + expireAfter during respondToTask
             uint32 storedExpiration = attestationExpirations[taskId];
             require(storedExpiration != 0, "Attestation expiration not found");
 
-            // Construct attestation using the stored expiration to match the hash
-            // Use taskResponse.policyId (policyId is now in TaskResponse, generated by operators)
+            // policyId comes from TaskResponse (generated by operators)
             NewtonMessage.Attestation memory constructedAttestation = NewtonMessage.Attestation(
                 taskId,
                 taskResponse.policyId,
@@ -153,47 +174,31 @@ contract AttestationValidator is Initializable, OwnableUpgradeable {
                 task.intent,
                 task.intentSignature
             );
+            bool result = _validateAttestation(constructedAttestation); // marks as spent
 
-            // Verify only the attestation client can call this
-            TaskLib.onlyAttestationClient(constructedAttestation);
+            // Set direct verification state so callers see consistent results
+            // regardless of whether the regular flow had already created an attestation
+            directlyVerifiedAttestations[taskId] = true;
+            directTaskHashes[taskId] = TaskLib.taskHash(task);
+            directTaskResponseHashes[taskId] = keccak256(abi.encode(taskResponse));
+            emit INewtonProverTaskManager.DirectTaskResponded(taskId, task, taskResponse);
 
-            // Validate the existing attestation (this will mark it as spent)
-            return this.validateAttestation(constructedAttestation);
+            return result;
         }
 
-        // Direct validation flow: attestation doesn't exist yet
-        // Verify BLS signatures
-        OperatorVerifierLib.verifyTaskResponseSignatures(
-            task,
-            taskResponse,
-            nonSignerStakesAndSignature,
-            ISlashingRegistryCoordinator(operatorRegistry),
-            checkSignatures
+        // Optimistic fast path: validate via task response handler before on-chain task exists
+        // Delegates to SourceTaskResponseHandler (BLS) or DestinationTaskResponseHandler (certificate)
+        // Prevent double spending across both regular and direct flows
+        require(
+            attestationExpirations[taskId] != ATTESTATION_SPENT_SENTINEL, AttestationAlreadySpent()
         );
 
-        // Check evaluation result is true
-        require(TaskLib.evaluateResult(taskResponse.evaluationResult), TaskLib.PolicyNotVerified());
+        ITaskResponseHandler(_taskResponseHandler)
+            .verifyTaskResponse(task, taskResponse, signatureData);
 
-        // Use referenceBlock + taskResponse.policyConfig.expireAfter for expiration
-        // (policyConfig is now in TaskResponse, generated by operators)
         uint32 referenceBlock = uint32(block.number);
         uint32 expiration = referenceBlock + taskResponse.policyConfig.expireAfter;
 
-        // Construct attestation to check onlyAttestationClient
-        // Use taskResponse.policyId (policyId is now in TaskResponse, generated by operators)
-        NewtonMessage.Attestation memory attestationToCheck = NewtonMessage.Attestation(
-            taskId,
-            taskResponse.policyId,
-            task.policyClient,
-            expiration,
-            task.intent,
-            task.intentSignature
-        );
-
-        // Verify only the attestation client can call this
-        TaskLib.onlyAttestationClient(attestationToCheck);
-
-        // Create attestation hash
         NewtonMessage.Attestation memory attestationForHash = NewtonMessage.Attestation(
             taskId,
             taskResponse.policyId,
@@ -202,20 +207,20 @@ contract AttestationValidator is Initializable, OwnableUpgradeable {
             task.intent,
             task.intentSignature
         );
-        bytes32 hash = keccak256(abi.encode(attestationForHash));
-        attestations[taskId] = hash;
-        attestationExpirations[taskId] = expiration;
 
-        // Mark as directly verified
+        TaskLib.sanityCheckAttestation(attestationForHash);
+        require(uint32(block.number) < expiration, AttestationExpired());
+
+        // Mark as spent regardless of evaluation result to prevent replay
         directlyVerifiedAttestations[taskId] = true;
+        attestationExpirations[taskId] = ATTESTATION_SPENT_SENTINEL;
 
-        // Immediately validate (mark as spent)
-        TaskLib.sanityCheckAttestation(attestationToCheck);
-        require(attestations[taskId] == hash, AttestationHashMismatch());
-        require(uint32(block.number) < attestationToCheck.expiration, AttestationExpired());
-        require(attestations[taskId] != bytes32(0), AttestationAlreadySpent());
-        attestations[taskId] = bytes32(0);
+        // Store hashes for challenger to compare against regular path later
+        directTaskHashes[taskId] = TaskLib.taskHash(task);
+        directTaskResponseHashes[taskId] = keccak256(abi.encode(taskResponse));
+        emit INewtonProverTaskManager.DirectTaskResponded(taskId, task, taskResponse);
 
-        return true;
+        // Revert = invalid attestation; return value = policy decision
+        return TaskLib.evaluateResult(taskResponse.evaluationResult);
     }
 }

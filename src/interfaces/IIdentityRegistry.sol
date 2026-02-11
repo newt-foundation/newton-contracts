@@ -33,6 +33,14 @@ interface IIdentityRegistry {
         bytes32 identityDomain
     );
 
+    /// event for when an identity is unlinked from a policy client
+    event IdentityUnlinked(
+        address indexed identityOwner,
+        address indexed policyClient,
+        address indexed policyClientUser,
+        bytes32 identityDomain
+    );
+
     /// error when identity data is submitted for the zero address
     error InvalidIdentityAddress();
 
@@ -43,13 +51,16 @@ interface IIdentityRegistry {
     error NoEmptyDomainsArray();
 
     /// error when someone tries to link more than MAX_LINKS domains at once
-    error TooManyLinksAtOnce();
+    error TooManyDomainsAtOnce();
 
     /// error when someone tries to link an identity, but does not provide a valid signature
     error InvalidSignature();
 
     /// error when the signature deadline has already passed (according to block.timestamp)
     error SignatureExpired();
+
+    /// error when someone tries to unlink data that isn't linked to them
+    error InvalidUnlinker();
 
     /**
      * submits a new identity to the registry
@@ -139,5 +150,18 @@ interface IIdentityRegistry {
         bytes calldata _clientUserSignature,
         uint256 _clientUserNonce,
         uint256 _clientUserDeadline
+    ) external;
+
+    /**
+     * function to unlink existing links, only useable if msg.sender is the identity that is linked
+     *
+     * @param _clientUser the address that has the linked data on this policy client
+     * @param _policyClient the policy client where the data is associated
+     * @param _identityDomains this specifies what type of data to unlink
+     */
+    function unlinkIdentityAsSigner(
+        address _clientUser,
+        address _policyClient,
+        bytes32[] calldata _identityDomains
     ) external;
 }

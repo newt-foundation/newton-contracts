@@ -2,6 +2,8 @@
 pragma solidity ^0.8.27;
 
 import {INewtonProverTaskManager} from "./interfaces/INewtonProverTaskManager.sol";
+import {INewtonPolicyClient} from "./interfaces/INewtonPolicyClient.sol";
+import {INewtonPolicy} from "./interfaces/INewtonPolicy.sol";
 import {TaskManagerStorage} from "./middlewares/TaskManagerStorage.sol";
 import {NewtonMessage} from "./core/NewtonMessage.sol";
 import {TaskLib} from "./libraries/TaskLib.sol";
@@ -9,11 +11,9 @@ import {TaskManagerErrors} from "./libraries/TaskManagerErrors.sol";
 import {ITaskResponseHandler} from "./interfaces/ITaskResponseHandler.sol";
 import "@openzeppelin-upgrades/contracts/security/ReentrancyGuardUpgradeable.sol";
 import "@eigenlayer-middleware/src/libraries/BN254.sol";
-import {IBLSSignatureChecker} from "@eigenlayer-middleware/src/interfaces/IBLSSignatureChecker.sol";
 import {ChallengeVerifier} from "./middlewares/ChallengeVerifier.sol";
 import {AttestationValidator} from "./middlewares/AttestationValidator.sol";
 import {IOperatorRegistry} from "./interfaces/IOperatorRegistry.sol";
-import {BLSSignatureChecker} from "@eigenlayer-middleware/src/BLSSignatureChecker.sol";
 
 /**
  * @title NewtonProverTaskManagerShared
@@ -51,12 +51,19 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
     }
 
     function createNewTask(
-        INewtonProverTaskManager.Task calldata task
+        Task calldata task
     ) external onlyTaskGenerator whenNotPaused {
-        require(allTaskHashes[task.taskId] == bytes32(0), TaskLib.TaskAlreadyExists());
-        INewtonProverTaskManager.Task memory newTask = TaskLib.createTask(task);
+        require(
+            allTaskHashes[task.taskId] == bytes32(0),
+            TaskLib.TaskAlreadyExists(allTaskHashes[task.taskId])
+        );
+        INewtonProverTaskManager.Task memory newTask =
+            TaskLib.createTask(task, taskCreationBufferWindow);
         allTaskHashes[newTask.taskId] = TaskLib.taskHash(newTask);
-        emit NewTaskCreated(newTask.taskId, newTask);
+
+        INewtonPolicy.PolicyState memory state =
+            getPolicyState(INewtonPolicyClient(task.policyClient));
+        emit NewTaskCreated(newTask.taskId, newTask, state);
     }
 
     function respondToTask(
@@ -69,7 +76,10 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
             TaskLib.taskHash(task) == allTaskHashes[taskId],
             TaskLib.TaskMismatch(allTaskHashes[taskId], TaskLib.taskHash(task))
         );
-        require(allTaskResponses[taskId] == bytes32(0), TaskLib.TaskAlreadyResponded());
+        require(
+            allTaskResponses[taskId] == bytes32(0),
+            TaskLib.TaskAlreadyResponded(allTaskResponses[taskId])
+        );
 
         // Validate policyTaskData from TaskResponse (moved from createTask)
         // Operators generate policyTaskData independently; this validates the aggregated result
@@ -150,34 +160,56 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
         epochBlocks = _epochBlocks;
     }
 
+    function updateTaskCreationBufferWindow(
+        uint32 _taskCreationBufferWindow
+    ) external onlyOwner {
+        taskCreationBufferWindow = _taskCreationBufferWindow;
+    }
+
+    /// @notice Update the task response handler contract
+    /// @param _taskResponseHandler The new task response handler address
+    /// @dev This is needed when SourceTaskResponseHandler code changes since it's not upgradeable
+    function updateTaskResponseHandler(
+        address _taskResponseHandler
+    ) external onlyOwner {
+        require(_taskResponseHandler != address(0), TaskManagerErrors.InvalidTaskResponseHandler());
+        taskResponseHandler = _taskResponseHandler;
+        emit TaskResponseHandlerUpdated(_taskResponseHandler);
+    }
+
     function validateAttestationDirect(
         Task calldata task,
         TaskResponse calldata taskResponse,
-        IBLSSignatureChecker.NonSignerStakesAndSignature calldata nonSignerStakesAndSignature
-    ) external onlySourceChain whenNotPaused returns (bool) {
-        // Delegate to AttestationValidator with checkSignatures function pointer from BLSSignatureChecker
-        // On source chains, this contract (via SourceTaskManagerStorage) extends BLSSignatureChecker
-        // Cast this to BLSSignatureChecker to access checkSignatures function
-        BLSSignatureChecker blsChecker = BLSSignatureChecker(address(this));
+        bytes calldata signatureData
+    ) external whenNotPaused returns (bool) {
+        // Delegate to AttestationValidator with taskResponseHandler for verification:
+        // - Source chains: SourceTaskResponseHandler decodes NonSignerStakesAndSignature
+        // - Destination chains: DestinationTaskResponseHandler decodes BN254Certificate
         return AttestationValidator(attestationValidator)
-            .validateAttestationDirect(
-                task, taskResponse, nonSignerStakesAndSignature, blsChecker.checkSignatures
-            );
+            .validateAttestationDirect(task, taskResponse, signatureData, taskResponseHandler);
     }
 
     function challengeDirectlyVerifiedAttestation(
         Task calldata task,
         TaskResponse calldata taskResponse,
-        IBLSSignatureChecker.NonSignerStakesAndSignature calldata nonSignerStakesAndSignature
-    ) external onlySourceChain whenNotPaused {
-        // Delegate to ChallengeVerifier with checkSignatures function pointer from BLSSignatureChecker
-        // On source chains, this contract (via SourceTaskManagerStorage) extends BLSSignatureChecker
-        // Cast this to BLSSignatureChecker to access checkSignatures function
-        BLSSignatureChecker blsChecker = BLSSignatureChecker(address(this));
+        bytes calldata signatureData
+    ) external whenNotPaused {
         ChallengeVerifier(challengeVerifier)
             .challengeDirectlyVerifiedAttestation(
-                task, taskResponse, nonSignerStakesAndSignature, blsChecker.checkSignatures
+                task, taskResponse, signatureData, taskResponseHandler
             );
+    }
+
+    function challengeDirectlyVerifiedMismatch(
+        Task calldata task,
+        TaskResponse calldata taskResponse,
+        bytes calldata signatureData
+    ) external whenNotPaused {
+        ChallengeVerifier(challengeVerifier)
+            .challengeDirectlyVerifiedMismatch(
+                task, taskResponse, signatureData, taskResponseHandler
+            );
+        emit TaskChallengedSuccessfully(taskResponse.taskId, msg.sender);
     }
 
     // Wrapper functions to match interface naming (delegate to storage mappings)
@@ -192,5 +224,17 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
     ) external view returns (bytes32) {
         return allTaskResponses[taskId];
     }
-}
 
+    function getPolicyState(
+        INewtonPolicyClient client
+    ) internal view returns (INewtonPolicy.PolicyState memory state) {
+        address policyAddress = client.getPolicyAddress();
+        bytes32 policyId = client.getPolicyId();
+        INewtonPolicy.PolicyConfig memory policyConfig =
+            INewtonPolicy(policyAddress).getPolicyConfig(policyId);
+
+        state = INewtonPolicy.PolicyState({
+            policyAddress: policyAddress, policyId: policyId, policyConfig: policyConfig
+        });
+    }
+}

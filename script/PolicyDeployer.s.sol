@@ -35,7 +35,12 @@ contract PolicyDeployer is BasePolicyDeployer {
 
         NewtonPolicyDeploymentLib.DeploymentData memory policyDeploymentData =
             NewtonPolicyDeploymentLib.deployPolicy(
-                _deployer, existingData, _readPolicyCids(), _readOperators(), uint32(300 seconds)
+                _deployer,
+                existingData,
+                _readPolicyCids(),
+                _readOperators(),
+                _readTaskGenerators(),
+                uint32(300 seconds)
             );
 
         // solhint-disable-next-line no-console

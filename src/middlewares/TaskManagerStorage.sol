@@ -82,6 +82,11 @@ abstract contract TaskManagerStorage is
     /// @notice The epoch time in number of blocks
     uint32 public epochBlocks;
 
+    /// @notice The maximum allowed age (in blocks) of taskCreatedBlock when creating a task
+    /// @dev This limits how far in the past the offchain estimated block can be.
+    ///      Default is 2 blocks to allow for minimal transaction propagation delay.
+    uint32 public taskCreationBufferWindow;
+
     // Conditional inheritance based on chain type
     // Source chains extend BLSSignatureChecker and OperatorStateRetriever for stake registry verification
     // Destination chains do not extend these (they use certificate verification instead)
@@ -101,11 +106,12 @@ abstract contract TaskManagerStorage is
         isDestinationChain = _isDestinationChain;
         taskResponseWindowBlock = 30; // default to 30 blocks
         epochBlocks = 7200; // default to 7200 blocks (matches current hardcoded value)
+        taskCreationBufferWindow = 2; // default to 2 blocks for task creation buffer
     }
 
     // storage gap for upgradeability
     // slither-disable-next-line shadowing-state
-    uint256[50] private __GAP;
+    uint256[49] private __GAP;
 }
 
 /**

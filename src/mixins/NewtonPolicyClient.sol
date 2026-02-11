@@ -170,4 +170,35 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient {
         );
         return $.policyTaskManager.validateAttestation(attestation);
     }
+
+    /**
+     * @notice Validates an attestation directly by verifying signatures without waiting for respondToTask.
+     * @param task the task to validate
+     * @param taskResponse the task response containing policy evaluation result
+     * @param signatureData ABI-encoded signature data (NonSignerStakesAndSignature or BN254Certificate)
+     * @return true if the attestation is valid, false otherwise
+     * @dev This function validates the attestation directly by checking the policy ID, intent sender, chain ID,
+     *      and verifying signatures on-chain. Use this when you need immediate validation without waiting
+     *      for the aggregator to call respondToTask.
+     */
+    function _validateAttestationDirect(
+        INewtonProverTaskManager.Task calldata task,
+        INewtonProverTaskManager.TaskResponse calldata taskResponse,
+        bytes calldata signatureData
+    ) internal returns (bool) {
+        NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
+        require(
+            taskResponse.policyId == $.policyId,
+            NewtonMessage.Unauthorized("Policy ID does not match")
+        );
+        require(
+            taskResponse.intent.from == msg.sender,
+            NewtonMessage.Unauthorized("Not authorized intent sender")
+        );
+        require(
+            taskResponse.intent.chainId == block.chainid,
+            NewtonMessage.Unauthorized("Chain ID does not match")
+        );
+        return $.policyTaskManager.validateAttestationDirect(task, taskResponse, signatureData);
+    }
 }

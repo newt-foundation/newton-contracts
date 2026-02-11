@@ -450,6 +450,8 @@ library CoreDeploymentLib {
         data.allocationManager = json.readAddress(".addresses.allocationManager");
         data.permissionController = json.readAddress(".addresses.permissionController");
         data.pauserRegistry = json.readAddress(".addresses.pauserRegistry");
+        data.keyRegistrar = json.readAddress(".addresses.keyRegistrar");
+        data.crossChainRegistry = json.readAddress(".addresses.crossChainRegistry");
 
         return data;
     }
@@ -530,6 +532,10 @@ library CoreDeploymentLib {
             data.allocationManager.toHexString(),
             '","permissionController":"',
             data.permissionController.toHexString(),
+            '","keyRegistrar":"',
+            data.keyRegistrar.toHexString(),
+            '","crossChainRegistry":"',
+            data.crossChainRegistry.toHexString(),
             '"}'
         );
     }

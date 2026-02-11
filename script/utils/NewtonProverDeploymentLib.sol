@@ -229,7 +229,7 @@ library NewtonProverDeploymentLib {
         result.identityRegistryImpl = address(identityRegistryImpl);
 
         // deploy SourceTaskResponseHandler for BLS signature verification on source chains
-        address taskResponseHandler = address(
+        result.taskResponseHandler = address(
             new SourceTaskResponseHandler(ISlashingRegistryCoordinator(result.operatorRegistry))
         );
 
@@ -240,7 +240,7 @@ library NewtonProverDeploymentLib {
                 config.aggregatorAddr,
                 result.newtonProverServiceManager,
                 result.operatorRegistry,
-                taskResponseHandler, // taskResponseHandler
+                result.taskResponseHandler,
                 result.challengeVerifier,
                 result.attestationValidator,
                 config.taskResponseWindowBlock,
@@ -252,6 +252,12 @@ library NewtonProverDeploymentLib {
             address(newtonProverTaskManagerImpl),
             (taskmanagerupgradecall)
         );
+
+        // Set taskCreationBufferWindow (not included in initialize, requires separate setter call)
+        // Note: During broadcast, the deployer (who is the owner) is already msg.sender
+        NewtonProverTaskManager(result.newtonProverTaskManager)
+            .updateTaskCreationBufferWindow(config.taskCreationBufferWindow);
+
         // Initialize ChallengeVerifier
         bytes memory challengeVerifierInitCall = abi.encodeCall(
             ChallengeVerifier.initialize,
@@ -402,6 +408,18 @@ library NewtonProverDeploymentLib {
             .updateTaskResponseWindowBlock(config.taskResponseWindowBlock);
         NewtonProverTaskManager(result.newtonProverTaskManager)
             .updateEpochBlocks(config.epochBlocks);
+        NewtonProverTaskManager(result.newtonProverTaskManager)
+            .updateTaskCreationBufferWindow(config.taskCreationBufferWindow);
+
+        /* Deploy new SourceTaskResponseHandler and update TaskManager */
+        // SourceTaskResponseHandler is standalone (not upgradeable), so we deploy a new instance
+        // when its implementation changes and update the TaskManager to use it
+        address newTaskResponseHandler = address(
+            new SourceTaskResponseHandler(ISlashingRegistryCoordinator(result.operatorRegistry))
+        );
+        result.taskResponseHandler = newTaskResponseHandler;
+        NewtonProverTaskManager(result.newtonProverTaskManager)
+            .updateTaskResponseHandler(newTaskResponseHandler);
 
         verifyDeployment(result);
 

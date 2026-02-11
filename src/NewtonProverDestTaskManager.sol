@@ -10,7 +10,10 @@ import {SemVerMixin} from "./mixins/SemVerMixin.sol";
 
 /**
  * @title NewtonProverDestTaskManager
- * @notice Destination chain TaskManager - extends DestinationTaskManagerStorage (no BLSSignatureChecker)
+ * @notice Destination chain TaskManager for cross-chain task execution.
+ * @dev Destination chains lack EigenLayer registries (StakeRegistry, BLSApkRegistry, IndexRegistry).
+ *      Signature verification is handled by DestinationTaskResponseHandler which uses
+ *      BN254 certificate verification via the certificate verifier contract.
  */
 contract NewtonProverDestTaskManager is
     DestinationTaskManagerStorage,

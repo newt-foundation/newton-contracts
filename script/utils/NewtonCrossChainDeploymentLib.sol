@@ -30,7 +30,10 @@ import {
     IIndexRegistry,
     IStakeRegistry
 } from "@eigenlayer-middleware/src/SlashingRegistryCoordinator.sol";
-import {ISocketRegistry} from "@eigenlayer-middleware/src/SocketRegistry.sol";
+import {
+    ISlashingRegistryCoordinator
+} from "@eigenlayer-middleware/src/interfaces/ISlashingRegistryCoordinator.sol";
+import {ISocketRegistry, SocketRegistry} from "@eigenlayer-middleware/src/SocketRegistry.sol";
 import {IAllocationManager} from "@eigenlayer/contracts/interfaces/IAllocationManager.sol";
 
 // EigenLayer multichain imports
@@ -156,6 +159,8 @@ library NewtonCrossChainDeploymentLib {
         address regoVerifierImpl;
         address attestationValidator;
         address attestationValidatorImpl;
+        address socketRegistry;
+        address socketRegistryImpl;
         address operatorRegistry;
         address operatorRegistryImpl;
         address identityRegistry;
@@ -456,6 +461,7 @@ library NewtonCrossChainDeploymentLib {
         result.regoVerifier = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
         result.attestationValidator = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
         result.operatorRegistry = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
+        result.socketRegistry = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
 
         // Deploy destination operator registry implementation
         result.operatorRegistryImpl = address(
@@ -463,12 +469,16 @@ library NewtonCrossChainDeploymentLib {
                 IStakeRegistry(address(0)), // address(0) for destination chains
                 IBLSApkRegistry(address(0)), // address(0) for destination chains
                 IIndexRegistry(address(0)), // address(0) for destination chains
-                ISocketRegistry(address(0)), // address(0) for destination chains
+                ISocketRegistry(result.socketRegistry),
                 IAllocationManager(address(0)), // address(0) for destination chains
                 IPauserRegistry(result.pauserRegistry),
                 PROTOCOL_VERSION
             )
         );
+
+        // Deploy destination socket registry implementation
+        result.socketRegistryImpl =
+            address(new SocketRegistry(ISlashingRegistryCoordinator(result.operatorRegistry)));
 
         // Deploy Newton AVS implementations
         result.newtonProverTaskManagerImpl = address(
@@ -511,6 +521,7 @@ library NewtonCrossChainDeploymentLib {
         UpgradeableProxyLib.upgradeAndCall(
             result.operatorRegistry, result.operatorRegistryImpl, operatorRegistryInitCall
         );
+        UpgradeableProxyLib.upgrade(result.socketRegistry, result.socketRegistryImpl);
 
         // Deploy DestinationTaskResponseHandler for certificate verification
         address taskResponseHandler = address(
@@ -535,6 +546,11 @@ library NewtonCrossChainDeploymentLib {
         UpgradeableProxyLib.upgradeAndCall(
             result.newtonProverTaskManager, result.newtonProverTaskManagerImpl, taskManagerInitCall
         );
+
+        // Set taskCreationBufferWindow (not included in initialize, requires separate setter call)
+        // Note: During broadcast, the deployer (who is the owner) is already msg.sender
+        NewtonProverDestTaskManager(result.newtonProverTaskManager)
+            .updateTaskCreationBufferWindow(config.taskCreationBufferWindow);
 
         bytes memory challengeVerifierInitCall = abi.encodeWithSignature(
             "initialize(bool,uint32,uint32,address)", false, uint32(100), uint32(30), admin
@@ -674,6 +690,28 @@ library NewtonCrossChainDeploymentLib {
             new AttestationValidator(result.newtonProverTaskManager, result.operatorRegistry);
         result.attestationValidatorImpl = address(attestationValidatorImpl);
         UpgradeableProxyLib.upgrade(result.attestationValidator, address(attestationValidatorImpl));
+
+        // Upgrade NewtonProverDestTaskManager
+        NewtonProverDestTaskManager newtonProverDestTaskManagerImpl = new NewtonProverDestTaskManager(
+            OperatorRegistry(result.operatorRegistry),
+            IPauserRegistry(result.pauserRegistry),
+            PROTOCOL_VERSION
+        );
+        result.newtonProverTaskManagerImpl = address(newtonProverDestTaskManagerImpl);
+        UpgradeableProxyLib.upgrade(
+            result.newtonProverTaskManager, result.newtonProverTaskManagerImpl
+        );
+
+        // Deploy new DestinationTaskResponseHandler and update TaskManager
+        // DestinationTaskResponseHandler is standalone (not upgradeable), so we deploy a new
+        // instance when its implementation changes and update the TaskManager to use it
+        address newTaskResponseHandler = address(
+            new DestinationTaskResponseHandler(
+                ICertificateVerifier(result.bn254CertificateVerifier), result.sourceChainAvsAddress
+            )
+        );
+        NewtonProverDestTaskManager(result.newtonProverTaskManager)
+            .updateTaskResponseHandler(newTaskResponseHandler);
 
         // Update TaskManager configuration
         NewtonProverDestTaskManager(result.newtonProverTaskManager)
@@ -816,6 +854,8 @@ library NewtonCrossChainDeploymentLib {
             json.readAddressOr(".addresses.attestationValidator", address(0));
         data.attestationValidatorImpl =
             json.readAddressOr(".addresses.attestationValidatorImpl", address(0));
+        data.socketRegistry = json.readAddressOr(".addresses.socketRegistry", address(0));
+        data.socketRegistryImpl = json.readAddressOr(".addresses.socketRegistryImpl", address(0));
         data.operatorRegistry = json.readAddressOr(".addresses.operatorRegistry", address(0));
         data.operatorRegistryImpl =
             json.readAddressOr(".addresses.operatorRegistryImpl", address(0));
@@ -907,6 +947,10 @@ library NewtonCrossChainDeploymentLib {
             data.attestationValidator.toHexString(),
             '","attestationValidatorImpl":"',
             data.attestationValidatorImpl.toHexString(),
+            '","socketRegistry":"',
+            data.socketRegistry.toHexString(),
+            '","socketRegistryImpl":"',
+            data.socketRegistryImpl.toHexString(),
             '","operatorRegistry":"',
             data.operatorRegistry.toHexString(),
             '","operatorRegistryImpl":"',

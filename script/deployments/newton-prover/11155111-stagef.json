@@ -1,22 +1,22 @@
 {
   "lastUpdate": {
-    "timestamp": "1769633700",
-    "block_number": "10143840"
+    "timestamp": "1770695292",
+    "block_number": "10228920"
   },
   "addresses": {
     "proxyAdmin": "0x78be3e5613f78d7fb00e718dacc68f91d68b519f",
     "newtonProverServiceManager": "0x6f6c362725d2809edfdcfd960ea8e2899529b8be",
-    "newtonProverServiceManagerImpl": "0xb8ece318084ef55c67d5c2a3836d0c28c022a9a4",
+    "newtonProverServiceManagerImpl": "0xf3d0e1010bb27eca43efcc0475265d9399182d3d",
     "newtonProverTaskManager": "0xcbc425b73e01c9b8f40c62b638f9750486127b75",
-    "newtonProverTaskManagerImpl": "0xee33c159b76a97f6ca375fca9335214b42ee2013",
+    "newtonProverTaskManagerImpl": "0x450ccc58eddddb8d7cfc28b6e26b393c83b07dbb",
     "challengeVerifier": "0x1613d12dbd6e6f677082e76674517c00daaabf5d",
-    "challengeVerifierImpl": "0x748e069298f1761ff60d8e45e2d8088ca4da980a",
+    "challengeVerifierImpl": "0x3b5fd9909678a9e03d57b5692f16b290daece522",
     "regoVerifier": "0x2b512a4d92e875c0060c80369ae3a1d8ec07fdc5",
-    "regoVerifierImpl": "0xd7f2920b9911f3f9b68dc38d1b3253e3f59c78f6",
+    "regoVerifierImpl": "0x76c92dc9d666883d55431072454db26d5c96a4b7",
     "attestationValidator": "0xcd1fd81557225efcb9fb6927e981cbc86c4697ff",
-    "attestationValidatorImpl": "0x96480a9811543f7d79efb16b9b1f3a8b65cd6a00",
+    "attestationValidatorImpl": "0x5b050fc4e724613a3a9b5043161b1c4320207f0d",
     "operatorRegistry": "0xd5f3ea324ec537ecac269d4795b2d54f907ec305",
-    "operatorRegistryImpl": "0xb75d56d6230b68ab48af930c6991145dd07bed60",
+    "operatorRegistryImpl": "0xe88d5082b56ef7ab32a78efde7d816361a2a0294",
     "blsApkRegistry": "0x6e5716768db85ee69f36f32d5e1901838e56ef19",
     "blsApkRegistryImpl": "0x0579000b607528870598aa36e5a7b3f4f8681d75",
     "indexRegistry": "0x7f332690b3d90b4f578ba550e2398495734ad965",
@@ -29,11 +29,12 @@
     "strategy": "0x6728e8c32e46683f9740cab4f7b60db39bd86e28",
     "pauserRegistry": "0xf98bc042a793c5a8fa852ebd11e076d00ae64d1a",
     "identityRegistry": "0x2be57053439a5213561b8586fe871905d2193f72",
-    "identityRegistryImpl": "0xe5f154262b40563031f37c2b435083abb35fcfc0",
+    "identityRegistryImpl": "0xce76d82acad61a3dada69977bdb24fd40a92ec2c",
     "token": "0xe465dc8802f79931048e1435e9b55a85f606a777",
     "tokenImpl": "0x1ff18c864006988c05d715b7519e118557bbc427",
     "slasher": "0xaf19f962a18b0a0cda04a3310f16e097868013b7",
     "instantSlasherImpl": "0x61a3ab6b8c1da63184eefab3aa2a228e122ec8d2",
-    "operatorTableCalculator": "0x0000000000000000000000000000000000000000"
+    "operatorTableCalculator": "0x9054cb80d7f0e55ea3927a064c3f16ceb6ee6464",
+    "taskResponseHandler": "0xb5449ba545b05d7691cfa340fe7848f283b6aa13"
   }
 }

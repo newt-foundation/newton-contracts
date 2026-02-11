@@ -11,6 +11,7 @@ import {
 import {IOperatorRegistry} from "../interfaces/IOperatorRegistry.sol";
 import {INewtonProverTaskManager} from "../interfaces/INewtonProverTaskManager.sol";
 import {IBLSSignatureChecker} from "@eigenlayer-middleware/src/interfaces/IBLSSignatureChecker.sol";
+import {TaskLib} from "./TaskLib.sol";
 import {
     IBN254CertificateVerifier,
     IBN254CertificateVerifierTypes
@@ -42,6 +43,12 @@ library OperatorVerifierLib {
         IOperatorRegistry registry = IOperatorRegistry(address(registryCoordinator));
         IBLSApkRegistry blsApkRegistry = registryCoordinator.blsApkRegistry();
         IIndexRegistry indexRegistry = registryCoordinator.indexRegistry();
+
+        // On destination chains, sub-registries are address(0) since EigenLayer registries
+        // are not deployed. Skip whitelist check — BLS signature is verified via pairing.
+        if (address(blsApkRegistry) == address(0) || address(indexRegistry) == address(0)) {
+            return;
+        }
 
         // Get all operators registered for each quorum at the task creation block
         // Then subtract non-signers to get the actual signers
@@ -135,8 +142,9 @@ library OperatorVerifierLib {
             bytes32 hashOfNonSigners
         )
     {
-        // Check signatures and threshold
-        bytes32 message = keccak256(abi.encode(taskResponse));
+        // Use consensus digest (attestations zeroed) to match what operators signed
+        // Attestations are validated separately in validateTaskResponsePolicyData
+        bytes32 message = TaskLib.computeConsensusDigest(taskResponse);
         (quorumStakeTotals, hashOfNonSigners) = checkSignatures(
             message, task.quorumNumbers, uint32(task.taskCreatedBlock), nonSignerStakesAndSignature
         );
@@ -181,8 +189,9 @@ library OperatorVerifierLib {
         IBN254CertificateVerifier certificateVerifier,
         address sourceChainAvsAddress
     ) external returns (bytes32 hashOfNonSigners) {
-        // verify that certificate messageHash matches the taskResponse
-        bytes32 taskResponseHash = keccak256(abi.encode(taskResponse));
+        // Verify that certificate messageHash matches the consensus digest of the taskResponse
+        // Uses consensus digest (attestations zeroed) to match what operators signed
+        bytes32 taskResponseHash = TaskLib.computeConsensusDigest(taskResponse);
         if (certificate.messageHash != taskResponseHash) {
             revert CertificateMessageHashMismatch();
         }
