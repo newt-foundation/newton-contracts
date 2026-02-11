@@ -1,0 +1,138 @@
+{
+  "31338": {
+    "taskGenerator": ["0x70997970C51812dc3A010C7d01b50e0d17dc79C8"],
+    "operator": [
+      "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "0x90F79bf6EB2c4f870365E785982E1f101E93b906"
+    ],
+    "policyVerifier": ["0xd54f8871783163b0b35fc035d7798a4b856cfc25"],
+    "policyDataVerifier": ["0xd54f8871783163b0b35fc035d7798a4b856cfc25"],
+    "policy": [],
+    "policyData": [],
+    "num_quorums": 1,
+    "operator_params": [10000, 15000, 100],
+    "minimum_stake": 0,
+    "look_ahead_period": 0,
+    "aggregator_addr": "0xa0Ee7A142d267C1f36714E4a8F75612F20a79720",
+    "task_response_window_block": 30,
+    "task_challenge_window_block": 30,
+    "epoch_blocks": 7200,
+    "task_creation_buffer_window": 10,
+    "is_challenge_enabled": true,
+    "sp1_verifier": "0xd54f8871783163b0b35fc035d7798a4b856cfc25",
+    "sp1_program_vkey": "0x00b622d22f774a19aaef4ee67535d9c0eb2368c987e2a34fa6b52bdb9502375b"
+  },
+  "31337": {
+    "taskGenerator": ["0x70997970C51812dc3A010C7d01b50e0d17dc79C8"],
+    "operator": [
+      "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "0x90F79bf6EB2c4f870365E785982E1f101E93b906"
+    ],
+    "policyVerifier": ["0xd54f8871783163b0b35fc035d7798a4b856cfc25"],
+    "policyDataVerifier": ["0xd54f8871783163b0b35fc035d7798a4b856cfc25"],
+    "policy": [],
+    "policyData": [],
+    "num_quorums": 1,
+    "operator_params": [10000, 15000, 100],
+    "minimum_stake": 0,
+    "look_ahead_period": 0,
+    "aggregator_addr": "0xa0Ee7A142d267C1f36714E4a8F75612F20a79720",
+    "task_response_window_block": 30,
+    "task_challenge_window_block": 30,
+    "epoch_blocks": 7200,
+    "task_creation_buffer_window": 10,
+    "is_challenge_enabled": true,
+    "sp1_verifier": "0xd54f8871783163b0b35fc035d7798a4b856cfc25",
+    "sp1_program_vkey": "0x00b622d22f774a19aaef4ee67535d9c0eb2368c987e2a34fa6b52bdb9502375b",
+    "crossChain": {
+      "destinationChainIds": [11155420, 421614, 80002],
+      "maxStalenessPeriod": 3600,
+      "operatorSetId": 0
+    }
+  },
+  "11155111": {
+    "taskGenerator": [
+      "0xD45062003a4626a532F30A4596aB253c45AE0647",
+      "0xd1168701C5df97bdb65361aAF9318ae2c7e39312"
+    ],
+    "operator": [
+      "0x0B26205c99A7669cCC6Dfe4D95CaCC5BfE62e2fe",
+      "0x84C2662C0359dA7ac2101c7392ab767A4A80Cf96",
+      "0x6FAf85Dda4e07300418beDc31AF6621383de65E8"
+    ],
+    "policyVerifier": ["0xd1168701C5df97bdb65361aAF9318ae2c7e39312"],
+    "policyDataVerifier": ["0xd1168701C5df97bdb65361aAF9318ae2c7e39312"],
+    "policy": [],
+    "policyData": [],
+    "num_quorums": 1,
+    "operator_params": [10000, 15000, 100],
+    "minimum_stake": 100,
+    "look_ahead_period": 0,
+    "aggregator_addr": "0xd1168701C5df97bdb65361aAF9318ae2c7e39312",
+    "task_response_window_block": 30,
+    "task_challenge_window_block": 30,
+    "epoch_blocks": 7200,
+    "task_creation_buffer_window": 10,
+    "is_challenge_enabled": true,
+    "sp1_verifier": "0x50ACFBEdecf4cbe350E1a86fC6f03a821772f1e5",
+    "sp1_program_vkey": "0x00b622d22f774a19aaef4ee67535d9c0eb2368c987e2a34fa6b52bdb9502375b",
+    "crossChain": {
+      "destinationChainIds": [11155420, 421614, 80002],
+      "maxStalenessPeriod": 3600,
+      "operatorSetId": 0
+    }
+  },
+  "1": {
+    "taskGenerator": ["0x4883282094755C01cd0d15dFE74753c9E189d194"],
+    "operator": [
+      "0xC98a78990803D9c7254B2Bf85C722C3378c06b38",
+      "0x2E118e3eC174958DB2013012Cc51956C08A994aa"
+    ],
+    "policyVerifier": ["0xd1168701C5df97bdb65361aAF9318ae2c7e39312"],
+    "policyDataVerifier": ["0xd1168701C5df97bdb65361aAF9318ae2c7e39312"],
+    "policy": [],
+    "policyData": [],
+    "token": "0xD0eC028a3D21533Fdd200838F39c85B03679285D",
+    "tokenImpl": "0x1F064066068F837598b35796ca9f177863915846",
+    "num_quorums": 1,
+    "minimum_stake": 1000,
+    "look_ahead_period": 0,
+    "operator_params": [10, 15000, 100],
+    "aggregator_addr": "0x3faBE687A68d1869e647E29327C82204dA9911bd",
+    "task_response_window_block": 30,
+    "task_challenge_window_block": 30,
+    "epoch_blocks": 7200,
+    "task_creation_buffer_window": 10,
+    "is_challenge_enabled": false,
+    "sp1_verifier": "0x50ACFBEdecf4cbe350E1a86fC6f03a821772f1e5",
+    "sp1_program_vkey": "0x00b622d22f774a19aaef4ee67535d9c0eb2368c987e2a34fa6b52bdb9502375b",
+    "crossChain": {
+      "destinationChainIds": [10, 42161, 137],
+      "maxStalenessPeriod": 3600,
+      "operatorSetId": 0
+    }
+  },
+  "84532": {
+    "taskGenerator": [
+      "0xD45062003a4626a532F30A4596aB253c45AE0647",
+      "0xd1168701C5df97bdb65361aAF9318ae2c7e39312"
+    ],
+    "operator": [
+      "0x0B26205c99A7669cCC6Dfe4D95CaCC5BfE62e2fe",
+      "0x84C2662C0359dA7ac2101c7392ab767A4A80Cf96",
+      "0x6FAf85Dda4e07300418beDc31AF6621383de65E8"
+    ],
+    "policyVerifier": ["0xd1168701C5df97bdb65361aAF9318ae2c7e39312"],
+    "policyDataVerifier": ["0xd1168701C5df97bdb65361aAF9318ae2c7e39312"],
+    "aggregator_addr": "0x0000000000000000000000000000000000000000",
+    "task_response_window_block": 30,
+    "task_challenge_window_block": 30,
+    "epoch_blocks": 7200,
+    "task_creation_buffer_window": 10,
+    "is_challenge_enabled": true,
+    "sp1_verifier": "0x0000000000000000000000000000000000000000",
+    "sp1_program_vkey": "0x00b622d22f774a19aaef4ee67535d9c0eb2368c987e2a34fa6b52bdb9502375b"
+  }
+}
