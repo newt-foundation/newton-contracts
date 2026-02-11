@@ -1,0 +1,112 @@
+{
+  "11155111": {
+    "taskGenerator": [
+      "0x19F9dEC9928417B6Ea6aD52291acCa9deef59E3F",
+      "0x9Ccd55A0Fb8aBD14919bb5B2BCDD39C1Dd40E883",
+      "0xb3785B3CA4d6b175518c9a2A51AE836f2dE3016B",
+      "0xC6aA2638873e90eCaF0306cbCC4370C6AC893E68",
+      "0x64E33a6b2874129f2C6FB61832b763F65C8342fb",
+      "0xA21d5CCa5771DAB5a049b1FAA524c41ae911e185",
+      "0x22748005349aD3e261Fc6B1C83956781d6d661B4",
+      "0x3F15Da29D0de8c45bf625299AA20e43970153622",
+      "0x494221AaA9B9B273EB171512Ea000bEaE868d332",
+      "0xd1168701C5df97bdb65361aAF9318ae2c7e39312",
+      "0x51eBfB4c0441b0D8898d968975073c24B9190227"
+    ],
+    "operator": [
+      "0x0B26205c99A7669cCC6Dfe4D95CaCC5BfE62e2fe",
+      "0x84C2662C0359dA7ac2101c7392ab767A4A80Cf96",
+      "0x6FAf85Dda4e07300418beDc31AF6621383de65E8"
+    ],
+    "policyVerifier": ["0xd1168701C5df97bdb65361aAF9318ae2c7e39312"],
+    "policyDataVerifier": ["0xd1168701C5df97bdb65361aAF9318ae2c7e39312"],
+    "policy": [],
+    "policyData": [],
+    "num_quorums": 1,
+    "operator_params": [10000, 15000, 100],
+    "minimum_stake": 100,
+    "look_ahead_period": 0,
+    "aggregator_addr": "0xd1168701C5df97bdb65361aAF9318ae2c7e39312",
+    "task_response_window_block": 30,
+    "task_challenge_window_block": 30,
+    "epoch_blocks": 7200,
+    "task_creation_buffer_window": 10,
+    "is_challenge_enabled": true,
+    "sp1_verifier": "0x50ACFBEdecf4cbe350E1a86fC6f03a821772f1e5",
+    "sp1_program_vkey": "0x00b622d22f774a19aaef4ee67535d9c0eb2368c987e2a34fa6b52bdb9502375b",
+    "crossChain": {
+      "destinationChainIds": [11155420, 421614, 80002],
+      "maxStalenessPeriod": 3600,
+      "operatorSetId": 0
+    }
+  },
+  "1": {
+    "taskGenerator": [
+      "0x19F9dEC9928417B6Ea6aD52291acCa9deef59E3F",
+      "0x9Ccd55A0Fb8aBD14919bb5B2BCDD39C1Dd40E883",
+      "0xb3785B3CA4d6b175518c9a2A51AE836f2dE3016B",
+      "0xC6aA2638873e90eCaF0306cbCC4370C6AC893E68",
+      "0x64E33a6b2874129f2C6FB61832b763F65C8342fb",
+      "0xA21d5CCa5771DAB5a049b1FAA524c41ae911e185",
+      "0x22748005349aD3e261Fc6B1C83956781d6d661B4",
+      "0x3F15Da29D0de8c45bf625299AA20e43970153622",
+      "0x494221AaA9B9B273EB171512Ea000bEaE868d332"
+    ],
+    "operator": [],
+    "policyVerifier": ["0xCEEb895cd35DF623d62c3D2283a6D8BE632ab1f2"],
+    "policyDataVerifier": ["0xCEEb895cd35DF623d62c3D2283a6D8BE632ab1f2"],
+    "policy": [
+      "0xa9aDDE5128Fe9Cd60D5914cd24e248D4Fc436bED",
+      "0xF6bbAa9a837E468C29E1E4A527462aa355F1313a"
+    ],
+    "policyData": ["0x746521CCe6bE75C693E724bEaFE7FD8779D25da3"],
+    "token": "0xD0eC028a3D21533Fdd200838F39c85B03679285D",
+    "tokenImpl": "0x1F064066068F837598b35796ca9f177863915846",
+    "num_quorums": 1,
+    "minimum_stake": 1000,
+    "look_ahead_period": 0,
+    "operator_params": [10, 15000, 100],
+    "aggregator_addr": "0x3faBE687A68d1869e647E29327C82204dA9911bd",
+    "task_response_window_block": 30,
+    "task_challenge_window_block": 30,
+    "epoch_blocks": 7200,
+    "task_creation_buffer_window": 10,
+    "is_challenge_enabled": false,
+    "sp1_verifier": "0x50ACFBEdecf4cbe350E1a86fC6f03a821772f1e5",
+    "sp1_program_vkey": "0x00b622d22f774a19aaef4ee67535d9c0eb2368c987e2a34fa6b52bdb9502375b",
+    "crossChain": {
+      "destinationChainIds": [10, 42161, 137],
+      "maxStalenessPeriod": 3600,
+      "operatorSetId": 0
+    }
+  },
+  "84532": {
+    "taskGenerator": [
+      "0x19F9dEC9928417B6Ea6aD52291acCa9deef59E3F",
+      "0x9Ccd55A0Fb8aBD14919bb5B2BCDD39C1Dd40E883",
+      "0xb3785B3CA4d6b175518c9a2A51AE836f2dE3016B",
+      "0xC6aA2638873e90eCaF0306cbCC4370C6AC893E68",
+      "0x64E33a6b2874129f2C6FB61832b763F65C8342fb",
+      "0xA21d5CCa5771DAB5a049b1FAA524c41ae911e185",
+      "0x22748005349aD3e261Fc6B1C83956781d6d661B4",
+      "0x3F15Da29D0de8c45bf625299AA20e43970153622",
+      "0x494221AaA9B9B273EB171512Ea000bEaE868d332",
+      "0x51eBfB4c0441b0D8898d968975073c24B9190227"
+    ],
+    "operator": [
+      "0x0B26205c99A7669cCC6Dfe4D95CaCC5BfE62e2fe",
+      "0x84C2662C0359dA7ac2101c7392ab767A4A80Cf96",
+      "0x6FAf85Dda4e07300418beDc31AF6621383de65E8"
+    ],
+    "policyVerifier": ["0xd1168701C5df97bdb65361aAF9318ae2c7e39312"],
+    "policyDataVerifier": ["0xd1168701C5df97bdb65361aAF9318ae2c7e39312"],
+    "aggregator_addr": "0x0000000000000000000000000000000000000000",
+    "task_response_window_block": 30,
+    "task_challenge_window_block": 30,
+    "epoch_blocks": 7200,
+    "task_creation_buffer_window": 10,
+    "is_challenge_enabled": true,
+    "sp1_verifier": "0x0000000000000000000000000000000000000000",
+    "sp1_program_vkey": "0x00b622d22f774a19aaef4ee67535d9c0eb2368c987e2a34fa6b52bdb9502375b"
+  }
+}
