@@ -12,6 +12,15 @@ interface INewtonPolicy is IERC165 {
         uint32 expireAfter;
     }
 
+    struct PolicyState {
+        // the address of the policy
+        address policyAddress;
+        // the policyId of the client
+        bytes32 policyId;
+        // the config of the policy being evaluated
+        PolicyConfig policyConfig;
+    }
+
     struct SetPolicyInfo {
         bytes32 policyId;
         address policyAddress;

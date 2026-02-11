@@ -1,0 +1,30 @@
+{
+  "lastUpdate": {
+    "timestamp": "1769586606",
+    "block_number": "36909159"
+  },
+  "type": "destination",
+  "sourceChainId": "11155111",
+  "addresses": {
+    "proxyAdmin": "0xb57f9e3e84291fdf42aee92c5b1a073df306eb37",
+    "pauserRegistry": "0x63aae451780090f50ad323aaef155f63a29d20f3",
+    "operatorTableUpdater": "0xb02a15c6bd0882b35e9936a9579f35fb26e11476",
+    "operatorTableUpdaterImpl": "0x0000000000000000000000000000000000000000",
+    "bn254CertificateVerifier": "0xff58a373c18268f483c1f5ca03cf885c0c43373a",
+    "bn254CertificateVerifierImpl": "0x0000000000000000000000000000000000000000",
+    "ecdsaCertificateVerifier": "0xb3cd1a457dea9a9a6f6406c6419b1c326670a96f",
+    "ecdsaCertificateVerifierImpl": "0x0000000000000000000000000000000000000000",
+    "newtonProverTaskManager": "0xc3dc89b5e5241ef53c468dfbaa371a7f1d465eb7",
+    "newtonProverTaskManagerImpl": "0x29f418d230e666426393ebc448cec98bf9c2a9b8",
+    "challengeVerifier": "0x90ab78a5a507e83bbb9184070d656f524c12e856",
+    "challengeVerifierImpl": "0x21a6720eeafffda9a8a93b6d1b9340c03414d141",
+    "regoVerifier": "0xcf5cc4f6b751f050fe4e157cdb3a4dddb2b534f0",
+    "regoVerifierImpl": "0x57af656d76edad9f6dabfab82a1641e292e647de",
+    "attestationValidator": "0x4e21b596944ebe8bd3773dd70c6f134bd2840a73",
+    "attestationValidatorImpl": "0xa1cb3f2ce71d3df5c131ea8b06a1f06fd2ea4c6b",
+    "socketRegistry": "0xc42ec14394ab80c8cab6126a54ce0a40d9fafe4c",
+    "socketRegistryImpl": "0x605c69836d966ec5f7c3b09f1c9a6b8c23cfe420",
+    "operatorRegistry": "0x46da020f76d1f478fee1091d1fc96adfeafbdcf0",
+    "operatorRegistryImpl": "0xdb57542cb17ebebbaef7d7de240eef86f49cc145"
+  }
+}

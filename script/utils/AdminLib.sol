@@ -134,7 +134,8 @@ library AdminLib {
 
     function syncTaskGenerator(
         address[] memory targetAddresses,
-        address operatorRegistry
+        address operatorRegistry,
+        address policyDataFactory
     ) internal {
         address[] memory currentAddresses =
             OperatorRegistry(operatorRegistry).getAllTaskGenerators();
@@ -150,6 +151,9 @@ library AdminLib {
             OperatorRegistry(operatorRegistry).removeTaskGenerator(toRemove[i]);
             console2.log("Removed task generator:", toRemove[i]);
         }
+
+        // Sync PolicyData attesters (task generators sign attestations in non-consensus mode)
+        _syncAttesters(toAdd, toRemove, policyDataFactory, "task generator");
     }
 
     function syncOperatorWhitelist(
@@ -174,6 +178,21 @@ library AdminLib {
         }
 
         // 2. Sync PolicyData attesters (operators generate policy data during task evaluation)
+        _syncAttesters(toAdd, toRemove, policyDataFactory, "operator");
+    }
+
+    /// @notice Internal helper to sync attesters for PolicyData contracts
+    /// @dev Used by both syncOperatorWhitelist and syncTaskGenerator
+    function _syncAttesters(
+        address[] memory toAdd,
+        address[] memory toRemove,
+        address policyDataFactory,
+        string memory attesterType
+    ) private {
+        if (toAdd.length == 0 && toRemove.length == 0) {
+            return;
+        }
+
         address[] memory policyDataOwners =
             NewtonPolicyDataFactory(policyDataFactory).getAllPolicyDataOwners();
         for (uint256 i = 0; i < policyDataOwners.length; i++) {
@@ -207,7 +226,9 @@ library AdminLib {
                                 verificationKey: attestationInfo.verificationKey
                             })
                         );
-                    console2.log("Updated attesters for policy data:", policyData[j]);
+                    console2.log(
+                        "Updated attesters for policy data (", attesterType, "):", policyData[j]
+                    );
                 }
             }
         }

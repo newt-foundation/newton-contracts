@@ -49,7 +49,8 @@ library VersionLib {
     }
 
     /// @notice Check if an actual version is compatible with a minimum required version
-    /// @dev Compatible if: same major version AND (minor > min OR (minor == min AND patch >= min))
+    /// @dev Compatible if: same major version AND minor >= minimum. Patch is ignored
+    ///      because patch bumps are backward-compatible bug fixes that require no migration.
     /// @param actual The actual version string
     /// @param minimum The minimum required version string
     /// @return True if actual version is compatible with minimum version
@@ -65,17 +66,8 @@ library VersionLib {
             return false;
         }
 
-        // Minor version must be greater or equal
-        if (actualVer.minor > minVer.minor) {
-            return true;
-        }
-
-        if (actualVer.minor < minVer.minor) {
-            return false;
-        }
-
-        // If minor versions match, patch must be greater or equal
-        return actualVer.patch >= minVer.patch;
+        // Minor version must be >= minimum; patch is ignored
+        return actualVer.minor >= minVer.minor;
     }
 
     /// @notice Parse a numeric component from a version string

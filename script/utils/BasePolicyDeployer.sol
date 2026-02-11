@@ -90,9 +90,15 @@ abstract contract BasePolicyDeployer is Script {
     }
 
     /// @notice Read operators from configured path
-    /// @dev Operators are added as attesters since they generate PolicyTaskData and sign attestations
+    /// @dev Operators are added as attesters since they sign attestations in consensus mode
     function _readOperators() internal returns (address[] memory) {
         return AdminLib.readAddresses(_operatorsConfigPath, block.chainid).operator;
+    }
+
+    /// @notice Read task generators from configured path
+    /// @dev Task generators are added as attesters since they sign attestations in non-consensus mode
+    function _readTaskGenerators() internal returns (address[] memory) {
+        return AdminLib.readAddresses(_operatorsConfigPath, block.chainid).taskGenerator;
     }
 
     /// @notice Read policy params from configured path

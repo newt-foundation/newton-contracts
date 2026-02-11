@@ -16,6 +16,8 @@ import {SemVerMixin} from "../mixins/SemVerMixin.sol";
 contract NewtonPolicyDataFactory is OwnableUpgradeable, SemVerMixin {
     using EnumerableSet for EnumerableSet.AddressSet;
 
+    error Create2Failed();
+
     address public implementation;
     ProxyAdmin public proxyAdmin;
 
@@ -137,8 +139,8 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable, SemVerMixin {
         address proxy;
         assembly {
             proxy := create2(0, add(bytecode, 32), mload(bytecode), salt)
-            if iszero(proxy) { revert(0, 0) }
         }
+        require(proxy != address(0), Create2Failed());
 
         policyDataAddr = proxy;
 

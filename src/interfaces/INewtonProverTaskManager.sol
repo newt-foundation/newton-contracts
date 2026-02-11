@@ -2,13 +2,12 @@
 pragma solidity ^0.8.27;
 
 import "@eigenlayer-middleware/src/libraries/BN254.sol";
-import {IBLSSignatureChecker} from "@eigenlayer-middleware/src/interfaces/IBLSSignatureChecker.sol";
 import {NewtonMessage} from "../core/NewtonMessage.sol";
 import {INewtonPolicy} from "./INewtonPolicy.sol";
 
 interface INewtonProverTaskManager {
     // EVENTS
-    event NewTaskCreated(bytes32 indexed taskId, Task task);
+    event NewTaskCreated(bytes32 indexed taskId, Task task, INewtonPolicy.PolicyState state);
 
     event TaskResponded(TaskResponse taskResponse, ResponseCertificate responseCertificate);
 
@@ -18,7 +17,11 @@ interface INewtonProverTaskManager {
 
     event AttestationSpent(bytes32 indexed taskId, NewtonMessage.Attestation attestation);
 
+    event DirectTaskResponded(bytes32 indexed taskId, Task task, TaskResponse taskResponse);
+
     event AggregatorUpdated(address indexed previousAggregator, address indexed newAggregator);
+
+    event TaskResponseHandlerUpdated(address indexed newHandler);
 
     // STRUCTS
     // Task struct represents the minimal on-chain task data.
@@ -124,12 +127,13 @@ interface INewtonProverTaskManager {
         NewtonMessage.Attestation calldata attestation
     ) external returns (bool);
 
-    // NOTE: this function validates attestation directly by verifying BLS signatures
+    // NOTE: this function validates attestation directly by verifying signatures
     // without waiting for respondToTask to be called.
+    // signatureData is ABI-encoded NonSignerStakesAndSignature (source) or BN254Certificate (destination)
     function validateAttestationDirect(
         Task calldata task,
         TaskResponse calldata taskResponse,
-        IBLSSignatureChecker.NonSignerStakesAndSignature calldata nonSignerStakesAndSignature
+        bytes calldata signatureData
     ) external returns (bool);
 
     // NOTE: this function challenges directly verified attestations when respondToTask
@@ -137,13 +141,22 @@ interface INewtonProverTaskManager {
     function challengeDirectlyVerifiedAttestation(
         Task calldata task,
         TaskResponse calldata taskResponse,
-        IBLSSignatureChecker.NonSignerStakesAndSignature calldata nonSignerStakesAndSignature
+        bytes calldata signatureData
+    ) external;
+
+    // NOTE: this function challenges directly verified attestations when the direct path
+    // hashes differ from the regular path (createNewTask + respondToTask) hashes.
+    function challengeDirectlyVerifiedMismatch(
+        Task calldata task,
+        TaskResponse calldata taskResponse,
+        bytes calldata signatureData
     ) external;
 
     // NOTE: getter functions for public mappings
     function taskHash(
         bytes32 taskId
     ) external view returns (bytes32);
+
     function taskResponseHash(
         bytes32 taskId
     ) external view returns (bytes32);

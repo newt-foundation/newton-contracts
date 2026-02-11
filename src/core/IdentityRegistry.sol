@@ -95,7 +95,7 @@ contract IdentityRegistry is OwnableUpgradeable, EIP712Upgradeable, Nonces, IIde
 
         uint256 numDomains = _identityDomains.length;
         require(numDomains > 0, NoEmptyDomainsArray());
-        require(numDomains <= MAX_LINKS, TooManyLinksAtOnce());
+        require(numDomains <= MAX_LINKS, TooManyDomainsAtOnce());
 
         for (uint256 i; i < numDomains; ++i) {
             _linkIdentity(identityOwner, _policyClient, clientUser, _identityDomains[i]);
@@ -119,7 +119,7 @@ contract IdentityRegistry is OwnableUpgradeable, EIP712Upgradeable, Nonces, IIde
 
         uint256 numDomains = _identityDomains.length;
         require(numDomains > 0, NoEmptyDomainsArray());
-        require(numDomains <= MAX_LINKS, TooManyLinksAtOnce());
+        require(numDomains <= MAX_LINKS, TooManyDomainsAtOnce());
 
         // check signature by the client user
         _confirmSignature(
@@ -156,7 +156,7 @@ contract IdentityRegistry is OwnableUpgradeable, EIP712Upgradeable, Nonces, IIde
 
         uint256 numDomains = _identityDomains.length;
         require(numDomains > 0, NoEmptyDomainsArray());
-        require(numDomains <= MAX_LINKS, TooManyLinksAtOnce());
+        require(numDomains <= MAX_LINKS, TooManyDomainsAtOnce());
 
         // check signature by the identityOwner
         _confirmSignature(
@@ -195,7 +195,7 @@ contract IdentityRegistry is OwnableUpgradeable, EIP712Upgradeable, Nonces, IIde
     ) external override {
         uint256 numDomains = _identityDomains.length;
         require(numDomains > 0, NoEmptyDomainsArray());
-        require(numDomains <= MAX_LINKS, TooManyLinksAtOnce());
+        require(numDomains <= MAX_LINKS, TooManyDomainsAtOnce());
 
         // check signature by the identityOwner
         _confirmSignature(
@@ -225,6 +225,26 @@ contract IdentityRegistry is OwnableUpgradeable, EIP712Upgradeable, Nonces, IIde
 
         for (uint256 i; i < numDomains; ++i) {
             _linkIdentity(_identityOwner, _policyClient, _clientUser, _identityDomains[i]);
+        }
+    }
+
+    /**
+     * function to unlink existing links, only useable if msg.sender is the identity that is linked
+     *
+     * @inheritdoc IIdentityRegistry
+     */
+    function unlinkIdentityAsSigner(
+        address _clientUser,
+        address _policyClient,
+        bytes32[] calldata _identityDomains
+    ) external {
+        address caller = msg.sender;
+        uint256 numDomains = _identityDomains.length;
+        require(numDomains > 0, NoEmptyDomainsArray());
+        require(numDomains <= MAX_LINKS, TooManyDomainsAtOnce());
+
+        for (uint256 i; i < numDomains; ++i) {
+            _unlinkIdentity(caller, _policyClient, _clientUser, _identityDomains[i]);
         }
     }
 
@@ -285,5 +305,29 @@ contract IdentityRegistry is OwnableUpgradeable, EIP712Upgradeable, Nonces, IIde
         policyClientLinks[_policyClient][_clientUser][_identityDomain] = _identityOwner;
 
         emit IdentityLinked(_identityOwner, _policyClient, _clientUser, _identityDomain);
+    }
+
+    /**
+     * internal function for clearing the storage of a link if the caller matches the stored value
+     *
+     * @param _caller the address that called unlinkIdentity, must be the linked identity for unlinking to succeed
+     * @param _policyClient the policy client where the data is associated
+     * @param _clientUser the user of the policy client whose linkage will be cleared
+     * @param _identityDomain this specifies what type of associated data to unlink
+     */
+    function _unlinkIdentity(
+        address _caller,
+        address _policyClient,
+        address _clientUser,
+        bytes32 _identityDomain
+    ) internal {
+        require(
+            policyClientLinks[_policyClient][_clientUser][_identityDomain] == _caller,
+            InvalidUnlinker()
+        );
+
+        delete policyClientLinks[_policyClient][_clientUser][_identityDomain];
+
+        emit IdentityUnlinked(_caller, _policyClient, _clientUser, _identityDomain);
     }
 }

@@ -48,6 +48,7 @@ library DeploymentLib {
         address slasher;
         address instantSlasherImpl;
         address operatorTableCalculator;
+        address taskResponseHandler;
     }
 
     struct NewtonProverSetupConfig {
@@ -56,6 +57,7 @@ library DeploymentLib {
         uint32 taskResponseWindowBlock;
         uint32 taskChallengeWindowBlock;
         uint32 epochBlocks;
+        uint32 taskCreationBufferWindow;
         bool isChallengeEnabled;
         address sp1Verifier;
         bytes32 sp1ProgramVkey;
@@ -119,6 +121,8 @@ library DeploymentLib {
         data.taskChallengeWindowBlock =
             uint32(json.readUintOr(string.concat(keyPrefix, ".task_challenge_window_block"), 30));
         data.epochBlocks = uint32(json.readUintOr(string.concat(keyPrefix, ".epoch_blocks"), 7200));
+        data.taskCreationBufferWindow =
+            uint32(json.readUintOr(string.concat(keyPrefix, ".task_creation_buffer_window"), 2));
         data.isChallengeEnabled =
             json.readBoolOr(string.concat(keyPrefix, ".is_challenge_enabled"), false);
         data.sp1Verifier = json.readAddressOr(string.concat(keyPrefix, ".sp1_verifier"), address(0));
@@ -177,6 +181,7 @@ library DeploymentLib {
         data.regoVerifierImpl = json.readAddressOr(".addresses.regoVerifierImpl", address(0));
         data.operatorTableCalculator =
             json.readAddressOr(".addresses.operatorTableCalculator", address(0));
+        data.taskResponseHandler = json.readAddressOr(".addresses.taskResponseHandler", address(0));
 
         return data;
     }
@@ -317,6 +322,8 @@ library DeploymentLib {
             data.slasher.getImplementation().toHexString(),
             '","operatorTableCalculator":"',
             operatorTableCalculator,
+            '","taskResponseHandler":"',
+            data.taskResponseHandler.toHexString(),
             '"}'
         );
     }

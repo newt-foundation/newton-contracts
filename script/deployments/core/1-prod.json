@@ -42,6 +42,8 @@
     "executorMultisig": "0x369e6F597e22EaB55fFb173C6d9cD234BD699111",
     "executorMultisigImpl": "0xd9db270c1b5e3bd161e8c8503c55ceabee709552",
     "operationsMultisig": "0xBE1685C81aA44FF9FB319dD389addd9374383e90",
-    "operationsMultisigImpl": "0xd9db270c1b5e3bd161e8c8503c55ceabee709552"
+    "operationsMultisigImpl": "0xd9db270c1b5e3bd161e8c8503c55ceabee709552",
+    "keyRegistrar": "0x0000000000000000000000000000000000000000",
+    "crossChainRegistry": "0x0000000000000000000000000000000000000000"
   }
 }

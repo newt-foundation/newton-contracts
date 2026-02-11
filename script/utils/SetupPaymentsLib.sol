@@ -14,7 +14,7 @@ import {stdJson} from "forge-std/StdJson.sol";
 import {NewtonProverServiceManager} from "../../src/NewtonProverServiceManager.sol";
 
 library SetupPaymentsLib {
-    Vm internal constant VM = Vm(address(uint160(uint256(keccak256("heVM cheat code")))));
+    Vm internal constant VM = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
 
     using stdJson for string;
 
@@ -264,7 +264,7 @@ library SetupPaymentsLib {
 
         uint256 n = leaves.length;
         uint256 depth = 0;
-        while ((depth >> 1) < n) {
+        while ((1 << depth) < n) {
             depth++;
         }
 

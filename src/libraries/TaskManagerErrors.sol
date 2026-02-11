@@ -14,4 +14,5 @@ library TaskManagerErrors {
     error AttestationAlreadySpent();
     error InvalidAggregatorAddress();
     error NotDirectlyVerified();
+    error InvalidTaskResponseHandler();
 }

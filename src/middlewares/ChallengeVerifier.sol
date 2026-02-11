@@ -4,13 +4,13 @@ pragma solidity ^0.8.27;
 import {INewtonProverTaskManager} from "../interfaces/INewtonProverTaskManager.sol";
 import {TaskLib} from "../libraries/TaskLib.sol";
 import {TaskManagerErrors} from "../libraries/TaskManagerErrors.sol";
-import {OperatorVerifierLib} from "../libraries/OperatorVerifierLib.sol";
 import {ChallengeLib} from "../libraries/ChallengeLib.sol";
 import {AttestationValidator} from "./AttestationValidator.sol";
+import {ITaskResponseHandler} from "../interfaces/ITaskResponseHandler.sol";
 import {
-    ISlashingRegistryCoordinator
-} from "@eigenlayer-middleware/src/interfaces/ISlashingRegistryCoordinator.sol";
-import {IBLSSignatureChecker} from "@eigenlayer-middleware/src/interfaces/IBLSSignatureChecker.sol";
+    IBLSSignatureChecker,
+    IBLSSignatureCheckerTypes
+} from "@eigenlayer-middleware/src/interfaces/IBLSSignatureChecker.sol";
 import "@eigenlayer-middleware/src/libraries/BN254.sol";
 import "@openzeppelin-upgrades/contracts/proxy/utils/Initializable.sol";
 import "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
@@ -48,6 +48,8 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
     mapping(bytes32 => bool) public taskSuccesfullyChallenged;
     mapping(bytes32 => bytes32) public allTaskHashes;
     mapping(bytes32 => bytes32) public allTaskResponses;
+
+    uint256[47] private __gap;
 
     /* MODIFIERS */
     modifier onlyTaskManager() {
@@ -229,11 +231,8 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
     function challengeDirectlyVerifiedAttestation(
         INewtonProverTaskManager.Task calldata task,
         INewtonProverTaskManager.TaskResponse calldata taskResponse,
-        IBLSSignatureChecker.NonSignerStakesAndSignature calldata nonSignerStakesAndSignature,
-        function(bytes32, bytes memory, uint32, IBLSSignatureChecker
-                        .NonSignerStakesAndSignature memory)
-            external
-            view returns (IBLSSignatureChecker.QuorumStakeTotals memory, bytes32) checkSignatures
+        bytes calldata signatureData,
+        address _taskResponseHandler
     ) external onlyTaskManager {
         bytes32 taskId = taskResponse.taskId;
 
@@ -253,7 +252,7 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
 
         // Verify respondToTask was never called (check TaskManager's taskResponseHash mapping)
         bytes32 taskResponseHash = INewtonProverTaskManager(taskManager).taskResponseHash(taskId);
-        require(taskResponseHash == bytes32(0), TaskLib.TaskAlreadyResponded());
+        require(taskResponseHash == bytes32(0), TaskLib.TaskAlreadyResponded(taskResponseHash));
 
         // Verify task hash matches the one stored in TaskManager
         bytes32 expectedTaskHash = INewtonProverTaskManager(taskManager).taskHash(taskId);
@@ -262,39 +261,114 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
             TaskLib.TaskMismatch(expectedTaskHash, TaskLib.taskHash(task))
         );
 
-        // Re-verify BLS signatures to confirm signature validity
-        OperatorVerifierLib.verifyTaskResponseSignatures(
-            task,
-            taskResponse,
-            nonSignerStakesAndSignature,
-            ISlashingRegistryCoordinator(operatorRegistry),
-            checkSignatures
-        );
+        // Re-verify signatures via task response handler to confirm validity
+        // Source chains: BLS signature verification, Destination chains: certificate verification
+        ITaskResponseHandler(_taskResponseHandler)
+            .verifyTaskResponse(task, taskResponse, signatureData);
 
-        // Extract non-signer addresses from pubkeys
-        (
-            bytes32[] memory hashesOfPubkeysOfNonSigningOperators,
-            address[] memory addressOfNonSigningOperators
-        ) = ChallengeLib.processNonSigners(
-            nonSignerStakesAndSignature.nonSignerPubkeys, blsApkRegistry
-        );
+        // Slashing only available on source chains (where blsApkRegistry is set)
+        if (blsApkRegistry != address(0)) {
+            // Decode NonSignerStakesAndSignature to extract non-signer pubkeys for slashing
+            IBLSSignatureCheckerTypes.NonSignerStakesAndSignature memory
+                nonSignerStakesAndSignature =
+                abi.decode(signatureData, (IBLSSignatureCheckerTypes.NonSignerStakesAndSignature));
 
-        // Create challenge context
-        ChallengeLib.ChallengeContext memory ctx = ChallengeLib.ChallengeContext({
-            blsApkRegistry: blsApkRegistry,
-            operatorStateRetriever: taskManager, // task manager is the operator state retriever
-            registryCoordinator: registryCoordinator,
-            allocationManager: allocationManager,
-            instantSlasher: instantSlasher,
-            serviceManager: serviceManager
-        });
+            // Extract non-signer addresses from pubkeys
+            (
+                bytes32[] memory hashesOfPubkeysOfNonSigningOperators,
+                address[] memory addressOfNonSigningOperators
+            ) = ChallengeLib.processNonSigners(
+                nonSignerStakesAndSignature.nonSignerPubkeys, blsApkRegistry
+            );
 
-        // Slash signing operators
-        ChallengeLib.slashSigningOperators(
-            ctx, task.quorumNumbers, task.taskCreatedBlock, addressOfNonSigningOperators
-        );
+            // Create challenge context
+            ChallengeLib.ChallengeContext memory ctx = ChallengeLib.ChallengeContext({
+                blsApkRegistry: blsApkRegistry,
+                operatorStateRetriever: taskManager,
+                registryCoordinator: registryCoordinator,
+                allocationManager: allocationManager,
+                instantSlasher: instantSlasher,
+                serviceManager: serviceManager
+            });
+
+            // Slash signing operators
+            ChallengeLib.slashSigningOperators(
+                ctx, task.quorumNumbers, task.taskCreatedBlock, addressOfNonSigningOperators
+            );
+        }
 
         // Invalidate attestation
+        AttestationValidator(attestationValidator).invalidateAttestation(taskId);
+    }
+
+    // solhint-disable-next-line function-max-lines
+    function challengeDirectlyVerifiedMismatch(
+        INewtonProverTaskManager.Task calldata task,
+        INewtonProverTaskManager.TaskResponse calldata taskResponse,
+        bytes calldata signatureData,
+        address _taskResponseHandler
+    ) external onlyTaskManager {
+        bytes32 taskId = taskResponse.taskId;
+
+        // 1. Verify attestation was directly verified
+        require(
+            AttestationValidator(attestationValidator).isDirectlyVerified(taskId),
+            TaskManagerErrors.NotDirectlyVerified()
+        );
+
+        // 2. Get direct hashes from AttestationValidator
+        bytes32 directTaskHash = AttestationValidator(attestationValidator).directTaskHashes(taskId);
+        bytes32 directResponseHash =
+            AttestationValidator(attestationValidator).directTaskResponseHashes(taskId);
+
+        // 3. Get regular hashes from TaskManager
+        bytes32 regularTaskHash = INewtonProverTaskManager(taskManager).taskHash(taskId);
+        bytes32 regularResponseHash = INewtonProverTaskManager(taskManager).taskResponseHash(taskId);
+
+        // 4. Regular path must have been completed (both hashes must be non-zero)
+        require(
+            regularTaskHash != bytes32(0) && regularResponseHash != bytes32(0), NotChallengable()
+        );
+
+        // 5. Challenge succeeds if EITHER task hash or response hash mismatches
+        bool taskHashMismatch = directTaskHash != bytes32(0) && directTaskHash != regularTaskHash;
+        bool responseHashMismatch =
+            directResponseHash != bytes32(0) && directResponseHash != regularResponseHash;
+        require(taskHashMismatch || responseHashMismatch, ChallengeFailed());
+
+        // 6. Re-verify signatures via task response handler
+        ITaskResponseHandler(_taskResponseHandler)
+            .verifyTaskResponse(task, taskResponse, signatureData);
+
+        // 7. Slash signing operators (only on source chains where blsApkRegistry is set)
+        if (blsApkRegistry != address(0)) {
+            IBLSSignatureCheckerTypes.NonSignerStakesAndSignature memory
+                nonSignerStakesAndSignature =
+                abi.decode(signatureData, (IBLSSignatureCheckerTypes.NonSignerStakesAndSignature));
+
+            (
+                bytes32[] memory hashesOfPubkeysOfNonSigningOperators,
+                address[] memory addressOfNonSigningOperators
+            ) = ChallengeLib.processNonSigners(
+                nonSignerStakesAndSignature.nonSignerPubkeys, blsApkRegistry
+            );
+
+            ChallengeLib.ChallengeContext memory ctx = ChallengeLib.ChallengeContext({
+                blsApkRegistry: blsApkRegistry,
+                operatorStateRetriever: taskManager,
+                registryCoordinator: registryCoordinator,
+                allocationManager: allocationManager,
+                instantSlasher: instantSlasher,
+                serviceManager: serviceManager
+            });
+
+            ChallengeLib.slashSigningOperators(
+                ctx, task.quorumNumbers, task.taskCreatedBlock, addressOfNonSigningOperators
+            );
+        }
+
+        // 8. Mark as challenged and invalidate direct attestation
+        taskSuccesfullyChallenged[taskId] = true;
         AttestationValidator(attestationValidator).invalidateAttestation(taskId);
     }
 }
