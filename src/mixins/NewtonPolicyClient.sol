@@ -5,9 +5,11 @@ pragma solidity ^0.8.27;
 import {IERC165} from "@openzeppelin/contracts/interfaces/IERC165.sol";
 import {INewtonProverTaskManager} from "../interfaces/INewtonProverTaskManager.sol";
 import {INewtonPolicyClient} from "../interfaces/INewtonPolicyClient.sol";
+import {ISemVerMixin} from "../interfaces/ISemVerMixin.sol";
 import {NewtonPolicy} from "../core/NewtonPolicy.sol";
 import {NewtonMessage} from "../core/NewtonMessage.sol";
 import {INewtonPolicy} from "../interfaces/INewtonPolicy.sol";
+import {VersionLib} from "../libraries/VersionLib.sol";
 
 abstract contract NewtonPolicyClient is INewtonPolicyClient {
     /// @notice Function to check if a contract implements an interface
@@ -22,6 +24,12 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient {
 
     // error for when a call is made by an account other than the owner
     error OnlyPolicyClientOwner();
+
+    // error for when policy address has not been set yet
+    error PolicyNotSet();
+
+    // error for when the policy factory version is incompatible
+    error IncompatiblePolicyVersion(string actual, string minimum);
 
     // modifier to restrict functions to only the owner
     modifier onlyPolicyClientOwner() {
@@ -57,12 +65,10 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient {
 
     function _initNewtonPolicyClient(
         address policyTaskManager,
-        address policy,
         address policyClientOwner
     ) internal {
         NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
         $.policyTaskManager = INewtonProverTaskManager(policyTaskManager);
-        $.policy = policy;
         $.policyClientOwner = policyClientOwner;
     }
 
@@ -78,6 +84,51 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient {
     }
 
     /**
+     * @notice Internal setter for the policy contract address.
+     * @param policy The address of the NewtonPolicy contract.
+     */
+    function _setPolicyAddress(
+        address policy
+    ) internal {
+        NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
+        $.policy = policy;
+    }
+
+    /**
+     * @notice Only callable by the owner. Sets the policy contract address for deferred setup.
+     * @param policy The address of the NewtonPolicy contract.
+     * @dev Validates that the policy's factory version is compatible with the TaskManager's
+     *      minimum required policy version. This is a runtime check (not compile-time) so that
+     *      existing policy clients can upgrade to newer policy versions without redeployment.
+     *      The TaskManager gate is the authoritative version check, matching the canonical
+     *      check_compatibility() logic used by newton-cli.
+     */
+    function setPolicyAddress(
+        address policy
+    ) public onlyPolicyClientOwner {
+        NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
+
+        // Runtime version check: read minimum from TaskManager (mutable, authoritative)
+        // Fails fast at configuration time rather than at task creation time
+        address taskManager = address($.policyTaskManager);
+        if (taskManager != address(0)) {
+            address factory = INewtonPolicy(policy).factory();
+            string memory factoryVersion = ISemVerMixin(factory).version();
+
+            string memory tmMinVersion =
+                INewtonProverTaskManager(taskManager).minCompatiblePolicyVersion();
+            if (bytes(tmMinVersion).length > 0) {
+                require(
+                    VersionLib.isCompatible(factoryVersion, tmMinVersion),
+                    IncompatiblePolicyVersion(factoryVersion, tmMinVersion)
+                );
+            }
+        }
+
+        $.policy = policy;
+    }
+
+    /**
      * @notice Sets a policy for the calling address to the policyID from on chain.
      * @param policyConfig The policy configuration.
      * @return policyId The policyID associated with the calling address.
@@ -88,6 +139,7 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient {
         INewtonPolicy.PolicyConfig memory policyConfig
     ) internal returns (bytes32) {
         NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
+        require($.policy != address(0), PolicyNotSet());
         bytes32 policyId = NewtonPolicy($.policy).setPolicy(policyConfig);
         $.policyId = policyId;
         return policyId;
@@ -117,7 +169,9 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient {
     }
 
     function _getPolicyConfig() internal view returns (INewtonPolicy.PolicyConfig memory) {
-        return NewtonPolicy(_getNewtonPolicyClientStorage().policy).getPolicyConfig(_getPolicyId());
+        NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
+        require($.policy != address(0), PolicyNotSet());
+        return NewtonPolicy($.policy).getPolicyConfig(_getPolicyId());
     }
 
     function getPolicyId() external view returns (bytes32) {

@@ -41,6 +41,8 @@ library DeploymentLib {
         address socketRegistryImpl;
         address strategy;
         address pauserRegistry;
+        address policyClientRegistry;
+        address policyClientRegistryImpl;
         address identityRegistry;
         address identityRegistryImpl;
         address token;
@@ -170,6 +172,10 @@ library DeploymentLib {
         data.socketRegistryImpl = json.readAddress(".addresses.socketRegistryImpl");
         data.strategy = json.readAddress(".addresses.strategy");
         data.pauserRegistry = json.readAddress(".addresses.pauserRegistry");
+        data.policyClientRegistry =
+            json.readAddressOr(".addresses.policyClientRegistry", address(0));
+        data.policyClientRegistryImpl =
+            json.readAddressOr(".addresses.policyClientRegistryImpl", address(0));
         data.identityRegistry = json.readAddressOr(".addresses.identityRegistry", address(0));
         data.identityRegistryImpl =
             json.readAddressOr(".addresses.identityRegistryImpl", address(0));
@@ -240,6 +246,8 @@ library DeploymentLib {
         string memory attestationValidatorImpl = "";
         string memory regoVerifier = "";
         string memory regoVerifierImpl = "";
+        string memory policyClientRegistry = "";
+        string memory policyClientRegistryImpl = "";
         string memory identityRegistry = "";
         string memory identityRegistryImpl = "";
         if (data.challengeVerifier != address(0)) {
@@ -253,6 +261,10 @@ library DeploymentLib {
         if (data.regoVerifier != address(0)) {
             regoVerifier = data.regoVerifier.toHexString();
             regoVerifierImpl = data.regoVerifier.getImplementation().toHexString();
+        }
+        if (data.policyClientRegistry != address(0)) {
+            policyClientRegistry = data.policyClientRegistry.toHexString();
+            policyClientRegistryImpl = data.policyClientRegistry.getImplementation().toHexString();
         }
         if (data.identityRegistry != address(0)) {
             identityRegistry = data.identityRegistry.toHexString();
@@ -308,6 +320,10 @@ library DeploymentLib {
             data.strategy.toHexString(),
             '","pauserRegistry":"',
             data.pauserRegistry.toHexString(),
+            '","policyClientRegistry":"',
+            policyClientRegistry,
+            '","policyClientRegistryImpl":"',
+            policyClientRegistryImpl,
             '","identityRegistry":"',
             identityRegistry,
             '","identityRegistryImpl":"',

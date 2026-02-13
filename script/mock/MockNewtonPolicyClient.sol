@@ -28,7 +28,8 @@ contract MockNewtonPolicyClient is NewtonPolicyClient, OwnableUpgradeable {
         address policy,
         address owner
     ) public initializer {
-        _initNewtonPolicyClient(policyTaskManager, policy, owner);
+        _initNewtonPolicyClient(policyTaskManager, owner);
+        _setPolicyAddress(policy);
         __Ownable_init();
         _transferOwnership(owner);
     }

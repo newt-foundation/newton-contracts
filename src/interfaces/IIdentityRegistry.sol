@@ -62,6 +62,9 @@ interface IIdentityRegistry {
     /// error when someone tries to unlink data that isn't linked to them
     error InvalidUnlinker();
 
+    /// error when a policy client is not registered (or not active) in the PolicyClientRegistry
+    error PolicyClientNotRegistered(address client);
+
     /**
      * submits a new identity to the registry
      * @notice this function is callable only by the trusted owner
@@ -164,4 +167,9 @@ interface IIdentityRegistry {
         address _policyClient,
         bytes32[] calldata _identityDomains
     ) external;
+
+    /// @notice Get the PolicyClientRegistry address used to enforce client registration during linking.
+    ///   Set once during initialize() and immutable thereafter.
+    /// @return The PolicyClientRegistry address
+    function policyClientRegistry() external view returns (address);
 }

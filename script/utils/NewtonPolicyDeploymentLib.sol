@@ -14,10 +14,7 @@ import {MockNewtonPolicyClient} from "../mock/MockNewtonPolicyClient.sol";
 import {NewtonPolicyLib} from "./NewtonPolicyLib.sol";
 import {UpgradeableProxyLib} from "./UpgradeableProxyLib.sol";
 import {ArrayLib} from "./ArrayLib.sol";
-import {
-    MIN_COMPATIBLE_POLICY_VERSION,
-    MIN_COMPATIBLE_POLICY_DATA_VERSION
-} from "../../src/libraries/ProtocolVersion.sol";
+import {MIN_COMPATIBLE_VERSION} from "../../src/libraries/ProtocolVersion.sol";
 
 library NewtonPolicyDeploymentLib {
     using stdJson for *;
@@ -61,8 +58,7 @@ library NewtonPolicyDeploymentLib {
 
         // Deploy PolicyDataFactory
         result.policyDataFactory = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
-        result.policyDataFactoryImpl =
-            address(new NewtonPolicyDataFactory(MIN_COMPATIBLE_POLICY_DATA_VERSION));
+        result.policyDataFactoryImpl = address(new NewtonPolicyDataFactory(MIN_COMPATIBLE_VERSION));
         bytes memory policyDataFactoryUpgradeCall =
             abi.encodeCall(NewtonPolicyDataFactory.initialize, (admin));
         UpgradeableProxyLib.upgradeAndCall(
@@ -71,7 +67,7 @@ library NewtonPolicyDeploymentLib {
 
         // Deploy PolicyFactory
         result.policyFactory = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
-        result.policyFactoryImpl = address(new NewtonPolicyFactory(MIN_COMPATIBLE_POLICY_VERSION));
+        result.policyFactoryImpl = address(new NewtonPolicyFactory(MIN_COMPATIBLE_VERSION));
         bytes memory policyFactoryUpgradeCall =
             abi.encodeCall(NewtonPolicyFactory.initialize, (admin));
         UpgradeableProxyLib.upgradeAndCall(
@@ -90,8 +86,7 @@ library NewtonPolicyDeploymentLib {
         DeploymentData memory result = existingData;
 
         // Upgrade PolicyDataFactory
-        result.policyDataFactoryImpl =
-            address(new NewtonPolicyDataFactory(MIN_COMPATIBLE_POLICY_DATA_VERSION));
+        result.policyDataFactoryImpl = address(new NewtonPolicyDataFactory(MIN_COMPATIBLE_VERSION));
         UpgradeableProxyLib.upgrade(result.policyDataFactory, result.policyDataFactoryImpl);
 
         // Rotate the persisted implementation so newly deployed PolicyData proxies use latest bytecode
@@ -99,7 +94,7 @@ library NewtonPolicyDeploymentLib {
             .setImplementation(address(new NewtonPolicyData()));
 
         // Upgrade PolicyFactory
-        result.policyFactoryImpl = address(new NewtonPolicyFactory(MIN_COMPATIBLE_POLICY_VERSION));
+        result.policyFactoryImpl = address(new NewtonPolicyFactory(MIN_COMPATIBLE_VERSION));
         UpgradeableProxyLib.upgrade(result.policyFactory, result.policyFactoryImpl);
 
         // Rotate the persisted implementation so newly deployed Policy proxies use latest bytecode
@@ -320,8 +315,7 @@ library NewtonPolicyDeploymentLib {
         result.policyFactory = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
         result.policyDataFactory = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
 
-        result.policyDataFactoryImpl =
-            address(new NewtonPolicyDataFactory(MIN_COMPATIBLE_POLICY_DATA_VERSION));
+        result.policyDataFactoryImpl = address(new NewtonPolicyDataFactory(MIN_COMPATIBLE_VERSION));
         bytes memory policyDataFactoryUpgradeCall =
             abi.encodeCall(NewtonPolicyDataFactory.initialize, (admin));
         UpgradeableProxyLib.upgradeAndCall(
@@ -375,7 +369,7 @@ library NewtonPolicyDeploymentLib {
         address[] memory policyDataArray = new address[](1);
         policyDataArray[0] = policyData;
 
-        result.policyFactoryImpl = address(new NewtonPolicyFactory(MIN_COMPATIBLE_POLICY_VERSION));
+        result.policyFactoryImpl = address(new NewtonPolicyFactory(MIN_COMPATIBLE_VERSION));
         bytes memory policyFactoryUpgradeCall =
             abi.encodeCall(NewtonPolicyFactory.initialize, (admin));
         UpgradeableProxyLib.upgradeAndCall(
@@ -435,8 +429,7 @@ library NewtonPolicyDeploymentLib {
         DeploymentData memory result = deploymentData;
 
         // Upgrade PolicyDataFactory
-        result.policyDataFactoryImpl =
-            address(new NewtonPolicyDataFactory(MIN_COMPATIBLE_POLICY_DATA_VERSION));
+        result.policyDataFactoryImpl = address(new NewtonPolicyDataFactory(MIN_COMPATIBLE_VERSION));
         UpgradeableProxyLib.upgrade(result.policyDataFactory, result.policyDataFactoryImpl);
 
         // IMPORTANT: Upgrading the factory proxy does NOT re-run `initialize()`, so the factory's
@@ -483,7 +476,7 @@ library NewtonPolicyDeploymentLib {
         policyDataArray[0] = policyData;
 
         // Upgrade PolicyFactory
-        result.policyFactoryImpl = address(new NewtonPolicyFactory(MIN_COMPATIBLE_POLICY_VERSION));
+        result.policyFactoryImpl = address(new NewtonPolicyFactory(MIN_COMPATIBLE_VERSION));
         UpgradeableProxyLib.upgrade(result.policyFactory, result.policyFactoryImpl);
 
         // Same rationale as above: rotate the persisted `implementation` so newly deployed Policy
@@ -688,7 +681,7 @@ library NewtonPolicyDeploymentLib {
     // Read/Write Functions with Merge Support
     // ============================================================================
 
-    /// @notice Try to read existing deployment JSON, returns empty DeploymentData if file doesn't exist
+    /// @notice Try to read existing deployment JSON, returns empty DeploymentData if file doesn't exist or is empty
     function tryReadDeploymentJson(
         uint256 chainId
     ) internal returns (DeploymentData memory, bool exists) {
@@ -696,23 +689,29 @@ library NewtonPolicyDeploymentLib {
         string memory fileName =
             string.concat("script/deployments/policy/", VM.toString(chainId), "-", env, ".json");
 
+        DeploymentData memory empty = DeploymentData({
+            policyFactory: address(0),
+            policyFactoryImpl: address(0),
+            policy: address(0),
+            policyImplementation: address(0),
+            policyDataFactory: address(0),
+            policyDataFactoryImpl: address(0),
+            policyData: address(0),
+            policyDataImplementation: address(0),
+            policyClient: address(0),
+            policyClientImpl: address(0),
+            policyId: bytes32(0)
+        });
+
         if (!VM.exists(fileName)) {
-            return (
-                DeploymentData({
-                    policyFactory: address(0),
-                    policyFactoryImpl: address(0),
-                    policy: address(0),
-                    policyImplementation: address(0),
-                    policyDataFactory: address(0),
-                    policyDataFactoryImpl: address(0),
-                    policyData: address(0),
-                    policyDataImplementation: address(0),
-                    policyClient: address(0),
-                    policyClientImpl: address(0),
-                    policyId: bytes32(0)
-                }),
-                false
-            );
+            return (empty, false);
+        }
+
+        // Use readAddressOr to tolerate empty or partial JSON (e.g., cleared deployments)
+        string memory json = VM.readFile(fileName);
+        address factory = json.readAddressOr(".addresses.policyFactory", address(0));
+        if (factory == address(0)) {
+            return (empty, false);
         }
 
         return (_readDeploymentJson("script/deployments/policy/", chainId, env), true);
@@ -728,17 +727,20 @@ library NewtonPolicyDeploymentLib {
         string memory fileName = string.concat(outputPath, VM.toString(chainId), "-", env, ".json");
 
         // Try to read existing data to preserve test policy fields
+        // Uses readAddressOr/readBytes32Or to tolerate empty or partial JSON (e.g., cleared deployments)
         DeploymentData memory mergedData = factoryData;
         if (VM.exists(fileName)) {
-            DeploymentData memory existingData = _readDeploymentJson(outputPath, chainId, env);
-            // Preserve test policy fields from existing data
-            mergedData.policy = existingData.policy;
-            mergedData.policyImplementation = existingData.policyImplementation;
-            mergedData.policyData = existingData.policyData;
-            mergedData.policyDataImplementation = existingData.policyDataImplementation;
-            mergedData.policyClient = existingData.policyClient;
-            mergedData.policyClientImpl = existingData.policyClientImpl;
-            mergedData.policyId = existingData.policyId;
+            string memory json = VM.readFile(fileName);
+            mergedData.policy = json.readAddressOr(".addresses.policy", address(0));
+            mergedData.policyImplementation =
+                json.readAddressOr(".addresses.policyImplementation", address(0));
+            mergedData.policyData = json.readAddressOr(".addresses.policyData", address(0));
+            mergedData.policyDataImplementation =
+                json.readAddressOr(".addresses.policyDataImplementation", address(0));
+            mergedData.policyClient = json.readAddressOr(".addresses.policyClient", address(0));
+            mergedData.policyClientImpl =
+                json.readAddressOr(".addresses.policyClientImpl", address(0));
+            mergedData.policyId = json.readBytes32Or(".addresses.policyId", bytes32(0));
         }
 
         address proxyAdmin = address(UpgradeableProxyLib.getProxyAdmin(mergedData.policyFactory));

@@ -57,6 +57,7 @@ import {BN254TableCalculator} from "../../src/middlewares/BN254TableCalculator.s
 // Newton destination chain imports
 import {NewtonProverDestTaskManager} from "../../src/NewtonProverDestTaskManager.sol";
 import {IdentityRegistry} from "../../src/core/IdentityRegistry.sol";
+import {PolicyClientRegistry} from "../../src/core/PolicyClientRegistry.sol";
 import {ChallengeVerifier} from "../../src/middlewares/ChallengeVerifier.sol";
 import {RegoVerifier} from "../../src/middlewares/RegoVerifier.sol";
 import {AttestationValidator} from "../../src/middlewares/AttestationValidator.sol";
@@ -163,6 +164,7 @@ library NewtonCrossChainDeploymentLib {
         address socketRegistryImpl;
         address operatorRegistry;
         address operatorRegistryImpl;
+        address policyClientRegistry;
         address identityRegistry;
         // Source chain reference
         uint256 sourceChainId;
@@ -651,6 +653,20 @@ library NewtonCrossChainDeploymentLib {
         address proxyAdmin =
             address(UpgradeableProxyLib.getProxyAdmin(result.newtonProverTaskManager));
 
+        // Deploy or upgrade PolicyClientRegistry (required by IdentityRegistry)
+        if (result.policyClientRegistry == address(0)) {
+            result.policyClientRegistry = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
+            address pcrImpl = address(new PolicyClientRegistry(PROTOCOL_VERSION));
+            UpgradeableProxyLib.upgradeAndCall(
+                result.policyClientRegistry,
+                pcrImpl,
+                abi.encodeCall(PolicyClientRegistry.initialize, (admin))
+            );
+        } else {
+            PolicyClientRegistry pcrImpl = new PolicyClientRegistry(PROTOCOL_VERSION);
+            UpgradeableProxyLib.upgrade(result.policyClientRegistry, address(pcrImpl));
+        }
+
         // Deploy or upgrade IdentityRegistry
         if (result.identityRegistry == address(0)) {
             result.identityRegistry = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
@@ -658,11 +674,16 @@ library NewtonCrossChainDeploymentLib {
             UpgradeableProxyLib.upgradeAndCall(
                 result.identityRegistry,
                 identityRegistryImpl,
-                abi.encodeCall(IdentityRegistry.initialize, (admin))
+                abi.encodeCall(IdentityRegistry.initialize, (admin, result.policyClientRegistry))
             );
         } else {
+            // Upgrade existing contract with initializeV2 to set policyClientRegistry
             IdentityRegistry identityRegistryImpl = new IdentityRegistry();
-            UpgradeableProxyLib.upgrade(result.identityRegistry, address(identityRegistryImpl));
+            UpgradeableProxyLib.upgradeAndCall(
+                result.identityRegistry,
+                address(identityRegistryImpl),
+                abi.encodeCall(IdentityRegistry.initializeV2, (result.policyClientRegistry))
+            );
         }
 
         // Upgrade ChallengeVerifier
@@ -859,6 +880,9 @@ library NewtonCrossChainDeploymentLib {
         data.operatorRegistry = json.readAddressOr(".addresses.operatorRegistry", address(0));
         data.operatorRegistryImpl =
             json.readAddressOr(".addresses.operatorRegistryImpl", address(0));
+        data.policyClientRegistry =
+            json.readAddressOr(".addresses.policyClientRegistry", address(0));
+        data.identityRegistry = json.readAddressOr(".addresses.identityRegistry", address(0));
         data.sourceChainId = json.readUintOr(".sourceChainId", 0);
 
         return data;
@@ -955,6 +979,10 @@ library NewtonCrossChainDeploymentLib {
             data.operatorRegistry.toHexString(),
             '","operatorRegistryImpl":"',
             data.operatorRegistryImpl.toHexString(),
+            '","policyClientRegistry":"',
+            data.policyClientRegistry.toHexString(),
+            '","identityRegistry":"',
+            data.identityRegistry.toHexString(),
             '"}'
         );
     }

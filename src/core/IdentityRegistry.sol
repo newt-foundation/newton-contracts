@@ -3,6 +3,7 @@
 pragma solidity ^0.8.27;
 
 import {IIdentityRegistry} from "../interfaces/IIdentityRegistry.sol";
+import {IPolicyClientRegistry} from "../interfaces/IPolicyClientRegistry.sol";
 
 import {OwnableUpgradeable} from "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
 import {
@@ -32,6 +33,10 @@ contract IdentityRegistry is OwnableUpgradeable, EIP712Upgradeable, Nonces, IIde
         public
         override policyClientLinks;
 
+    /// @notice PolicyClientRegistry used to enforce that only registered and active policy clients
+    ///   can link identity data. Set during initialize()/initializeV2() and immutable thereafter.
+    address public override policyClientRegistry;
+
     /// typehash for doing signTypedData for as the identityOwner to provide to the user for linkIdentityAsUser
     bytes32 public constant override LINK_SIGNER_TYPEHASH = keccak256(
         "linkIdentitySigner(address identityOwner,address policyClient,address clientUser,bytes32[] identityDomains,uint256 identityOwnerNonce,uint256 deadline)"
@@ -53,13 +58,29 @@ contract IdentityRegistry is OwnableUpgradeable, EIP712Upgradeable, Nonces, IIde
     /**
      * @notice Initialize the identity registry
      * @param _admin The admin address that is the only address that can submit data
+     * @param _policyClientRegistry The PolicyClientRegistry address for enforcing client registration during linking
      */
     function initialize(
-        address _admin
+        address _admin,
+        address _policyClientRegistry
     ) external initializer {
+        require(_policyClientRegistry != address(0), "policyClientRegistry required");
         __Ownable_init();
         __EIP712_init("IdentityRegistry", "1");
         _transferOwnership(_admin);
+        policyClientRegistry = _policyClientRegistry;
+    }
+
+    /**
+     * @notice Upgrade initializer for existing proxies deployed before PolicyClientRegistry existed.
+     * @param _policyClientRegistry The PolicyClientRegistry address for enforcing client registration during linking
+     * @dev Only callable once (reinitializer version 2). Use upgradeAndCall() during proxy upgrade.
+     */
+    function initializeV2(
+        address _policyClientRegistry
+    ) external reinitializer(2) {
+        require(_policyClientRegistry != address(0), "policyClientRegistry required");
+        policyClientRegistry = _policyClientRegistry;
     }
 
     /**
@@ -301,6 +322,12 @@ contract IdentityRegistry is OwnableUpgradeable, EIP712Upgradeable, Nonces, IIde
         address _clientUser,
         bytes32 _identityDomain
     ) internal {
+        // Enforce that the policy client is registered and active in the PolicyClientRegistry
+        require(
+            IPolicyClientRegistry(policyClientRegistry).isRegisteredClient(_policyClient),
+            PolicyClientNotRegistered(_policyClient)
+        );
+
         // update storage
         policyClientLinks[_policyClient][_clientUser][_identityDomain] = _identityOwner;
 
