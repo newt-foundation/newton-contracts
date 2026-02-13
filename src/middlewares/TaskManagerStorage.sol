@@ -87,6 +87,15 @@ abstract contract TaskManagerStorage is
     ///      Default is 2 blocks to allow for minimal transaction propagation delay.
     uint32 public taskCreationBufferWindow;
 
+    /// @notice Minimum compatible factory version (SemVer, e.g., "0.1.0")
+    /// @dev Empty string disables enforcement (default after upgrade).
+    ///      Used for both policy and policy data factory version checks.
+    string public minCompatiblePolicyVersion;
+
+    /// @notice DEPRECATED: Previously separate from minCompatiblePolicyVersion. Do not remove - required for upgrade safety.
+    /// @dev This field is kept for storage layout compatibility. Use minCompatiblePolicyVersion for all version checks.
+    string public minCompatiblePolicyDataVersion;
+
     // Conditional inheritance based on chain type
     // Source chains extend BLSSignatureChecker and OperatorStateRetriever for stake registry verification
     // Destination chains do not extend these (they use certificate verification instead)
@@ -111,7 +120,7 @@ abstract contract TaskManagerStorage is
 
     // storage gap for upgradeability
     // slither-disable-next-line shadowing-state
-    uint256[49] private __GAP;
+    uint256[47] private __GAP;
 }
 
 /**

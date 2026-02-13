@@ -1,12 +1,9 @@
 {
-  "lastUpdate": {
-    "timestamp": "1770691086",
-    "block_number": "37461399"
-  },
+  "lastUpdate": { "timestamp": "1771005916", "block_number": "37618814" },
   "type": "destination",
   "sourceChainId": "11155111",
   "addresses": {
-    "proxyAdmin": "0x7301f4ac20d5405958f54788865308c337de3589",
+    "proxyAdmin": "0xaa9c7596f918b16e79faaca21eb7f97c9056478e",
     "pauserRegistry": "0x63aae451780090f50ad323aaef155f63a29d20f3",
     "operatorTableUpdater": "0xb02a15c6bd0882b35e9936a9579f35fb26e11476",
     "operatorTableUpdaterImpl": "0x0000000000000000000000000000000000000000",
@@ -14,17 +11,19 @@
     "bn254CertificateVerifierImpl": "0x0000000000000000000000000000000000000000",
     "ecdsaCertificateVerifier": "0xb3cd1a457dea9a9a6f6406c6419b1c326670a96f",
     "ecdsaCertificateVerifierImpl": "0x0000000000000000000000000000000000000000",
-    "newtonProverTaskManager": "0x7115b59a61acc68cf333c7383f88622addbd0563",
-    "newtonProverTaskManagerImpl": "0x4dd34bda78ccb07143ae9ffd1c2cdd2c66a1119f",
-    "challengeVerifier": "0x8706b057174f4886d6b5d69869029d7727a63a84",
-    "challengeVerifierImpl": "0x0ae08db4e078062227383bf1a0ab1ec65b01eabf",
-    "regoVerifier": "0xc030aa82b02bd3fe2964203087613db0813df955",
-    "regoVerifierImpl": "0xce8808fd7407dffc21a17ae91631d3c7054841c2",
-    "attestationValidator": "0x8bf5708c20d09ab0f7908c5803e3f514db7a280a",
-    "attestationValidatorImpl": "0xf3d85159c7904dd6ea0a8ba4fb7f5c574054b89d",
-    "socketRegistry": "0x30d5826a80965822d51fc6dd6838cf9c63e6fe9a",
-    "socketRegistryImpl": "0xd61438b3619a46562f32779907db44336e1ce492",
-    "operatorRegistry": "0x674b5adb102a9d84ac8eb6cb0cf7da5d990de28e",
-    "operatorRegistryImpl": "0x64b071104ad34942992042423493c10fec67a1c2"
+    "newtonProverTaskManager": "0xda128a87412be6f2161bb87200f0f40e89744bd9",
+    "newtonProverTaskManagerImpl": "0x940ea96db7f57b381014f4ad70ad6fc3aca1d17d",
+    "challengeVerifier": "0x66044f02cc6d0393122008807f829eafb9b2e4ff",
+    "challengeVerifierImpl": "0x9a6da65a413ba6b05cd19420e57de9a3174d46bf",
+    "regoVerifier": "0x2ef87907452e9c1295db0ad82c8fc16bb8ebed92",
+    "regoVerifierImpl": "0x98c39ad12afd2426bb9d828ff0c6f1be59a48096",
+    "attestationValidator": "0x57a7d9c6c3b5dc43f8ca542dd16925cb519270b3",
+    "attestationValidatorImpl": "0x3401f8a67d10b744b962e467912a0065eb5132f9",
+    "socketRegistry": "0x18e921a1b9924f02cd1ce7fd22bc182e7ddbf82e",
+    "socketRegistryImpl": "0x1e6bf317fd123dd606fa2d44ca7d572d5e27e34f",
+    "operatorRegistry": "0xfd779c14ca9e4e2275fe11ff7b80742bf3e0da4f",
+    "operatorRegistryImpl": "0x63c956c7029e5f476e30b45687f44c451d5ee79e",
+    "policyClientRegistry": "0x0000000000000000000000000000000000000000",
+    "identityRegistry": "0x0000000000000000000000000000000000000000"
   }
 }

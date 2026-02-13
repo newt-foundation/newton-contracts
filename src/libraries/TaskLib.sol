@@ -36,7 +36,6 @@ library TaskLib {
     error InterfaceNotSupported();
     error InvalidSourceOrDestination();
     error InvalidPolicyVersion(string actual, string minimum);
-    error InvalidPolicyDataVersion(string actual, string minimum);
     error InvalidTaskCreatedBlock();
     error TaskCreatedBlockInFuture();
     error TaskCreatedBlockTooOld();

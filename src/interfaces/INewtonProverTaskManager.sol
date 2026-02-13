@@ -160,4 +160,9 @@ interface INewtonProverTaskManager {
     function taskResponseHash(
         bytes32 taskId
     ) external view returns (bytes32);
+
+    /// @notice Returns the minimum compatible policy factory version
+    /// @dev Empty string means no enforcement. Used by NewtonPolicyClient.setPolicyAddress()
+    ///      to fail fast at configuration time rather than at task creation time.
+    function minCompatiblePolicyVersion() external view returns (string memory);
 }

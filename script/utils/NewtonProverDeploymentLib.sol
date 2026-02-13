@@ -18,12 +18,9 @@ import {ChallengeVerifier} from "../../src/middlewares/ChallengeVerifier.sol";
 import {RegoVerifier} from "../../src/middlewares/RegoVerifier.sol";
 import {AttestationValidator} from "../../src/middlewares/AttestationValidator.sol";
 import {IdentityRegistry} from "../../src/core/IdentityRegistry.sol";
+import {PolicyClientRegistry} from "../../src/core/PolicyClientRegistry.sol";
 import {IPermissionController} from "@eigenlayer/contracts/interfaces/IPermissionController.sol";
-import {
-    PROTOCOL_VERSION,
-    MIN_COMPATIBLE_POLICY_VERSION,
-    MIN_COMPATIBLE_POLICY_DATA_VERSION
-} from "../../src/libraries/ProtocolVersion.sol";
+import {PROTOCOL_VERSION, MIN_COMPATIBLE_VERSION} from "../../src/libraries/ProtocolVersion.sol";
 import {NewtonProverServiceManager} from "../../src/NewtonProverServiceManager.sol";
 import {INewtonProverTaskManager} from "../../src/interfaces/INewtonProverTaskManager.sol";
 import {NewtonProverTaskManager} from "../../src/NewtonProverTaskManager.sol";
@@ -218,13 +215,23 @@ library NewtonProverDeploymentLib {
         );
         result.challengeVerifierImpl = challengeVerifierImpl;
 
+        // deploy the PolicyClientRegistry (required by IdentityRegistry)
+        result.policyClientRegistry = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
+        address policyClientRegistryImpl = address(new PolicyClientRegistry(PROTOCOL_VERSION));
+        UpgradeableProxyLib.upgradeAndCall(
+            result.policyClientRegistry,
+            policyClientRegistryImpl,
+            abi.encodeCall(PolicyClientRegistry.initialize, (admin))
+        );
+        result.policyClientRegistryImpl = policyClientRegistryImpl;
+
         // deploy the IdentityRegistry
         result.identityRegistry = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
         address identityRegistryImpl = address(new IdentityRegistry());
         UpgradeableProxyLib.upgradeAndCall(
             result.identityRegistry,
             identityRegistryImpl,
-            abi.encodeCall(IdentityRegistry.initialize, (admin))
+            abi.encodeCall(IdentityRegistry.initialize, (admin, result.policyClientRegistry))
         );
         result.identityRegistryImpl = address(identityRegistryImpl);
 
@@ -317,6 +324,22 @@ library NewtonProverDeploymentLib {
         address proxyAdmin =
             address(UpgradeableProxyLib.getProxyAdmin(result.newtonProverServiceManager));
 
+        /* Deploy or upgrade PolicyClientRegistry */
+        if (result.policyClientRegistry == address(0)) {
+            result.policyClientRegistry = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
+            address pcrImpl = address(new PolicyClientRegistry(PROTOCOL_VERSION));
+            result.policyClientRegistryImpl = pcrImpl;
+            UpgradeableProxyLib.upgradeAndCall(
+                result.policyClientRegistry,
+                pcrImpl,
+                abi.encodeCall(PolicyClientRegistry.initialize, (admin))
+            );
+        } else {
+            PolicyClientRegistry pcrImpl = new PolicyClientRegistry(PROTOCOL_VERSION);
+            result.policyClientRegistryImpl = address(pcrImpl);
+            UpgradeableProxyLib.upgrade(result.policyClientRegistry, address(pcrImpl));
+        }
+
         /* Deploy or upgrade IdentityRegistry */
         if (result.identityRegistry == address(0)) {
             result.identityRegistry = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
@@ -325,13 +348,17 @@ library NewtonProverDeploymentLib {
             UpgradeableProxyLib.upgradeAndCall(
                 result.identityRegistry,
                 identityRegistryImpl,
-                abi.encodeCall(IdentityRegistry.initialize, (admin))
+                abi.encodeCall(IdentityRegistry.initialize, (admin, result.policyClientRegistry))
             );
         } else {
-            // Upgrade existing contract
+            // Upgrade existing contract with initializeV2 to set policyClientRegistry
             IdentityRegistry identityRegistryImpl = new IdentityRegistry();
             result.identityRegistryImpl = address(identityRegistryImpl);
-            UpgradeableProxyLib.upgrade(result.identityRegistry, address(identityRegistryImpl));
+            UpgradeableProxyLib.upgradeAndCall(
+                result.identityRegistry,
+                address(identityRegistryImpl),
+                abi.encodeCall(IdentityRegistry.initializeV2, (result.policyClientRegistry))
+            );
         }
 
         /* Deploy newton prover service & task manager implementations */
