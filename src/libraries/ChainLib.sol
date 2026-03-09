@@ -104,8 +104,7 @@ library ChainLib {
     function isEigenLayerSupportedDestination(
         uint256 chainId
     ) internal pure returns (bool) {
-        return chainId == 8453 // Base mainnet
-            || chainId == 84532; // Base Sepolia testnet
+        return chainId == 8453; // Base mainnet
     }
 
     /// @notice Returns true if the chain requires ECDSA-based operator table updates

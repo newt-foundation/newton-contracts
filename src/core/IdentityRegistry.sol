@@ -4,6 +4,7 @@ pragma solidity ^0.8.27;
 
 import {IIdentityRegistry} from "../interfaces/IIdentityRegistry.sol";
 import {IPolicyClientRegistry} from "../interfaces/IPolicyClientRegistry.sol";
+import {IOperatorRegistry} from "../interfaces/IOperatorRegistry.sol";
 
 import {OwnableUpgradeable} from "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
 import {
@@ -22,7 +23,7 @@ import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 /// @dev Identity Data: encrypted data from users, stored for use in task evaluation for identity requiring policies
 /// @dev Policy Client: any policy client that wants to link user data. The usage of that data depends on the newton policy attached to that client
 /// @dev Policy Client User (user): the address used by the Signer for the policy client. Usually an embedded wallet within the PolicyClient owner's domain
-contract IdentityRegistry is OwnableUpgradeable, EIP712Upgradeable, Nonces, IIdentityRegistry {
+contract IdentityRegistry is EIP712Upgradeable, Nonces, IIdentityRegistry {
     /// mapping that holds the encrypted identity.
     /// The owner eoa address maps to an identity domain identifier which maps to the encrypted data
     mapping(address => mapping(bytes32 => string)) public override identityData;
@@ -33,9 +34,12 @@ contract IdentityRegistry is OwnableUpgradeable, EIP712Upgradeable, Nonces, IIde
         public
         override policyClientLinks;
 
-    /// @notice PolicyClientRegistry used to enforce that only registered and active policy clients
-    ///   can link identity data. Set during initialize()/initializeV2() and immutable thereafter.
-    address public override policyClientRegistry;
+    /// @notice OperatorRegistry address used to require task submitter privileges for writing identity data.
+    ///   immutable, set on the implementation contract.
+    IOperatorRegistry public immutable override operatorRegistry;
+    /// @notice PolicyClientRegistry address used to enforce that only registered and active policy clients
+    ///   can link identity data. immutable, set on the implementation contract.
+    IPolicyClientRegistry public immutable override policyClientRegistry;
 
     /// typehash for doing signTypedData for as the identityOwner to provide to the user for linkIdentityAsUser
     bytes32 public constant override LINK_SIGNER_TYPEHASH = keccak256(
@@ -51,36 +55,22 @@ contract IdentityRegistry is OwnableUpgradeable, EIP712Upgradeable, Nonces, IIde
     uint256 public constant MAX_LINKS = 50;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor() {
+    constructor(
+        address _operatorRegistry,
+        address _policyClientRegistry
+    ) {
+        require(_operatorRegistry != address(0), InvalidOperatorRegistryAddress());
+        require(_policyClientRegistry != address(0), InvalidClientRegistryAddress());
+        operatorRegistry = IOperatorRegistry(_operatorRegistry);
+        policyClientRegistry = IPolicyClientRegistry(_policyClientRegistry);
         _disableInitializers();
     }
 
     /**
      * @notice Initialize the identity registry
-     * @param _admin The admin address that is the only address that can submit data
-     * @param _policyClientRegistry The PolicyClientRegistry address for enforcing client registration during linking
      */
-    function initialize(
-        address _admin,
-        address _policyClientRegistry
-    ) external initializer {
-        require(_policyClientRegistry != address(0), "policyClientRegistry required");
-        __Ownable_init();
+    function initialize() external initializer {
         __EIP712_init("IdentityRegistry", "1");
-        _transferOwnership(_admin);
-        policyClientRegistry = _policyClientRegistry;
-    }
-
-    /**
-     * @notice Upgrade initializer for existing proxies deployed before PolicyClientRegistry existed.
-     * @param _policyClientRegistry The PolicyClientRegistry address for enforcing client registration during linking
-     * @dev Only callable once (reinitializer version 2). Use upgradeAndCall() during proxy upgrade.
-     */
-    function initializeV2(
-        address _policyClientRegistry
-    ) external reinitializer(2) {
-        require(_policyClientRegistry != address(0), "policyClientRegistry required");
-        policyClientRegistry = _policyClientRegistry;
     }
 
     /**
@@ -92,7 +82,8 @@ contract IdentityRegistry is OwnableUpgradeable, EIP712Upgradeable, Nonces, IIde
         address _identityOwner,
         bytes32 _identityDomain,
         string calldata _identityData
-    ) external override onlyOwner {
+    ) external override {
+        require(operatorRegistry.isTaskGenerator(msg.sender), InvalidIdentitySubmitter());
         require(_identityOwner != address(0), InvalidIdentityAddress());
         require(_identityDomain != bytes32(0), InvalidIdentityDomain());
 
@@ -297,7 +288,7 @@ contract IdentityRegistry is OwnableUpgradeable, EIP712Upgradeable, Nonces, IIde
                 _identityOwner,
                 _policyClient,
                 _clientUser,
-                keccak256(abi.encode(_identityDomains)),
+                keccak256(abi.encodePacked(_identityDomains)),
                 _nonce,
                 _deadline
             )
@@ -324,7 +315,7 @@ contract IdentityRegistry is OwnableUpgradeable, EIP712Upgradeable, Nonces, IIde
     ) internal {
         // Enforce that the policy client is registered and active in the PolicyClientRegistry
         require(
-            IPolicyClientRegistry(policyClientRegistry).isRegisteredClient(_policyClient),
+            policyClientRegistry.isRegisteredClient(_policyClient),
             PolicyClientNotRegistered(_policyClient)
         );
 

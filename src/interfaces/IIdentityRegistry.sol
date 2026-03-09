@@ -2,6 +2,9 @@
 
 pragma solidity ^0.8.27;
 
+import {IPolicyClientRegistry} from "../interfaces/IPolicyClientRegistry.sol";
+import {IOperatorRegistry} from "../interfaces/IOperatorRegistry.sol";
+
 interface IIdentityRegistry {
     // storage accessors
 
@@ -40,6 +43,15 @@ interface IIdentityRegistry {
         address indexed policyClientUser,
         bytes32 identityDomain
     );
+
+    /// error when the contract is initialized with a zero valued operator registry address
+    error InvalidOperatorRegistryAddress();
+
+    /// error when the contract is initialized with a zero valued policy client registry address
+    error InvalidClientRegistryAddress();
+
+    /// error when a non-task generator address calls submitIdentity
+    error InvalidIdentitySubmitter();
 
     /// error when identity data is submitted for the zero address
     error InvalidIdentityAddress();
@@ -168,8 +180,13 @@ interface IIdentityRegistry {
         bytes32[] calldata _identityDomains
     ) external;
 
+    /// @notice Get the OperatorRegistry address used to require task submitter privileges for writing identity data.
+    ///   immutable, set on the implementation contract
+    /// @return The OperatorRegistry address
+    function operatorRegistry() external view returns (IOperatorRegistry);
+
     /// @notice Get the PolicyClientRegistry address used to enforce client registration during linking.
-    ///   Set once during initialize() and immutable thereafter.
+    ///   immutable, set on the implementation contract
     /// @return The PolicyClientRegistry address
-    function policyClientRegistry() external view returns (address);
+    function policyClientRegistry() external view returns (IPolicyClientRegistry);
 }

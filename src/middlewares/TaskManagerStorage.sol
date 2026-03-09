@@ -5,7 +5,6 @@ import "@openzeppelin-upgrades/contracts/proxy/utils/Initializable.sol";
 import "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
 import "@eigenlayer/contracts/permissions/Pausable.sol";
 import {IOperatorRegistry} from "../interfaces/IOperatorRegistry.sol";
-import {OperatorStateRetriever} from "@eigenlayer-middleware/src/OperatorStateRetriever.sol";
 import {BLSSignatureChecker} from "@eigenlayer-middleware/src/BLSSignatureChecker.sol";
 import {
     ISlashingRegistryCoordinator
@@ -97,7 +96,7 @@ abstract contract TaskManagerStorage is
     string public minCompatiblePolicyDataVersion;
 
     // Conditional inheritance based on chain type
-    // Source chains extend BLSSignatureChecker and OperatorStateRetriever for stake registry verification
+    // Source chains extend BLSSignatureChecker for stake registry verification
     // Destination chains do not extend these (they use certificate verification instead)
     modifier onlySourceChain() {
         require(
@@ -127,11 +126,7 @@ abstract contract TaskManagerStorage is
  * @title SourceTaskManagerStorage
  * @dev Storage contract for source chains that extends BLSSignatureChecker for BLS signature verification
  */
-abstract contract SourceTaskManagerStorage is
-    TaskManagerStorage,
-    BLSSignatureChecker,
-    OperatorStateRetriever
-{
+abstract contract SourceTaskManagerStorage is TaskManagerStorage, BLSSignatureChecker {
     constructor(
         ISlashingRegistryCoordinator _operatorRegistry,
         IPauserRegistry _pauserRegistry

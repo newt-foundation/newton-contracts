@@ -29,6 +29,7 @@ import {UpgradeableProxyLib} from "./UpgradeableProxyLib.sol";
 import {DeploymentLib} from "./DeploymentLib.sol";
 import {CoreDeploymentLib} from "./CoreDeploymentLib.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
+import {SP1MockVerifier} from "../../lib/sp1-contracts/contracts/src/SP1MockVerifier.sol";
 import {BLSApkRegistry} from "@eigenlayer-middleware/src/BLSApkRegistry.sol";
 import {IndexRegistry} from "@eigenlayer-middleware/src/IndexRegistry.sol";
 import {InstantSlasher} from "@eigenlayer-middleware/src/slashers/InstantSlasher.sol";
@@ -89,6 +90,8 @@ library NewtonProverDeploymentLib {
         result.challengeVerifier = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
         result.regoVerifier = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
         result.attestationValidator = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
+        result.policyClientRegistry = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
+        result.identityRegistry = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
         OperatorStateRetriever operatorStateRetriever = new OperatorStateRetriever();
         result.strategy = strategy;
         result.operatorStateRetriever = address(operatorStateRetriever);
@@ -210,13 +213,13 @@ library NewtonProverDeploymentLib {
                 result.slasher,
                 result.regoVerifier,
                 result.attestationValidator,
-                result.operatorRegistry
+                result.operatorRegistry,
+                result.operatorStateRetriever
             )
         );
         result.challengeVerifierImpl = challengeVerifierImpl;
 
         // deploy the PolicyClientRegistry (required by IdentityRegistry)
-        result.policyClientRegistry = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
         address policyClientRegistryImpl = address(new PolicyClientRegistry(PROTOCOL_VERSION));
         UpgradeableProxyLib.upgradeAndCall(
             result.policyClientRegistry,
@@ -226,12 +229,12 @@ library NewtonProverDeploymentLib {
         result.policyClientRegistryImpl = policyClientRegistryImpl;
 
         // deploy the IdentityRegistry
-        result.identityRegistry = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
-        address identityRegistryImpl = address(new IdentityRegistry());
+        address identityRegistryImpl =
+            address(new IdentityRegistry(result.operatorRegistry, result.policyClientRegistry));
         UpgradeableProxyLib.upgradeAndCall(
             result.identityRegistry,
             identityRegistryImpl,
-            abi.encodeCall(IdentityRegistry.initialize, (admin, result.policyClientRegistry))
+            abi.encodeCall(IdentityRegistry.initialize, ())
         );
         result.identityRegistryImpl = address(identityRegistryImpl);
 
@@ -279,10 +282,20 @@ library NewtonProverDeploymentLib {
             result.challengeVerifier, challengeVerifierImpl, challengeVerifierInitCall
         );
 
+        // Deploy SP1MockVerifier for local challenge testing when no real verifier is configured
+        address sp1Verifier = config.sp1Verifier;
+        if (sp1Verifier == address(0)) {
+            sp1Verifier = address(new SP1MockVerifier());
+            console2.log("Deployed SP1MockVerifier at:", sp1Verifier);
+
+            // Register local destination chain for cross-chain challenge testing
+            ChallengeVerifier(result.challengeVerifier).setRegisteredDestinationChain(31338, true);
+            console2.log("Registered destination chain 31338 for challenge testing");
+        }
+
         // Initialize RegoVerifier
-        bytes memory regoVerifierInitCall = abi.encodeCall(
-            RegoVerifier.initialize, (config.sp1Verifier, config.sp1ProgramVkey, admin)
-        );
+        bytes memory regoVerifierInitCall =
+            abi.encodeCall(RegoVerifier.initialize, (sp1Verifier, config.sp1ProgramVkey, admin));
         UpgradeableProxyLib.upgradeAndCall(
             result.regoVerifier, regoVerifierImpl, regoVerifierInitCall
         );
@@ -343,21 +356,21 @@ library NewtonProverDeploymentLib {
         /* Deploy or upgrade IdentityRegistry */
         if (result.identityRegistry == address(0)) {
             result.identityRegistry = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
-            address identityRegistryImpl = address(new IdentityRegistry());
-            result.identityRegistryImpl = address(identityRegistryImpl);
+            address identityRegistryImpl =
+                address(new IdentityRegistry(result.operatorRegistry, result.policyClientRegistry));
+            result.identityRegistryImpl = identityRegistryImpl;
             UpgradeableProxyLib.upgradeAndCall(
                 result.identityRegistry,
                 identityRegistryImpl,
-                abi.encodeCall(IdentityRegistry.initialize, (admin, result.policyClientRegistry))
+                abi.encodeCall(IdentityRegistry.initialize, ())
             );
         } else {
             // Upgrade existing contract with initializeV2 to set policyClientRegistry
-            IdentityRegistry identityRegistryImpl = new IdentityRegistry();
-            result.identityRegistryImpl = address(identityRegistryImpl);
+            address identityRegistryImpl =
+                address(new IdentityRegistry(result.operatorRegistry, result.policyClientRegistry));
+            result.identityRegistryImpl = identityRegistryImpl;
             UpgradeableProxyLib.upgradeAndCall(
-                result.identityRegistry,
-                address(identityRegistryImpl),
-                abi.encodeCall(IdentityRegistry.initializeV2, (result.policyClientRegistry))
+                result.identityRegistry, address(identityRegistryImpl), bytes("")
             );
         }
 
@@ -392,7 +405,8 @@ library NewtonProverDeploymentLib {
             result.slasher,
             result.regoVerifier,
             result.attestationValidator,
-            result.operatorRegistry
+            result.operatorRegistry,
+            result.operatorStateRetriever
         );
         result.challengeVerifierImpl = address(challengeVerifierImpl);
         UpgradeableProxyLib.upgrade(result.challengeVerifier, address(challengeVerifierImpl));
