@@ -10,7 +10,7 @@ import {NewtonPolicyData} from "../../src/core/NewtonPolicyData.sol";
 import {NewtonPolicy} from "../../src/core/NewtonPolicy.sol";
 import {INewtonPolicy} from "../../src/interfaces/INewtonPolicy.sol";
 import {INewtonPolicyData} from "../../src/interfaces/INewtonPolicyData.sol";
-import {MockNewtonPolicyClient} from "../../examples/mock/MockNewtonPolicyClient.sol";
+import {MockNewtonPolicyClient} from "../mock/MockNewtonPolicyClient.sol";
 import {NewtonPolicyLib} from "./NewtonPolicyLib.sol";
 import {UpgradeableProxyLib} from "./UpgradeableProxyLib.sol";
 import {ArrayLib} from "./ArrayLib.sol";
