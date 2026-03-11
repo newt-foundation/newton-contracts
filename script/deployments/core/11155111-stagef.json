@@ -1,6 +1,6 @@
 {
   "lastUpdate": {
-    "timestamp": "1753912001",
+    "timestamp": "1770800121",
     "block_number": "1"
   },
   "addresses": {
@@ -19,7 +19,7 @@
     "allocationManagerImpl": "0xB87AeeA46BB3a3050D277272E33b011922537Db7",
     "permissionController": "0x44632dfBdCb6D3E21EF613B0ca8A6A0c618F5a37",
     "permissionControllerImpl": "0x59B11b191B572888703E150E45F5015e0fFcf525",
-    "keyRegistrar": "0xA4dB30D08d8bbcA00D40600bee9F029984dB162a",
+    "keyRegistrar": "0xE1402507D426fA532c70d8A532F92F92D4F3a639",
     "keyRegistrarImpl": "0xe61E638650DC91Fe0f59bBBf5315517337d687CD",
     "strategyFactory": "0x066cF95c1bf0927124DFB8B02B401bc23A79730D",
     "strategyFactoryImpl": "0xEE41826B7D5B89e7F5eED6a831b4eFD69FC9ca1A",

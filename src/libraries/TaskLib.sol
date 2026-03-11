@@ -73,20 +73,7 @@ library TaskLib {
             TaskCreatedBlockTooOld()
         );
 
-        // Create task with minimal validation - policyTaskData validation moved to respondToTask
-        // Use the passed taskCreatedBlock as single source of truth (offchain estimated block)
-        INewtonProverTaskManager.Task memory newTask = INewtonProverTaskManager.Task({
-            taskId: task.taskId,
-            intent: task.intent,
-            intentSignature: task.intentSignature,
-            policyClient: task.policyClient,
-            wasmArgs: task.wasmArgs,
-            taskCreatedBlock: task.taskCreatedBlock,
-            quorumNumbers: task.quorumNumbers,
-            quorumThresholdPercentage: task.quorumThresholdPercentage
-        });
-
-        return newTask;
+        return task;
     }
 
     /// @notice Validates policyTaskData from TaskResponse.
@@ -231,7 +218,8 @@ library TaskLib {
                 task.policyClient,
                 task.wasmArgs,
                 task.quorumNumbers,
-                task.quorumThresholdPercentage
+                task.quorumThresholdPercentage,
+                task.initializationTimestamp
             )
         );
     }

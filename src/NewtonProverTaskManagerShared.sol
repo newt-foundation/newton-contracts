@@ -35,14 +35,6 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
         _;
     }
 
-    // onlyAttestationClient is used to restrict validateAttestation from only being called by the correct policy client
-    modifier onlyAttestationClient(
-        NewtonMessage.Attestation calldata attestation
-    ) {
-        TaskLib.onlyAttestationClient(attestation);
-        _;
-    }
-
     modifier onlyValidTaskResponse(
         Task calldata task,
         TaskResponse calldata taskResponse
@@ -161,9 +153,36 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
         }
     }
 
+    /// @notice Relay a cross-chain challenge from a destination chain to trigger slashing on source
+    /// @dev Re-executes ZK proof on source chain. Does not require the task to exist locally.
+    /// @param destChainId The destination chain where the task was created
+    /// @param task The original task from the destination chain
+    /// @param taskResponse The task response being challenged
+    /// @param challenge ZK proof data proving the response was incorrect
+    /// @param pubkeysOfNonSigningOperators BLS G1 pubkeys of non-signing operators
+    function slashForCrossChainChallenge(
+        uint256 destChainId,
+        Task calldata task,
+        TaskResponse calldata taskResponse,
+        ChallengeData calldata challenge,
+        BN254.G1Point[] memory pubkeysOfNonSigningOperators
+    ) external whenNotPaused {
+        bool isChallengeResolved = ChallengeVerifier(challengeVerifier)
+            .slashForCrossChainChallenge(
+                destChainId, task, taskResponse, challenge, pubkeysOfNonSigningOperators
+            );
+        if (isChallengeResolved) {
+            emit TaskChallengedSuccessfully(challenge.taskId, msg.sender);
+        } else {
+            emit TaskChallengedUnsuccessfully(challenge.taskId, msg.sender);
+        }
+    }
+
     function validateAttestation(
         NewtonMessage.Attestation calldata attestation
-    ) external onlyAttestationClient(attestation) whenNotPaused returns (bool) {
+    ) external whenNotPaused returns (bool) {
+        TaskLib.onlyAttestationClient(attestation);
+
         if (ChallengeVerifier(challengeVerifier).isTaskChallenged(attestation.taskId)) {
             return false;
         }

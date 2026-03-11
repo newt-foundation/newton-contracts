@@ -12,6 +12,7 @@ import {NewtonPolicyFactory} from "../../src/core/NewtonPolicyFactory.sol";
 import {NewtonPolicyDataFactory} from "../../src/core/NewtonPolicyDataFactory.sol";
 import {NewtonPolicyData} from "../../src/core/NewtonPolicyData.sol";
 import {INewtonPolicyData} from "../../src/interfaces/INewtonPolicyData.sol";
+import {NewtonProverTaskManagerShared} from "../../src/NewtonProverTaskManagerShared.sol";
 import {ArrayLib} from "./ArrayLib.sol";
 
 library AdminLib {
@@ -62,14 +63,15 @@ library AdminLib {
     function commandInCommands(
         string memory command
     ) internal pure returns (bool) {
-        string[7] memory commands = [
+        string[8] memory commands = [
             "task_generator",
             "operator",
             "policy_verifier",
             "policy_data_verifier",
             "policy",
             "policy_data",
-            "fund_operators"
+            "fund_operators",
+            "version"
         ];
 
         for (uint256 i = 0; i < commands.length; i++) {
@@ -314,6 +316,14 @@ library AdminLib {
                 }
             }
         }
+    }
+
+    function setMinCompatibleVersion(
+        address taskManager,
+        string memory version
+    ) internal {
+        NewtonProverTaskManagerShared(taskManager).setMinCompatibleVersion(version);
+        console2.log("Set minCompatiblePolicyVersion to:", version);
     }
 
     function syncPolicyDataVerification(

@@ -501,7 +501,8 @@ library NewtonCrossChainDeploymentLib {
                 address(0), // instantSlasher (address(0) for destination chains)
                 result.regoVerifier,
                 result.attestationValidator,
-                result.operatorRegistry
+                result.operatorRegistry,
+                address(0) // operatorStateRetriever (address(0) for destination chains)
             )
         );
 
@@ -574,6 +575,26 @@ library NewtonCrossChainDeploymentLib {
             result.attestationValidator,
             result.attestationValidatorImpl,
             attestationValidatorInitCall
+        );
+
+        // Deploy PolicyClientRegistry (required by IdentityRegistry)
+        result.policyClientRegistry = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
+        address pcrImpl = address(new PolicyClientRegistry(PROTOCOL_VERSION));
+        UpgradeableProxyLib.upgradeAndCall(
+            result.policyClientRegistry,
+            pcrImpl,
+            abi.encodeCall(PolicyClientRegistry.initialize, (admin))
+        );
+
+        // Deploy IdentityRegistry
+        result.identityRegistry = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
+        // set the immutable proxy contract addresses in the implementation
+        address identityRegistryImpl =
+            address(new IdentityRegistry(result.operatorRegistry, result.policyClientRegistry));
+        UpgradeableProxyLib.upgradeAndCall(
+            result.identityRegistry,
+            identityRegistryImpl,
+            abi.encodeCall(IdentityRegistry.initialize, ())
         );
 
         return result;
@@ -653,6 +674,53 @@ library NewtonCrossChainDeploymentLib {
         address proxyAdmin =
             address(UpgradeableProxyLib.getProxyAdmin(result.newtonProverTaskManager));
 
+        // if multichain contracts are EL's (impl == address(0)), deploy Newton's own
+        if (result.operatorTableUpdaterImpl == address(0)) {
+            // deploy pauser registry for multichain contracts
+            address[] memory pausers = new address[](0);
+            result.pauserRegistry = address(new PauserRegistry(pausers, admin));
+
+            // deploy new proxies (can't reuse EL's — Newton doesn't own their ProxyAdmin)
+            result.operatorTableUpdater = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
+            result.bn254CertificateVerifier = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
+            result.ecdsaCertificateVerifier = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
+
+            // deploy certificate verifier implementations
+            result.bn254CertificateVerifierImpl = address(
+                new BN254CertificateVerifier(
+                    IOperatorTableUpdater(result.operatorTableUpdater), PROTOCOL_VERSION
+                )
+            );
+            result.ecdsaCertificateVerifierImpl = address(
+                new ECDSACertificateVerifier(
+                    IOperatorTableUpdater(result.operatorTableUpdater), PROTOCOL_VERSION
+                )
+            );
+
+            // deploy ECDSA operator table updater implementation
+            result.operatorTableUpdaterImpl = address(
+                new ECDSAOperatorTableUpdater(
+                    IBN254CertificateVerifier(result.bn254CertificateVerifier),
+                    IECDSACertificateVerifier(result.ecdsaCertificateVerifier),
+                    IPauserRegistry(result.pauserRegistry),
+                    PROTOCOL_VERSION
+                )
+            );
+
+            // initialize and upgrade proxies
+            UpgradeableProxyLib.upgradeAndCall(
+                result.operatorTableUpdater,
+                result.operatorTableUpdaterImpl,
+                abi.encodeWithSignature("initialize(address,uint256)", admin, 0)
+            );
+            UpgradeableProxyLib.upgrade(
+                result.bn254CertificateVerifier, result.bn254CertificateVerifierImpl
+            );
+            UpgradeableProxyLib.upgrade(
+                result.ecdsaCertificateVerifier, result.ecdsaCertificateVerifierImpl
+            );
+        }
+
         // Deploy or upgrade PolicyClientRegistry (required by IdentityRegistry)
         if (result.policyClientRegistry == address(0)) {
             result.policyClientRegistry = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
@@ -670,19 +738,21 @@ library NewtonCrossChainDeploymentLib {
         // Deploy or upgrade IdentityRegistry
         if (result.identityRegistry == address(0)) {
             result.identityRegistry = UpgradeableProxyLib.setUpEmptyProxy(proxyAdmin);
-            address identityRegistryImpl = address(new IdentityRegistry());
+            // set the immutable proxy contract addresses in the implementation
+            address identityRegistryImpl =
+                address(new IdentityRegistry(result.operatorRegistry, result.policyClientRegistry));
             UpgradeableProxyLib.upgradeAndCall(
                 result.identityRegistry,
                 identityRegistryImpl,
-                abi.encodeCall(IdentityRegistry.initialize, (admin, result.policyClientRegistry))
+                abi.encodeCall(IdentityRegistry.initialize, ())
             );
         } else {
-            // Upgrade existing contract with initializeV2 to set policyClientRegistry
-            IdentityRegistry identityRegistryImpl = new IdentityRegistry();
+            // Upgrade existing contract without calling any function
+            // set the immutable proxy contract addresses in the implementation
+            address identityRegistryImpl =
+                address(new IdentityRegistry(result.operatorRegistry, result.policyClientRegistry));
             UpgradeableProxyLib.upgradeAndCall(
-                result.identityRegistry,
-                address(identityRegistryImpl),
-                abi.encodeCall(IdentityRegistry.initializeV2, (result.policyClientRegistry))
+                result.identityRegistry, identityRegistryImpl, bytes("")
             );
         }
 
@@ -696,7 +766,8 @@ library NewtonCrossChainDeploymentLib {
             address(0),
             result.regoVerifier,
             result.attestationValidator,
-            result.operatorRegistry
+            result.operatorRegistry,
+            address(0) // operatorStateRetriever (address(0) for destination chains)
         );
         result.challengeVerifierImpl = address(challengeVerifierImpl);
         UpgradeableProxyLib.upgrade(result.challengeVerifier, address(challengeVerifierImpl));

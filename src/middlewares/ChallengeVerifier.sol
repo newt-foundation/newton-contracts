@@ -26,9 +26,16 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
     error ChallengePeriodExpired();
     error OnlyTaskManager();
     error ChallengeFailed();
+    error OnlySourceChain();
+    error UnregisteredDestinationChain(uint256 chainId);
+    error CrossChainChallengeAlreadyProcessed(uint256 destChainId, bytes32 taskId);
 
     /* EVENTS */
     event ChallengeEnabled(bool indexed isChallengeEnabled);
+    event DestinationChainRegistered(uint256 indexed chainId, bool indexed registered);
+    event CrossChainChallengeRelayed(
+        uint256 indexed destChainId, bytes32 indexed taskId, address challenger
+    );
 
     /* STORAGE */
     address public immutable taskManager;
@@ -40,6 +47,7 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
     address public immutable regoVerifier;
     address public immutable attestationValidator;
     address public immutable operatorRegistry;
+    address public immutable operatorStateRetriever;
 
     bool public isChallengeEnabled;
     uint32 public taskChallengeWindowBlock;
@@ -49,7 +57,15 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
     mapping(bytes32 => bytes32) public allTaskHashes;
     mapping(bytes32 => bytes32) public allTaskResponses;
 
-    uint256[47] private __gap;
+    /// @notice Tracks cross-chain challenges to prevent double-slashing
+    /// @dev Key: keccak256(abi.encode(taskHash, responseHash)) — content-addressed
+    ///      to prevent replay with different destChainId values
+    mapping(bytes32 => bool) public crossChainChallenged;
+
+    /// @notice Whitelisted destination chain IDs for cross-chain challenge relay
+    mapping(uint256 => bool) public registeredDestinationChains;
+
+    uint256[45] private __gap;
 
     /* MODIFIERS */
     modifier onlyTaskManager() {
@@ -67,7 +83,8 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
         address _instantSlasher,
         address _regoVerifier,
         address _attestationValidator,
-        address _operatorRegistry
+        address _operatorRegistry,
+        address _operatorStateRetriever
     ) {
         taskManager = _taskManager;
         serviceManager = _serviceManager;
@@ -78,6 +95,7 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
         regoVerifier = _regoVerifier;
         attestationValidator = _attestationValidator;
         operatorRegistry = _operatorRegistry;
+        operatorStateRetriever = _operatorStateRetriever;
     }
 
     /* INITIALIZER */
@@ -162,7 +180,7 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
         if (serviceManager != address(0)) {
             ChallengeLib.ChallengeContext memory ctx = ChallengeLib.ChallengeContext({
                 blsApkRegistry: blsApkRegistry,
-                operatorStateRetriever: taskManager, // task manager is the operator state retriever
+                operatorStateRetriever: operatorStateRetriever,
                 registryCoordinator: registryCoordinator,
                 allocationManager: allocationManager,
                 instantSlasher: instantSlasher,
@@ -175,6 +193,72 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
         }
 
         taskSuccesfullyChallenged[taskResponse.taskId] = true;
+        return true;
+    }
+
+    /// @notice Slash operators for a challenge proven on a destination chain
+    /// @dev Re-executes ZK proof on source chain independently. Does not require the task
+    ///      to exist in allTaskHashes since dest-chain tasks are never registered on source.
+    /// @param destChainId The destination chain where the task was created and challenged
+    /// @param task The original task from the destination chain
+    /// @param taskResponse The task response being challenged
+    /// @param challenge ZK proof data proving the response was incorrect
+    /// @param pubkeysOfNonSigningOperators BLS G1 pubkeys of non-signing operators (from BN254Certificate)
+    // solhint-disable-next-line function-max-lines
+    function slashForCrossChainChallenge(
+        uint256 destChainId,
+        INewtonProverTaskManager.Task calldata task,
+        INewtonProverTaskManager.TaskResponse calldata taskResponse,
+        INewtonProverTaskManager.ChallengeData calldata challenge,
+        BN254.G1Point[] calldata pubkeysOfNonSigningOperators
+    ) external onlyTaskManager nonReentrant returns (bool) {
+        require(isChallengeEnabled, ChallengeNotEnabled());
+        require(serviceManager != address(0), OnlySourceChain());
+        require(registeredDestinationChains[destChainId], UnregisteredDestinationChain(destChainId));
+
+        // Prevent double-slashing for the same cross-chain challenge.
+        // Key is content-addressed (task + response hash) rather than using caller-supplied
+        // destChainId, which would allow replay by passing different registered chain IDs.
+        bytes32 taskHash = keccak256(abi.encode(task));
+        bytes32 responseHash = keccak256(abi.encode(taskResponse));
+        bytes32 crossChainKey = keccak256(abi.encode(taskHash, responseHash));
+        require(
+            !crossChainChallenged[crossChainKey],
+            CrossChainChallengeAlreadyProcessed(destChainId, challenge.taskId)
+        );
+
+        // Verify the policy is valid
+        INewtonPolicy policy = INewtonPolicy(taskResponse.policyTaskData.policyAddress);
+        require(policy.isPolicyVerified(), TaskLib.PolicyNotVerified());
+
+        // Re-verify the ZK proof on source chain (trust-minimized: no bridge dependency)
+        IRegoVerifier.RegoContext memory context =
+            RegoVerifier(regoVerifier).verifyRegoProof(challenge.data, challenge.proof);
+
+        // Verify proof output mismatches the task response (challenge is valid)
+        bool challengeSuccess = keccak256(abi.encode(context.evaluation))
+            != keccak256(abi.encode(taskResponse.evaluationResult));
+        require(challengeSuccess, ChallengeFailed());
+
+        // Process non-signing operators and slash signers
+        (, address[] memory addressOfNonSigningOperators) =
+            ChallengeLib.processNonSigners(pubkeysOfNonSigningOperators, blsApkRegistry);
+
+        ChallengeLib.ChallengeContext memory ctx = ChallengeLib.ChallengeContext({
+            blsApkRegistry: blsApkRegistry,
+            operatorStateRetriever: operatorStateRetriever,
+            registryCoordinator: registryCoordinator,
+            allocationManager: allocationManager,
+            instantSlasher: instantSlasher,
+            serviceManager: serviceManager
+        });
+
+        ChallengeLib.slashSigningOperators(
+            ctx, task.quorumNumbers, task.taskCreatedBlock, addressOfNonSigningOperators
+        );
+
+        crossChainChallenged[crossChainKey] = true;
+        emit CrossChainChallengeRelayed(destChainId, challenge.taskId, msg.sender);
         return true;
     }
 
@@ -226,6 +310,17 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
         uint32 _taskResponseWindowBlock
     ) external onlyOwner {
         taskResponseWindowBlock = _taskResponseWindowBlock;
+    }
+
+    /// @notice Register or unregister a destination chain for cross-chain challenge relay
+    /// @param chainId The destination chain ID
+    /// @param registered Whether the chain should be registered
+    function setRegisteredDestinationChain(
+        uint256 chainId,
+        bool registered
+    ) external onlyOwner {
+        registeredDestinationChains[chainId] = registered;
+        emit DestinationChainRegistered(chainId, registered);
     }
 
     function challengeDirectlyVerifiedAttestation(
@@ -284,7 +379,7 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
             // Create challenge context
             ChallengeLib.ChallengeContext memory ctx = ChallengeLib.ChallengeContext({
                 blsApkRegistry: blsApkRegistry,
-                operatorStateRetriever: taskManager,
+                operatorStateRetriever: operatorStateRetriever,
                 registryCoordinator: registryCoordinator,
                 allocationManager: allocationManager,
                 instantSlasher: instantSlasher,
@@ -355,7 +450,7 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
 
             ChallengeLib.ChallengeContext memory ctx = ChallengeLib.ChallengeContext({
                 blsApkRegistry: blsApkRegistry,
-                operatorStateRetriever: taskManager,
+                operatorStateRetriever: operatorStateRetriever,
                 registryCoordinator: registryCoordinator,
                 allocationManager: allocationManager,
                 instantSlasher: instantSlasher,

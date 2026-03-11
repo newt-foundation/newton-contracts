@@ -44,6 +44,8 @@ interface INewtonProverTaskManager {
         bytes wasmArgs;
         // the quorum numbers of the task
         bytes quorumNumbers;
+        // timestamp marking the offchain ingestion of the task
+        uint256 initializationTimestamp;
     }
 
     // Task response is hashed and signed by operators.
@@ -68,6 +70,8 @@ interface INewtonProverTaskManager {
         NewtonMessage.PolicyTaskData policyTaskData;
         // policy configuration - fetched by operators from chain
         INewtonPolicy.PolicyConfig policyConfig;
+        // timestamp marking the offchain ingestion of the task
+        uint256 initializationTimestamp;
     }
 
     // Certificate is filled by the protocol contract for each taskResponse signed by operators.
@@ -120,6 +124,21 @@ interface INewtonProverTaskManager {
         ResponseCertificate calldata responseCertificate,
         ChallengeData calldata challenge,
         BN254.G1Point[] calldata pubkeysOfNonSigningOperators
+    ) external;
+
+    /// @notice Relay a cross-chain challenge from a destination chain to trigger slashing on source
+    /// @dev Re-executes ZK proof on source chain. Does not require the task to exist locally.
+    /// @param destChainId The destination chain where the task was created
+    /// @param task The original task from the destination chain
+    /// @param taskResponse The task response being challenged
+    /// @param challenge ZK proof data proving the response was incorrect
+    /// @param pubkeysOfNonSigningOperators BLS G1 pubkeys of non-signing operators
+    function slashForCrossChainChallenge(
+        uint256 destChainId,
+        Task calldata task,
+        TaskResponse calldata taskResponse,
+        ChallengeData calldata challenge,
+        BN254.G1Point[] memory pubkeysOfNonSigningOperators
     ) external;
 
     // NOTE: this function authorizes existing task responses.
