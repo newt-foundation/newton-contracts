@@ -1,0 +1,10 @@
+{
+  "lastUpdate": {
+    "timestamp": "1770800121",
+    "block_number": "10236700"
+  },
+  "addresses": {
+    "crossChainRegistry": "0x287381B1570d9048c4B4C7EC94d21dDb8Aa1352a",
+    "operatorTableCalculator": "0xba3589c3342C1544DC5a643A680dDcE596C6E980"
+  }
+}

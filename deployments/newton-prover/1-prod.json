@@ -1,0 +1,34 @@
+{
+  "lastUpdate": {
+    "timestamp": "1760455511",
+    "block_number": "23576817"
+  },
+  "addresses": {
+    "proxyAdmin": "0x243a586030544a9e4fab4a15e69d9103b48c2409",
+    "newtonProverServiceManager": "0xfe41fbd0a08c2b4fd3d29bff3a96e33941f1a262",
+    "newtonProverServiceManagerImpl": "0x5e2282e5d332e196e2ba06160fe039e724319165",
+    "newtonProverTaskManager": "0x2010dbaa5438801bdc3f08174a799fe344f544ee",
+    "newtonProverTaskManagerImpl": "0xc0510fc01ee80706b268d4fcceb4ae0b5ab230ec",
+    "challengeVerifier": "0x5ad4c9d7a04fa04829746fbcb6f0ad0a752750e4",
+    "challengeVerifierImpl": "0x5f5e22711bc4115f6f4a1df135d8286bdf6726ca",
+    "attestationValidator": "0x263c275c15867a4611a44c600e77144a23012a06",
+    "attestationValidatorImpl": "0x114d0b1d97dcd09c0d9197489995d8a66542db99",
+    "operatorRegistry": "0xffed772e9a5e450b09b887ec4dcba614013a6a84",
+    "operatorRegistryImpl": "0x20af7a1634204131dbc1b74fa4cd8fda100e0b04",
+    "blsApkRegistry": "0x2b74ff55f3995d4cc9db6afe8dccf235d4d10e78",
+    "blsApkRegistryImpl": "0x14a03d6bcf16da11b7a0da82461262068765f763",
+    "indexRegistry": "0x76729c25674db7a0ad2171644b22f1f7509889a0",
+    "indexRegistryImpl": "0x751ddf573b0121398dfb0f207ce0bdf9ece0cca4",
+    "stakeRegistry": "0xb4dd662fa7814efa6ee99a3503847d3ac3f0bee7",
+    "stakeRegistryImpl": "0xf09b625b1856f6fe98cdebcf790bac6368e04c80",
+    "socketRegistry": "0x429f32b4338318a754b7fa6c61480079bf999ebb",
+    "socketRegistryImpl": "0xfaf54cd9b61671ecd178d86ad8e40e196b9c6d4f",
+    "operatorStateRetriever": "0x550faadd51960a135ee668fc6ebaf5220b326706",
+    "strategy": "0x98b991d3a4a84a5b6f5e9cba09d2b0c78e4dc9ba",
+    "pauserRegistry": "0x18961cc991215ec89e887e6f4a47cb20d261d6e3",
+    "token": "0xd0ec028a3d21533fdd200838f39c85b03679285d",
+    "tokenImpl": "0x1f064066068f837598b35796ca9f177863915846",
+    "slasher": "0xc3d96258497f45463052ab8bc4c7e147c3e9f8f7",
+    "instantSlasherImpl": "0x655e614666e21d84b80fff00e452638034cc57a0"
+  }
+}

@@ -5,8 +5,20 @@ out/
 # Ignores development broadcast logs
 /broadcast/**
 
-# Docs
-docs/
+# OS
+.DS_Store
+Thumbs.db
 
 # Dotenv file
 .env
+
+**/AGENTS.md
+**/CLAUDE.md
+**/.claude
+**/.cursor
+**/PLAN.md
+.claude-sessions/
+.omc/
+
+deployments/**/31337-*.json
+
