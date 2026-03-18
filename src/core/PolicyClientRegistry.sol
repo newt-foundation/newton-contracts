@@ -42,11 +42,15 @@ contract PolicyClientRegistry is OwnableUpgradeable, SemVerMixin, IPolicyClientR
     function registerClient(
         address client
     ) external {
+        require(client != address(0), NotPolicyClient(client));
         require(
             IERC165(client).supportsInterface(type(INewtonPolicyClient).interfaceId),
             NotPolicyClient(client)
         );
         require(_clients[client].registeredAt == 0, ClientAlreadyRegistered(client));
+        require(
+            INewtonPolicyClient(client).getOwner() == msg.sender, NotClientOwner(client, msg.sender)
+        );
 
         _clients[client] =
             ClientRecord({owner: msg.sender, active: true, registeredAt: uint64(block.timestamp)});

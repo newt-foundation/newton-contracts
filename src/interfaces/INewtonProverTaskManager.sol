@@ -138,6 +138,7 @@ interface INewtonProverTaskManager {
         Task calldata task,
         TaskResponse calldata taskResponse,
         ChallengeData calldata challenge,
+        bytes calldata signatureData,
         BN254.G1Point[] memory pubkeysOfNonSigningOperators
     ) external;
 

@@ -24,6 +24,7 @@ interface IIdentityRegistry {
     // typehashes for ERC-712 signature parsing
     function LINK_SIGNER_TYPEHASH() external view returns (bytes32);
     function LINK_USER_TYPEHASH() external view returns (bytes32);
+    function REGISTER_IDENTITY_TYPEHASH() external view returns (bytes32);
 
     /// event for when an identity is registered for indexing the data
     event IdentityBound(address indexed identityOwner, bytes32 identityDomain, string identityData);
@@ -50,12 +51,6 @@ interface IIdentityRegistry {
     /// error when the contract is initialized with a zero valued policy client registry address
     error InvalidClientRegistryAddress();
 
-    /// error when a non-task generator address calls submitIdentity
-    error InvalidIdentitySubmitter();
-
-    /// error when identity data is submitted for the zero address
-    error InvalidIdentityAddress();
-
     /// error when identity data is submitted for the zero domain
     error InvalidIdentityDomain();
 
@@ -74,21 +69,29 @@ interface IIdentityRegistry {
     /// error when someone tries to unlink data that isn't linked to them
     error InvalidUnlinker();
 
+    /// error when a link already exists for a different identity owner
+    error LinkAlreadyExists(address policyClient, address clientUser, bytes32 identityDomain);
+
     /// error when a policy client is not registered (or not active) in the PolicyClientRegistry
     error PolicyClientNotRegistered(address client);
 
+    /// error when the gateway signature on registerIdentityData is not from a valid task generator
+    error InvalidIdentitySubmitter();
+
     /**
-     * submits a new identity to the registry
-     * @notice this function is callable only by the trusted owner
+     * Register identity data reference for the caller (identity owner).
+     * Requires a gateway signature proving the caller uploaded the data.
      *
-     * @param _identityOwner this is the user address who will control signing permissions for linking this data
      * @param _identityDomain this marks what type of data is associated
-     * @param _identityData this is the actual encrypted data to be stored and to be looked up during task execution
+     * @param _dataRefId content-addressed reference to off-chain encrypted identity data
+     * @param _gatewaySignature signature by a task generator over (owner, domain, dataRefId, deadline)
+     * @param _deadline signature expiration timestamp
      */
-    function submitIdentity(
-        address _identityOwner,
+    function registerIdentityData(
         bytes32 _identityDomain,
-        string memory _identityData
+        string memory _dataRefId,
+        bytes calldata _gatewaySignature,
+        uint256 _deadline
     ) external;
 
     /**
@@ -176,6 +179,17 @@ interface IIdentityRegistry {
      */
     function unlinkIdentityAsSigner(
         address _clientUser,
+        address _policyClient,
+        bytes32[] calldata _identityDomains
+    ) external;
+
+    /**
+     * function to unlink existing links as the client user, allowing users to revoke their own linkages
+     *
+     * @param _policyClient the policy client where the data is associated
+     * @param _identityDomains this specifies what type of data to unlink
+     */
+    function unlinkIdentityAsUser(
         address _policyClient,
         bytes32[] calldata _identityDomains
     ) external;

@@ -6,7 +6,6 @@ import {IIdentityRegistry} from "../interfaces/IIdentityRegistry.sol";
 import {IPolicyClientRegistry} from "../interfaces/IPolicyClientRegistry.sol";
 import {IOperatorRegistry} from "../interfaces/IOperatorRegistry.sol";
 
-import {OwnableUpgradeable} from "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
 import {
     EIP712Upgradeable
 } from "@openzeppelin-upgrades/contracts/utils/cryptography/EIP712Upgradeable.sol";
@@ -51,6 +50,11 @@ contract IdentityRegistry is EIP712Upgradeable, Nonces, IIdentityRegistry {
         "linkIdentityUser(address identityOwner,address policyClient,address clientUser,bytes32[] identityDomains,uint256 clientUserNonce,uint256 deadline)"
     );
 
+    /// typehash for gateway-signed identity data registration
+    bytes32 public constant override REGISTER_IDENTITY_TYPEHASH = keccak256(
+        "registerIdentityData(address identityOwner,bytes32 identityDomain,string dataRefId,uint256 deadline)"
+    );
+
     /// a sanity check upper bound on the max number of links at once
     uint256 public constant MAX_LINKS = 50;
 
@@ -74,23 +78,37 @@ contract IdentityRegistry is EIP712Upgradeable, Nonces, IIdentityRegistry {
     }
 
     /**
-     * submits a new identity to the registry
+     * Register identity data reference for the caller (identity owner).
+     * Requires a gateway (task generator) signature proving the caller uploaded the data.
+     * Overwrites are allowed — users can update their identity data reference.
      *
      * @inheritdoc IIdentityRegistry
      */
-    function submitIdentity(
-        address _identityOwner,
+    function registerIdentityData(
         bytes32 _identityDomain,
-        string calldata _identityData
+        string calldata _dataRefId,
+        bytes calldata _gatewaySignature,
+        uint256 _deadline
     ) external override {
-        require(operatorRegistry.isTaskGenerator(msg.sender), InvalidIdentitySubmitter());
-        require(_identityOwner != address(0), InvalidIdentityAddress());
         require(_identityDomain != bytes32(0), InvalidIdentityDomain());
+        require(_deadline > block.timestamp, SignatureExpired());
 
-        // it's ok if this overwrites, users should be able to update their identity and the owner is trusted
-        identityData[_identityOwner][_identityDomain] = _identityData;
+        // Verify gateway (task generator) signed this registration for this specific caller
+        bytes32 structHash = keccak256(
+            abi.encode(
+                REGISTER_IDENTITY_TYPEHASH,
+                msg.sender,
+                _identityDomain,
+                keccak256(bytes(_dataRefId)),
+                _deadline
+            )
+        );
+        address recoveredSigner = ECDSA.recover(_hashTypedDataV4(structHash), _gatewaySignature);
+        require(operatorRegistry.isTaskGenerator(recoveredSigner), InvalidIdentitySubmitter());
 
-        emit IdentityBound(_identityOwner, _identityDomain, _identityData);
+        identityData[msg.sender][_identityDomain] = _dataRefId;
+
+        emit IdentityBound(msg.sender, _identityDomain, _dataRefId);
     }
 
     /**
@@ -261,6 +279,27 @@ contract IdentityRegistry is EIP712Upgradeable, Nonces, IIdentityRegistry {
     }
 
     /**
+     * function to unlink existing links as the client user, allowing users to revoke their own linkages
+     *
+     * @inheritdoc IIdentityRegistry
+     */
+    function unlinkIdentityAsUser(
+        address _policyClient,
+        bytes32[] calldata _identityDomains
+    ) external {
+        address clientUser = msg.sender;
+        uint256 numDomains = _identityDomains.length;
+        require(numDomains > 0, NoEmptyDomainsArray());
+        require(numDomains <= MAX_LINKS, TooManyDomainsAtOnce());
+
+        for (uint256 i; i < numDomains; ++i) {
+            address owner = policyClientLinks[_policyClient][clientUser][_identityDomains[i]];
+            require(owner != address(0), InvalidUnlinker());
+            _unlinkIdentity(owner, _policyClient, clientUser, _identityDomains[i]);
+        }
+    }
+
+    /**
      * internal function for confirming the signature by the identity data identityOwner
      *
      * @param _policyClient the policy client where the data is to be associated
@@ -317,6 +356,13 @@ contract IdentityRegistry is EIP712Upgradeable, Nonces, IIdentityRegistry {
         require(
             policyClientRegistry.isRegisteredClient(_policyClient),
             PolicyClientNotRegistered(_policyClient)
+        );
+
+        // prevent silent overwrite of an existing link to a different owner
+        address existing = policyClientLinks[_policyClient][_clientUser][_identityDomain];
+        require(
+            existing == address(0) || existing == _identityOwner,
+            LinkAlreadyExists(_policyClient, _clientUser, _identityDomain)
         );
 
         // update storage

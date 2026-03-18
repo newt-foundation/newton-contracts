@@ -91,6 +91,9 @@ contract AttestationValidator is Initializable, OwnableUpgradeable {
         attestations[taskId] = bytes32(0);
         // Use sentinel to prevent any future validation of this taskId
         attestationExpirations[taskId] = ATTESTATION_SPENT_SENTINEL;
+        // Clear direct verification state to prevent repeated challenge via
+        // challengeDirectlyVerifiedMismatch (isDirectlyVerified must return false)
+        directlyVerifiedAttestations[taskId] = false;
     }
 
     function createAttestationHash(
@@ -106,6 +109,9 @@ contract AttestationValidator is Initializable, OwnableUpgradeable {
         if (attestationExpirations[taskId] == ATTESTATION_SPENT_SENTINEL) {
             return bytes32(0);
         }
+        // Prevent expiration from colliding with the spent sentinel value,
+        // which would make the attestation permanently unspendable
+        require(expiration != ATTESTATION_SPENT_SENTINEL, AttestationExpired());
         NewtonMessage.Attestation memory attestation = NewtonMessage.Attestation(
             taskId, policyId, policyClient, expiration, intent, intentSignature
         );
@@ -118,11 +124,16 @@ contract AttestationValidator is Initializable, OwnableUpgradeable {
     function isAttestationValid(
         NewtonMessage.Attestation calldata attestation
     ) external view returns (bool) {
-        TaskLib.sanityCheckAttestation(attestation);
+        bytes32 stored = attestations[attestation.taskId];
+        if (stored == bytes32(0)) return false;
         bytes32 hash = keccak256(abi.encode(attestation));
-        return attestations[attestation.taskId] == hash
-            && uint32(block.number) < attestation.expiration
-            && attestations[attestation.taskId] != bytes32(0);
+        if (stored != hash) return false;
+        uint32 exp = attestationExpirations[attestation.taskId];
+        if (exp == 0 || exp == ATTESTATION_SPENT_SENTINEL || uint32(block.number) >= exp) {
+            return false;
+        }
+        TaskLib.sanityCheckAttestation(attestation);
+        return true;
     }
 
     function attestationHash(

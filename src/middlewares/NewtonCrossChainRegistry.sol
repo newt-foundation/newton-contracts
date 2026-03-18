@@ -155,7 +155,7 @@ contract NewtonCrossChainRegistry is Initializable, OwnableUpgradeable, Pausable
         OperatorSet calldata operatorSet,
         IOperatorTableCalculator operatorTableCalculator,
         ICrossChainRegistryTypes.OperatorSetConfig calldata operatorSetConfig
-    ) external onlyWhenNotPaused(PAUSED_OPERATOR_SET_CONFIG) {
+    ) external onlyOwner onlyWhenNotPaused(PAUSED_OPERATOR_SET_CONFIG) {
         require(address(operatorTableCalculator) != address(0), InvalidOperatorTableCalculator());
         require(operatorSetConfig.owner != address(0), InvalidOwner());
 

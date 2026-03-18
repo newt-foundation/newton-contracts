@@ -27,6 +27,10 @@ library OperatorVerifierLib {
 
     /**
      * @notice Verify that all signing operators are whitelisted
+     * NOTE: Gas optimization required to avoid liveness/DoS at scale:
+     * - Precompute non-signer quorum bitmaps once (outside per-quorum loop) to reduce O(Q×R) external calls to O(R).
+     * - Replace O(N×M) linear membership checks with sorting + binary search (or two-pointer merge if operatorIds sorted).
+     * - Optionally cache operator address lookups across quorums to reduce repeated external calls.
      * @param registryCoordinator The registry coordinator contract
      * @param task The task being responded to
      * @param nonSignerStakesAndSignature The BLS signature data containing operator information

@@ -55,7 +55,7 @@ contract RegoVerifier is OwnableUpgradeable, IRegoVerifier {
     function verifyRegoProof(
         bytes calldata _publicValues,
         bytes calldata _proofBytes
-    ) public view returns (RegoContext memory) {
+    ) public view override returns (RegoContext memory) {
         ISP1Verifier(verifier).verifyProof(regoProgramVKey, _publicValues, _proofBytes);
         return abi.decode(_publicValues, (RegoContext));
     }

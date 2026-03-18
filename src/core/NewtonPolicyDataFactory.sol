@@ -57,9 +57,12 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable, SemVerMixin {
         _disableInitializers();
     }
 
+    error InvalidOwnerAddress();
+
     function initialize(
         address owner
     ) public initializer {
+        require(owner != address(0), InvalidOwnerAddress());
         __Ownable_init();
         _transferOwnership(owner);
         implementation = address(new NewtonPolicyData());

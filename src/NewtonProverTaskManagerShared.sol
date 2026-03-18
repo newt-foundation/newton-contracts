@@ -57,7 +57,7 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
         allTaskHashes[newTask.taskId] = TaskLib.taskHash(newTask);
 
         INewtonPolicy.PolicyState memory state =
-            getPolicyState(INewtonPolicyClient(task.policyClient));
+            _getPolicyState(INewtonPolicyClient(task.policyClient));
 
         // Enforce minimum policy factory version if configured
         if (bytes(minCompatiblePolicyVersion).length > 0) {
@@ -165,11 +165,18 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
         Task calldata task,
         TaskResponse calldata taskResponse,
         ChallengeData calldata challenge,
+        bytes calldata signatureData,
         BN254.G1Point[] memory pubkeysOfNonSigningOperators
     ) external whenNotPaused {
         bool isChallengeResolved = ChallengeVerifier(challengeVerifier)
             .slashForCrossChainChallenge(
-                destChainId, task, taskResponse, challenge, pubkeysOfNonSigningOperators
+                destChainId,
+                task,
+                taskResponse,
+                challenge,
+                signatureData,
+                pubkeysOfNonSigningOperators,
+                taskResponseHandler
             );
         if (isChallengeResolved) {
             emit TaskChallengedSuccessfully(challenge.taskId, msg.sender);
@@ -239,6 +246,22 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
         // Delegate to AttestationValidator with taskResponseHandler for verification:
         // - Source chains: SourceTaskResponseHandler decodes NonSignerStakesAndSignature
         // - Destination chains: DestinationTaskResponseHandler decodes BN254Certificate
+        // Only the correct policy client may directly validate and spend the attestation
+        require(
+            msg.sender == task.policyClient && msg.sender == taskResponse.policyClient,
+            TaskLib.InvalidPolicyClient()
+        );
+        require(
+            INewtonPolicyClient(msg.sender).getPolicyId() == taskResponse.policyId,
+            TaskLib.InvalidPolicyId()
+        );
+        // Verify the policy contract hasn't been revoked or deactivated.
+        // The respondToTask path checks this via validateTaskResponsePolicyData;
+        // the direct path must check independently since respondToTask may not have run yet.
+        require(
+            INewtonPolicy(taskResponse.policyAddress).isPolicyVerified(),
+            TaskLib.PolicyNotVerified()
+        );
         return AttestationValidator(attestationValidator)
             .validateAttestationDirect(task, taskResponse, signatureData, taskResponseHandler);
     }
@@ -252,6 +275,7 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
             .challengeDirectlyVerifiedAttestation(
                 task, taskResponse, signatureData, taskResponseHandler
             );
+        emit TaskChallengedSuccessfully(taskResponse.taskId, msg.sender);
     }
 
     function challengeDirectlyVerifiedMismatch(
@@ -279,7 +303,7 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
         return allTaskResponses[taskId];
     }
 
-    function getPolicyState(
+    function _getPolicyState(
         INewtonPolicyClient client
     ) internal view returns (INewtonPolicy.PolicyState memory state) {
         address policyAddress = client.getPolicyAddress();

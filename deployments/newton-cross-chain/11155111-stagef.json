@@ -1,10 +1,10 @@
 {
-  "lastUpdate": {
-    "timestamp": "1770800121",
-    "block_number": "10236700"
-  },
   "addresses": {
-    "crossChainRegistry": "0x287381B1570d9048c4B4C7EC94d21dDb8Aa1352a",
-    "operatorTableCalculator": "0xba3589c3342C1544DC5a643A680dDcE596C6E980"
-  }
+    "crossChainRegistry": "0x213E6756e67304460f5B083DA4882B4d5f6415e2",
+    "crossChainRegistryImpl": "0x2361d9A91fdaD2c1fe9F21A18BDd1dF97127b4A3",
+    "operatorTableCalculator": "0xFC5e4999FF977EC4AE854dE714a365a332309cEd",
+    "operatorTableCalculatorImpl": "0x1AD83922F0Ce97c2B0869D216e9cc3c88C24082C"
+  },
+  "chainId": 11155111,
+  "deploymentType": "source"
 }

@@ -25,5 +25,5 @@ interface IRegoVerifier {
     function verifyRegoProof(
         bytes calldata _publicValues,
         bytes calldata _proofBytes
-    ) external view returns (RegoContext calldata);
+    ) external view returns (RegoContext memory);
 }

@@ -16,6 +16,9 @@ import {OperatorVerifierLib} from "../libraries/OperatorVerifierLib.sol";
  * @dev Uses ICertificateVerifier to verify certificates from source chains
  */
 contract DestinationTaskResponseHandler is ITaskResponseHandler {
+    /// @notice Thrown when a constructor parameter is the zero address
+    error InvalidAddress();
+
     /// @notice The certificate verifier for verifying certificates from source chains
     ICertificateVerifier public immutable certificateVerifier;
 
@@ -26,6 +29,8 @@ contract DestinationTaskResponseHandler is ITaskResponseHandler {
         ICertificateVerifier _certificateVerifier,
         address _sourceChainAvsAddress
     ) {
+        require(address(_certificateVerifier) != address(0), InvalidAddress());
+        require(_sourceChainAvsAddress != address(0), InvalidAddress());
         certificateVerifier = _certificateVerifier;
         sourceChainAvsAddress = _sourceChainAvsAddress;
     }

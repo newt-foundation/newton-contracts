@@ -213,6 +213,7 @@ library TaskLib {
         return keccak256(
             abi.encode(
                 task.taskId,
+                task.taskCreatedBlock,
                 task.intent,
                 task.intentSignature,
                 task.policyClient,

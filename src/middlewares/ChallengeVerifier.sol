@@ -175,6 +175,9 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
             responseCertificate.hashOfNonSigners
         );
 
+        // Record challenge success before external calls (CEI: reentrancy safety).
+        taskSuccesfullyChallenged[taskResponse.taskId] = true;
+
         // Slash signing operators only on source chains (where serviceManager is set)
         // Destination chains don't have slashing capability
         if (serviceManager != address(0)) {
@@ -192,25 +195,30 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
             );
         }
 
-        taskSuccesfullyChallenged[taskResponse.taskId] = true;
         return true;
     }
 
     /// @notice Slash operators for a challenge proven on a destination chain
     /// @dev Re-executes ZK proof on source chain independently. Does not require the task
     ///      to exist in allTaskHashes since dest-chain tasks are never registered on source.
+    ///      Binds proof outputs to caller-supplied inputs and verifies BLS certificate to
+    ///      prevent arbitrary operator slashing.
     /// @param destChainId The destination chain where the task was created and challenged
     /// @param task The original task from the destination chain
     /// @param taskResponse The task response being challenged
     /// @param challenge ZK proof data proving the response was incorrect
+    /// @param signatureData Encoded BLS signature data for certificate verification
     /// @param pubkeysOfNonSigningOperators BLS G1 pubkeys of non-signing operators (from BN254Certificate)
+    /// @param _taskResponseHandler Address of the task response handler for BLS verification
     // solhint-disable-next-line function-max-lines
     function slashForCrossChainChallenge(
         uint256 destChainId,
         INewtonProverTaskManager.Task calldata task,
         INewtonProverTaskManager.TaskResponse calldata taskResponse,
         INewtonProverTaskManager.ChallengeData calldata challenge,
-        BN254.G1Point[] calldata pubkeysOfNonSigningOperators
+        bytes calldata signatureData,
+        BN254.G1Point[] calldata pubkeysOfNonSigningOperators,
+        address _taskResponseHandler
     ) external onlyTaskManager nonReentrant returns (bool) {
         require(isChallengeEnabled, ChallengeNotEnabled());
         require(serviceManager != address(0), OnlySourceChain());
@@ -219,9 +227,9 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
         // Prevent double-slashing for the same cross-chain challenge.
         // Key is content-addressed (task + response hash) rather than using caller-supplied
         // destChainId, which would allow replay by passing different registered chain IDs.
-        bytes32 taskHash = keccak256(abi.encode(task));
+        bytes32 taskHashVal = TaskLib.taskHash(task);
         bytes32 responseHash = keccak256(abi.encode(taskResponse));
-        bytes32 crossChainKey = keccak256(abi.encode(taskHash, responseHash));
+        bytes32 crossChainKey = keccak256(abi.encode(taskHashVal, responseHash));
         require(
             !crossChainChallenged[crossChainKey],
             CrossChainChallengeAlreadyProcessed(destChainId, challenge.taskId)
@@ -235,14 +243,46 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
         IRegoVerifier.RegoContext memory context =
             RegoVerifier(regoVerifier).verifyRegoProof(challenge.data, challenge.proof);
 
+        // Bind proof public values to caller-supplied inputs — prevents using
+        // a valid proof from an unrelated task/response pair for targeted slashing
+        require(
+            TaskLib.taskHash(context.task) == taskHashVal,
+            TaskLib.TaskMismatch(taskHashVal, TaskLib.taskHash(context.task))
+        );
+        require(
+            keccak256(abi.encode(context.taskResponse)) == responseHash,
+            TaskLib.TaskResponseMismatch()
+        );
+        require(
+            keccak256(abi.encode(policy.getEntrypoint()))
+                == keccak256(abi.encode(context.entrypoint)),
+            TaskLib.EntrypointMismatch()
+        );
+
         // Verify proof output mismatches the task response (challenge is valid)
         bool challengeSuccess = keccak256(abi.encode(context.evaluation))
             != keccak256(abi.encode(taskResponse.evaluationResult));
         require(challengeSuccess, ChallengeFailed());
 
-        // Process non-signing operators and slash signers
-        (, address[] memory addressOfNonSigningOperators) =
-            ChallengeLib.processNonSigners(pubkeysOfNonSigningOperators, blsApkRegistry);
+        // Verify BLS certificate on source chain — the task response handler validates
+        // operator signatures and returns the cryptographically-derived hashOfNonSigners.
+        // This ensures the non-signer list is authentic, not attacker-supplied.
+        bytes32 hashOfNonSigners = ITaskResponseHandler(_taskResponseHandler)
+            .verifyTaskResponse(task, taskResponse, signatureData);
+
+        // Process non-signing operators and validate against the verified certificate
+        (
+            bytes32[] memory hashesOfPubkeysOfNonSigningOperators,
+            address[] memory addressOfNonSigningOperators
+        ) = ChallengeLib.processNonSigners(pubkeysOfNonSigningOperators, blsApkRegistry);
+
+        ChallengeLib.validateSignatoryRecord(
+            task.taskCreatedBlock, hashesOfPubkeysOfNonSigningOperators, hashOfNonSigners
+        );
+
+        // Record challenge success before external calls (CEI: reentrancy safety)
+        crossChainChallenged[crossChainKey] = true;
+        emit CrossChainChallengeRelayed(destChainId, challenge.taskId, msg.sender);
 
         ChallengeLib.ChallengeContext memory ctx = ChallengeLib.ChallengeContext({
             blsApkRegistry: blsApkRegistry,
@@ -256,9 +296,6 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
         ChallengeLib.slashSigningOperators(
             ctx, task.quorumNumbers, task.taskCreatedBlock, addressOfNonSigningOperators
         );
-
-        crossChainChallenged[crossChainKey] = true;
-        emit CrossChainChallengeRelayed(destChainId, challenge.taskId, msg.sender);
         return true;
     }
 
@@ -328,8 +365,10 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
         INewtonProverTaskManager.TaskResponse calldata taskResponse,
         bytes calldata signatureData,
         address _taskResponseHandler
-    ) external onlyTaskManager {
+    ) external onlyTaskManager nonReentrant {
         bytes32 taskId = taskResponse.taskId;
+
+        require(!taskSuccesfullyChallenged[taskId], NotChallengable());
 
         // Verify attestation was directly verified
         require(
@@ -361,6 +400,10 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
         ITaskResponseHandler(_taskResponseHandler)
             .verifyTaskResponse(task, taskResponse, signatureData);
 
+        // Record challenge success before external calls (CEI: reentrancy safety)
+        taskSuccesfullyChallenged[taskId] = true;
+        AttestationValidator(attestationValidator).invalidateAttestation(taskId);
+
         // Slashing only available on source chains (where blsApkRegistry is set)
         if (blsApkRegistry != address(0)) {
             // Decode NonSignerStakesAndSignature to extract non-signer pubkeys for slashing
@@ -391,9 +434,6 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
                 ctx, task.quorumNumbers, task.taskCreatedBlock, addressOfNonSigningOperators
             );
         }
-
-        // Invalidate attestation
-        AttestationValidator(attestationValidator).invalidateAttestation(taskId);
     }
 
     // solhint-disable-next-line function-max-lines
@@ -402,8 +442,13 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
         INewtonProverTaskManager.TaskResponse calldata taskResponse,
         bytes calldata signatureData,
         address _taskResponseHandler
-    ) external onlyTaskManager {
+    ) external onlyTaskManager nonReentrant {
+        require(isChallengeEnabled, ChallengeNotEnabled());
+
         bytes32 taskId = taskResponse.taskId;
+
+        // Prevent repeated slashing for the same task
+        require(!taskSuccesfullyChallenged[taskId], NotChallengable());
 
         // 1. Verify attestation was directly verified
         require(
@@ -411,31 +456,52 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
             TaskManagerErrors.NotDirectlyVerified()
         );
 
-        // 2. Get direct hashes from AttestationValidator
+        // 2. Time bound: challenge must be within the challenge window.
+        // Uses task.taskCreatedBlock as the anchor since the direct path may
+        // have been set before the regular path's responseCertificate exists.
+        require(
+            uint32(block.number) < task.taskCreatedBlock + taskChallengeWindowBlock,
+            ChallengePeriodExpired()
+        );
+
+        // 3. Bind caller-supplied task to on-chain task hash — prevents crafted
+        // tasks with modified fields (e.g., wasmArgs) from forcing a mismatch
+        bytes32 regularTaskHash = INewtonProverTaskManager(taskManager).taskHash(taskId);
+        require(
+            regularTaskHash != bytes32(0) && TaskLib.taskHash(task) == regularTaskHash,
+            TaskLib.TaskMismatch(regularTaskHash, TaskLib.taskHash(task))
+        );
+
+        // 4. Get direct hashes from AttestationValidator
         bytes32 directTaskHash = AttestationValidator(attestationValidator).directTaskHashes(taskId);
         bytes32 directResponseHash =
             AttestationValidator(attestationValidator).directTaskResponseHashes(taskId);
 
-        // 3. Get regular hashes from TaskManager
-        bytes32 regularTaskHash = INewtonProverTaskManager(taskManager).taskHash(taskId);
+        // 5. Get regular response hash from TaskManager and normalize for comparison.
+        // The regular path stores keccak256(abi.encode(taskResponse, responseCertificate))
+        // while the direct path stores keccak256(abi.encode(taskResponse)).
+        // Compare direct hash against the same encoding: keccak256(abi.encode(taskResponse)).
         bytes32 regularResponseHash = INewtonProverTaskManager(taskManager).taskResponseHash(taskId);
+        require(regularResponseHash != bytes32(0), NotChallengable());
 
-        // 4. Regular path must have been completed (both hashes must be non-zero)
-        require(
-            regularTaskHash != bytes32(0) && regularResponseHash != bytes32(0), NotChallengable()
-        );
+        bytes32 normalizedRegularResponseHash = keccak256(abi.encode(taskResponse));
 
-        // 5. Challenge succeeds if EITHER task hash or response hash mismatches
+        // 6. Challenge succeeds if EITHER task hash or response hash mismatches
+        // (using compatible encodings for the response hash comparison)
         bool taskHashMismatch = directTaskHash != bytes32(0) && directTaskHash != regularTaskHash;
         bool responseHashMismatch =
-            directResponseHash != bytes32(0) && directResponseHash != regularResponseHash;
+            directResponseHash != bytes32(0) && directResponseHash != normalizedRegularResponseHash;
         require(taskHashMismatch || responseHashMismatch, ChallengeFailed());
 
         // 6. Re-verify signatures via task response handler
         ITaskResponseHandler(_taskResponseHandler)
             .verifyTaskResponse(task, taskResponse, signatureData);
 
-        // 7. Slash signing operators (only on source chains where blsApkRegistry is set)
+        // 7. Record challenge success before external calls (CEI: reentrancy safety)
+        taskSuccesfullyChallenged[taskId] = true;
+        AttestationValidator(attestationValidator).invalidateAttestation(taskId);
+
+        // 8. Slash signing operators (only on source chains where blsApkRegistry is set)
         if (blsApkRegistry != address(0)) {
             IBLSSignatureCheckerTypes.NonSignerStakesAndSignature memory
                 nonSignerStakesAndSignature =
@@ -461,9 +527,5 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
                 ctx, task.quorumNumbers, task.taskCreatedBlock, addressOfNonSigningOperators
             );
         }
-
-        // 8. Mark as challenged and invalidate direct attestation
-        taskSuccesfullyChallenged[taskId] = true;
-        AttestationValidator(attestationValidator).invalidateAttestation(taskId);
     }
 }
