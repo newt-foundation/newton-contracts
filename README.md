@@ -228,9 +228,9 @@ function validatePolicyData(address policyAddress, PolicyTaskData calldata polic
 
 Utility library for chain-specific operations and network detection.
 
-#### TaskEvaluationLib.sol
+#### TaskLib.sol
 
-Library for task evaluation and processing logic.
+Library for task creation, hashing, and processing logic.
 
 ### Mixin Contracts (`src/mixins/`)
 
@@ -255,19 +255,6 @@ struct NewtonPolicyClientStorage {
     address policyClientOwner;
 }
 ```
-
-### Example Implementation (`src/examples/`)
-
-#### ExamplePolicyClient.sol
-
-**Purpose**: Reference implementation showing how to build a policy-enabled application.
-
-**Features**:
-
-- Token deposit/withdrawal functionality
-- Intent execution with policy validation
-- Integration with Newton Policy system
-- Proper error handling and event emission
 
 ## Policy System
 
@@ -398,47 +385,6 @@ forge test
 make tests
 ```
 
-### Deployment Scripts
-
-The project includes comprehensive deployment scripts in the `script/` directory:
-
-#### PolicyDeployer.s.sol
-
-Deploys policy contracts with the following parameters:
-
-- Policy entrypoint
-- Policy URI (IPFS)
-- Schema URI (IPFS)
-- Policy data contract addresses
-- Metadata URI
-- Owner address
-
-**Usage**:
-
-```bash
-forge script script/PolicyDeployer.s.sol:PolicyDeployer \
-  --rpc-url $RPC_URL \
-  --private-key $PRIVATE_KEY \
-  --broadcast -vvvv
-```
-
-#### PolicyClientDeployer.s.sol
-
-Deploys policy client contracts with:
-
-- Newton Prover Task Manager integration
-- Policy address configuration
-- Initial policy parameters
-
-**Usage**:
-
-```bash
-forge script script/PolicyClientDeployer.s.sol:PolicyClientDeployer \
-  --rpc-url $RPC_URL \
-  --private-key $PRIVATE_KEY \
-  --broadcast -vvvv
-```
-
 ### Network Configuration
 
 The project supports multiple networks configured in `foundry.toml`:
@@ -541,12 +487,9 @@ newton-contracts/
 │   ├── core/              # Core protocol contracts
 │   ├── interfaces/        # Contract interfaces
 │   ├── libraries/         # Utility libraries
-│   ├── mixins/           # Reusable contract components
-│   └── examples/         # Example implementations
-├── script/
-│   ├── utils/            # Deployment utilities
-│   └── *.s.sol          # Deployment scripts
-├── test/                 # Test contracts
+│   ├── middlewares/       # EigenLayer integration middleware
+│   └── mixins/           # Reusable contract components
+├── deployments/          # Chain-specific deployment artifacts
 ├── data/                 # Configuration files
 └── anvil/               # Local deployment scripts
 ```

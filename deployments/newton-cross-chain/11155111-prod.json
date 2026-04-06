@@ -1,10 +1,10 @@
 {
-  "addresses": {
-    "crossChainRegistry": "0x0Ab8E26270099D858EF4a0e02C212C34aFfF115e",
-    "crossChainRegistryImpl": "0xB5600cA627Fd0dF2cC6b88AD6FAf00eb7d625BC3",
-    "operatorTableCalculator": "0x5d5fc450D965c65de81Ec85fC61344B6a9D5733f",
-    "operatorTableCalculatorImpl": "0xD8D35CC4204d1983659edb341d62E0142A5190d6"
-  },
-  "chainId": 11155111,
-  "deploymentType": "source"
+	"addresses": {
+		"crossChainRegistry": "0x4b2eB8deE1D624F73c645a7AF49EcAFee7788d6e",
+		"crossChainRegistryImpl": "0x851C04A58087d31150328B961B5aE7B0322E3C9D",
+		"operatorTableCalculator": "0x30D9b5153A0294e20c766ebA87D5b58c7863A799",
+		"operatorTableCalculatorImpl": "0x825210759b9699CD124645De6cA6B94182c1C952"
+	},
+	"chainId": 11155111,
+	"deploymentType": "source"
 }

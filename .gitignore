@@ -2,6 +2,9 @@
 cache/
 out/
 
+# Dependencies (managed by consumers, not this package)
+lib/
+
 # Ignores development broadcast logs
 /broadcast/**
 
