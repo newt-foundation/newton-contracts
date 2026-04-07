@@ -4,9 +4,9 @@ pragma solidity ^0.8.27;
 import {ITaskResponseHandler} from "../interfaces/ITaskResponseHandler.sol";
 import {ICertificateVerifier} from "../interfaces/ICertificateVerifier.sol";
 import {
-    IBN254CertificateVerifier,
     IBN254CertificateVerifierTypes
 } from "@eigenlayer/contracts/interfaces/IBN254CertificateVerifier.sol";
+import {IViewBN254CertificateVerifier} from "../interfaces/IViewBN254CertificateVerifier.sol";
 import {INewtonProverTaskManager} from "../interfaces/INewtonProverTaskManager.sol";
 import {OperatorVerifierLib} from "../libraries/OperatorVerifierLib.sol";
 
@@ -48,7 +48,7 @@ contract DestinationTaskResponseHandler is ITaskResponseHandler {
         INewtonProverTaskManager.Task calldata task,
         INewtonProverTaskManager.TaskResponse calldata taskResponse,
         bytes memory signatureData
-    ) external override returns (bytes32 hashOfNonSigners) {
+    ) external view override returns (bytes32 hashOfNonSigners) {
         // decode certificate from signatureData with error handling
         IBN254CertificateVerifierTypes.BN254Certificate memory certificate;
         try this.decodeCertificate(signatureData) returns (
@@ -63,7 +63,7 @@ contract DestinationTaskResponseHandler is ITaskResponseHandler {
             task,
             taskResponse,
             certificate,
-            IBN254CertificateVerifier(address(certificateVerifier)),
+            IViewBN254CertificateVerifier(address(certificateVerifier)),
             sourceChainAvsAddress
         );
 

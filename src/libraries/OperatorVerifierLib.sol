@@ -16,6 +16,7 @@ import {
     IBN254CertificateVerifier,
     IBN254CertificateVerifierTypes
 } from "@eigenlayer/contracts/interfaces/IBN254CertificateVerifier.sol";
+import {IViewBN254CertificateVerifier} from "../interfaces/IViewBN254CertificateVerifier.sol";
 import {OperatorSet} from "@eigenlayer/contracts/libraries/OperatorSetLib.sol";
 
 library OperatorVerifierLib {
@@ -190,9 +191,9 @@ library OperatorVerifierLib {
         INewtonProverTaskManager.Task calldata task,
         INewtonProverTaskManager.TaskResponse calldata taskResponse,
         IBN254CertificateVerifierTypes.BN254Certificate memory certificate,
-        IBN254CertificateVerifier certificateVerifier,
+        IViewBN254CertificateVerifier certificateVerifier,
         address sourceChainAvsAddress
-    ) external returns (bytes32 hashOfNonSigners) {
+    ) external view returns (bytes32 hashOfNonSigners) {
         // Verify that certificate messageHash matches the consensus digest of the taskResponse
         // Uses consensus digest (attestations zeroed) to match what operators signed
         bytes32 taskResponseHash = TaskLib.computeConsensusDigest(taskResponse);

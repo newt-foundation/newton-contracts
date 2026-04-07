@@ -21,6 +21,6 @@ interface ICertificateVerifier {
         INewtonProverTaskManager.Task calldata task,
         INewtonProverTaskManager.TaskResponse calldata taskResponse,
         bytes calldata certificateData
-    ) external returns (bytes32 hashOfNonSigners);
+    ) external view returns (bytes32 hashOfNonSigners);
 }
 

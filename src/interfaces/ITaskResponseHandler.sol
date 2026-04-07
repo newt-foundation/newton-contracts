@@ -27,6 +27,6 @@ interface ITaskResponseHandler {
         INewtonProverTaskManager.Task calldata task,
         INewtonProverTaskManager.TaskResponse calldata taskResponse,
         bytes memory signatureData
-    ) external returns (bytes32 hashOfNonSigners);
+    ) external view returns (bytes32 hashOfNonSigners);
 }
 

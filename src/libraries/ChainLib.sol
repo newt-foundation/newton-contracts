@@ -71,47 +71,28 @@ library ChainLib {
     }
 
     /// @notice Returns true if the chain requires Newton-managed CrossChainRegistry
-    /// @dev These are destination chains where EigenLayer's Generator doesn't operate.
-    ///      EigenLayer-supported destinations (Base) use EigenLayer's CrossChainRegistry instead.
+    /// @dev All non-source supported chains use Newton's CrossChainRegistry.
     function requiresNewtonCrossChainRegistry() internal view returns (bool) {
-        return !isSourceChain() && isSupportedChain() && !isEigenLayerSupportedDestination();
+        return !isSourceChain() && isSupportedChain();
     }
 
     /// @notice Returns true if the chain requires Newton-managed CrossChainRegistry
     /// @dev Static version for use with explicit chain ID parameter.
-    ///      EigenLayer-supported destinations (Base) use EigenLayer's CrossChainRegistry instead.
     function requiresNewtonCrossChainRegistry(
         uint256 chainId
     ) internal pure returns (bool) {
-        return !isSourceChain(chainId) && isSupportedChainStatic(chainId)
-            && !isEigenLayerSupportedDestination(chainId);
+        return !isSourceChain(chainId) && isSupportedChainStatic(chainId);
     }
 
     // =============================================================
-    //                  EIGENLAYER DESTINATION SUPPORT
+    //              OPERATOR TABLE UPDATER TYPE SELECTION
     // =============================================================
-
-    /// @notice Returns true if the chain is an EigenLayer-supported destination
-    /// @dev EigenLayer's Generator service only operates on Base and Base Sepolia.
-    ///      These chains have permissionless GlobalTableRoot confirmation via Generator.
-    ///      All other destinations require owner-controlled updates (ECDSAOperatorTableUpdater).
-    function isEigenLayerSupportedDestination() internal view returns (bool) {
-        return isEigenLayerSupportedDestination(block.chainid);
-    }
-
-    /// @notice Returns true if the chain is an EigenLayer-supported destination
-    /// @dev Static version for use with explicit chain ID parameter
-    function isEigenLayerSupportedDestination(
-        uint256 chainId
-    ) internal pure returns (bool) {
-        return chainId == 8453; // Base mainnet
-    }
 
     /// @notice Returns true if the chain requires ECDSA-based operator table updates
-    /// @dev Non-EL destinations and local chains need ECDSAOperatorTableUpdater
-    ///      because EigenLayer's Generator service is not available.
+    /// @dev All destination chains use ECDSAOperatorTableUpdater.
+    ///      Source chains do not deploy an OperatorTableUpdater.
     function requiresECDSAOperatorTableUpdater() internal view returns (bool) {
-        return requiresECDSAOperatorTableUpdater(block.chainid);
+        return !isSourceChain();
     }
 
     /// @notice Returns true if the chain requires ECDSA-based operator table updates
@@ -119,12 +100,7 @@ library ChainLib {
     function requiresECDSAOperatorTableUpdater(
         uint256 chainId
     ) internal pure returns (bool) {
-        // Local chains always use ECDSA for testing flexibility
-        if (chainId == 31337 || chainId == 31338) {
-            return true;
-        }
-        // Non-EL supported destinations need ECDSA (no Generator available)
-        return !isEigenLayerSupportedDestination(chainId) && !isSourceChain(chainId);
+        return !isSourceChain(chainId);
     }
 
     /// @notice Static version of isSupportedChain for use with explicit chain ID
