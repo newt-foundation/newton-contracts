@@ -40,4 +40,17 @@ interface IBatchTaskManager {
         INewtonProverTaskManager.TaskResponse[] calldata responses,
         bytes[] calldata signatureDataArray
     ) external;
+
+    /// @notice Atomically create and respond to multiple tasks in a single transaction.
+    ///         Each item calls createNewTask then respondToTask within a single EVM
+    ///         execution context — state written by createNewTask is visible to respondToTask.
+    ///         If either call reverts for an item, the entire item reverts (no zombie tasks).
+    /// @param tasks Array of tasks to create and respond to
+    /// @param responses Array of task responses (must match tasks by index)
+    /// @param signatureDataArray Array of BLS signature data (one per response)
+    function batchCreateAndRespondToTasks(
+        INewtonProverTaskManager.Task[] calldata tasks,
+        INewtonProverTaskManager.TaskResponse[] calldata responses,
+        bytes[] calldata signatureDataArray
+    ) external;
 }

@@ -138,4 +138,56 @@ contract BatchTaskManager is IBatchTaskManager {
             revert BatchPartialFailure(trimmed);
         }
     }
+
+    /// @inheritdoc IBatchTaskManager
+    function batchCreateAndRespondToTasks(
+        INewtonProverTaskManager.Task[] calldata tasks,
+        INewtonProverTaskManager.TaskResponse[] calldata responses,
+        bytes[] calldata signatureDataArray
+    ) external onlyAuthorized {
+        require(tasks.length > 0, EmptyBatch());
+        require(
+            tasks.length == responses.length && responses.length == signatureDataArray.length,
+            ArrayLengthMismatch()
+        );
+
+        FailedItem[] memory failures = new FailedItem[](tasks.length);
+        uint256 failCount;
+
+        for (uint256 i; i < tasks.length;) {
+            try this._createAndRespond(tasks[i], responses[i], signatureDataArray[i]) {}
+            catch (bytes memory reason) {
+                failures[failCount] = FailedItem(i, responses[i].taskId, reason);
+                unchecked {
+                    ++failCount;
+                }
+            }
+            unchecked {
+                ++i;
+            }
+        }
+
+        if (failCount > 0) {
+            FailedItem[] memory trimmed = new FailedItem[](failCount);
+            for (uint256 j; j < failCount;) {
+                trimmed[j] = failures[j];
+                unchecked {
+                    ++j;
+                }
+            }
+            revert BatchPartialFailure(trimmed);
+        }
+    }
+
+    /// @dev Internal helper for atomic create+respond per item.
+    ///      Must be external for try/catch but restricted to self-calls only.
+    function _createAndRespond(
+        INewtonProverTaskManager.Task calldata task,
+        INewtonProverTaskManager.TaskResponse calldata taskResponse,
+        bytes calldata signatureData
+    ) external {
+        require(msg.sender == address(this), Unauthorized());
+        taskManager.createNewTask(task);
+        taskManager.respondToTask(task, taskResponse, signatureData);
+    }
 }

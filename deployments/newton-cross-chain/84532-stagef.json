@@ -30,6 +30,6 @@
         "policyClientRegistryImpl": "0x7d3cd281df9cc9ab22e1549d3c851ab06e35b91d",
         "identityRegistry": "0x3c7565e9a7b5b9b9931a600fd40afb9d7567f043",
         "identityRegistryImpl": "0x35aa39f491e43b76eedfb3d1d47c91c18a77ccc3",
-        "batchTaskManager": "0x4a7a311daf5ae9dbb53cc1106f81de9d7b558900"
+        "batchTaskManager": "0x94ba964f2ed1ee661cb1ed11f187a3a9f97febd3"
     }
 }

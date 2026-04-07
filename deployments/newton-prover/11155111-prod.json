@@ -40,6 +40,6 @@
         "instantSlasherImpl": "0x76f5415419b03d4de015566d96ada1b0d2d302b0",
         "operatorTableCalculator": "0x0000000000000000000000000000000000000000",
         "taskResponseHandler": "0xbc8488a6ce8332fdcf4f76dcbf699221f2fb6542",
-        "batchTaskManager": "0x81f88ef6cbc5014b737be9e8b1a46eb8d97c4fdb"
+        "batchTaskManager": "0x2afd6a09317c1cdbd23c1dbdad6d07e8c32d43fc"
     }
 }
