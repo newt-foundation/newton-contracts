@@ -103,6 +103,28 @@ interface INewtonProverTaskManager {
         bytes data;
     }
 
+    // State getter functions
+    // See TaskManagerStorage.sol for documentation
+    function isDestinationChain() external view returns (bool);
+    function nonce() external view returns (uint32);
+    function serviceManager() external view returns (address);
+    function certificateVerifier() external view returns (address);
+    function operatorRegistry() external view returns (address);
+    function taskResponseHandler() external view returns (address);
+    function allTaskHashes(
+        bytes32
+    ) external view returns (bytes32);
+    function allTaskResponses(
+        bytes32
+    ) external view returns (bytes32);
+    function challengeVerifier() external view returns (address);
+    function attestationValidator() external view returns (address);
+    function taskResponseWindowBlock() external view returns (uint32);
+    function epochBlocks() external view returns (uint32);
+    function taskCreationBufferWindow() external view returns (uint32);
+    function minCompatiblePolicyVersion() external view returns (string memory);
+    function minCompatiblePolicyDataVersion() external view returns (string memory);
+
     // FUNCTIONS
     // NOTE: this function creates new task.
     // Task now contains minimal data - operators generate policyTaskData independently.
@@ -180,9 +202,4 @@ interface INewtonProverTaskManager {
     function taskResponseHash(
         bytes32 taskId
     ) external view returns (bytes32);
-
-    /// @notice Returns the minimum compatible policy factory version
-    /// @dev Empty string means no enforcement. Used by NewtonPolicyClient.setPolicyAddress()
-    ///      to fail fast at configuration time rather than at task creation time.
-    function minCompatiblePolicyVersion() external view returns (string memory);
 }

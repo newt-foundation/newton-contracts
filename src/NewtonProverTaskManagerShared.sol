@@ -185,22 +185,6 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
         }
     }
 
-    function validateAttestation(
-        NewtonMessage.Attestation calldata attestation
-    ) external whenNotPaused returns (bool) {
-        TaskLib.onlyAttestationClient(attestation);
-
-        if (ChallengeVerifier(challengeVerifier).isTaskChallenged(attestation.taskId)) {
-            return false;
-        }
-        bool isAttestationValid =
-            AttestationValidator(attestationValidator).validateAttestation(attestation);
-        if (isAttestationValid) {
-            emit AttestationSpent(attestation.taskId, attestation);
-        }
-        return isAttestationValid;
-    }
-
     function updateTaskResponseWindowBlock(
         uint32 _taskResponseWindowBlock
     ) external onlyOwner {
@@ -238,6 +222,20 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
         emit TaskResponseHandlerUpdated(_taskResponseHandler);
     }
 
+    function validateAttestation(
+        NewtonMessage.Attestation calldata attestation
+    ) external whenNotPaused returns (bool) {
+        if (ChallengeVerifier(challengeVerifier).isTaskChallenged(attestation.taskId)) {
+            return false;
+        }
+        bool isAttestationValid =
+            AttestationValidator(attestationValidator).validateAttestation(msg.sender, attestation);
+        if (isAttestationValid) {
+            emit AttestationSpent(attestation.taskId, attestation);
+        }
+        return isAttestationValid;
+    }
+
     function validateAttestationDirect(
         Task calldata task,
         TaskResponse calldata taskResponse,
@@ -246,24 +244,8 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
         // Delegate to AttestationValidator with taskResponseHandler for verification:
         // - Source chains: SourceTaskResponseHandler decodes NonSignerStakesAndSignature
         // - Destination chains: DestinationTaskResponseHandler decodes BN254Certificate
-        // Only the correct policy client may directly validate and spend the attestation
-        require(
-            msg.sender == task.policyClient && msg.sender == taskResponse.policyClient,
-            TaskLib.InvalidPolicyClient()
-        );
-        require(
-            INewtonPolicyClient(msg.sender).getPolicyId() == taskResponse.policyId,
-            TaskLib.InvalidPolicyId()
-        );
-        // Verify the policy contract hasn't been revoked or deactivated.
-        // The respondToTask path checks this via validateTaskResponsePolicyData;
-        // the direct path must check independently since respondToTask may not have run yet.
-        require(
-            INewtonPolicy(taskResponse.policyAddress).isPolicyVerified(),
-            TaskLib.PolicyNotVerified()
-        );
         return AttestationValidator(attestationValidator)
-            .validateAttestationDirect(task, taskResponse, signatureData, taskResponseHandler);
+            .validateAttestationDirect(msg.sender, task, taskResponse, signatureData);
     }
 
     function challengeDirectlyVerifiedAttestation(

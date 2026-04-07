@@ -2,6 +2,8 @@
 pragma solidity ^0.8.27;
 
 import {INewtonProverTaskManager} from "../interfaces/INewtonProverTaskManager.sol";
+import {INewtonPolicy} from "../interfaces/INewtonPolicy.sol";
+import {INewtonPolicyClient} from "../interfaces/INewtonPolicyClient.sol";
 import {NewtonMessage} from "../core/NewtonMessage.sol";
 import {TaskLib} from "../libraries/TaskLib.sol";
 import {ITaskResponseHandler} from "../interfaces/ITaskResponseHandler.sol";
@@ -60,9 +62,13 @@ contract AttestationValidator is Initializable, OwnableUpgradeable {
     }
 
     /* EXTERNAL FUNCTIONS */
+    // IMPORTANT: must be kept in sync with isAttestationValid
     function validateAttestation(
+        address caller,
         NewtonMessage.Attestation calldata attestation
     ) external onlyTaskManager returns (bool) {
+        TaskLib.onlyAttestationClient(caller, attestation);
+
         return _validateAttestation(attestation);
     }
 
@@ -121,9 +127,13 @@ contract AttestationValidator is Initializable, OwnableUpgradeable {
         return hash;
     }
 
+    // IMPORTANT: must be kept in sync with validateAttestation
     function isAttestationValid(
-        NewtonMessage.Attestation calldata attestation
-    ) external view returns (bool) {
+        address client,
+        NewtonMessage.Attestation memory attestation
+    ) public view returns (bool) {
+        TaskLib.onlyAttestationClient(client, attestation);
+
         bytes32 stored = attestations[attestation.taskId];
         if (stored == bytes32(0)) return false;
         bytes32 hash = keccak256(abi.encode(attestation));
@@ -155,13 +165,32 @@ contract AttestationValidator is Initializable, OwnableUpgradeable {
     }
 
     // solhint-disable-next-line function-max-lines
+    // IMPORTANT: must be kept in sync with isAttestationDirectValid
     function validateAttestationDirect(
+        address caller,
         INewtonProverTaskManager.Task calldata task,
         INewtonProverTaskManager.TaskResponse calldata taskResponse,
-        bytes calldata signatureData,
-        address _taskResponseHandler
+        bytes calldata signatureData
     ) external onlyTaskManager returns (bool) {
+        // Only the correct policy client may directly validate and spend the attestation
+        require(
+            caller == task.policyClient && caller == taskResponse.policyClient,
+            TaskLib.InvalidPolicyClient()
+        );
+        require(
+            INewtonPolicyClient(caller).getPolicyId() == taskResponse.policyId,
+            TaskLib.InvalidPolicyId()
+        );
+        // Verify the policy contract hasn't been revoked or deactivated.
+        // The respondToTask path checks this via validateTaskResponsePolicyData;
+        // the direct path must check independently since respondToTask may not have run yet.
+        require(
+            INewtonPolicy(taskResponse.policyAddress).isPolicyVerified(),
+            TaskLib.PolicyNotVerified()
+        );
+
         bytes32 taskId = taskResponse.taskId;
+        address taskResponseHandler = INewtonProverTaskManager(taskManager).taskResponseHandler();
 
         // If attestation already exists from regular flow, validate using it instead
         bytes32 existingAttestationHash = attestations[taskId];
@@ -204,7 +233,7 @@ contract AttestationValidator is Initializable, OwnableUpgradeable {
             attestationExpirations[taskId] != ATTESTATION_SPENT_SENTINEL, AttestationAlreadySpent()
         );
 
-        ITaskResponseHandler(_taskResponseHandler)
+        ITaskResponseHandler(taskResponseHandler)
             .verifyTaskResponse(task, taskResponse, signatureData);
 
         uint32 referenceBlock = uint32(block.number);
@@ -233,5 +262,76 @@ contract AttestationValidator is Initializable, OwnableUpgradeable {
 
         // Revert = invalid attestation; return value = policy decision
         return TaskLib.evaluateResult(taskResponse.evaluationResult);
+    }
+
+    // IMPORTANT: must be kept in sync with validateAttestationDirect
+    function isAttestationDirectValid(
+        address client,
+        INewtonProverTaskManager.Task calldata task,
+        INewtonProverTaskManager.TaskResponse calldata taskResponse,
+        bytes calldata signatureData
+    ) public view returns (bool) {
+        // Only the correct policy client may directly validate and spend the attestation
+        if (client != task.policyClient || client != taskResponse.policyClient) {
+            return false;
+        }
+        if (INewtonPolicyClient(client).getPolicyId() != taskResponse.policyId) return false;
+
+        // Verify the policy contract hasn't been revoked or deactivated.
+        // The respondToTask path checks this via validateTaskResponsePolicyData;
+        // the direct path must check independently since respondToTask may not have run yet.
+        if (!INewtonPolicy(taskResponse.policyAddress).isPolicyVerified()) return false;
+
+        bytes32 taskId = taskResponse.taskId;
+        address taskResponseHandler = INewtonProverTaskManager(taskManager).taskResponseHandler();
+
+        // If attestation already exists from regular flow, validate using it instead
+        bytes32 existingAttestationHash = attestations[taskId];
+        if (existingAttestationHash != bytes32(0)) {
+            bytes32 expectedTaskHash = INewtonProverTaskManager(taskManager).taskHash(taskId);
+            if (TaskLib.taskHash(task) != expectedTaskHash) return false;
+
+            uint32 storedExpiration = attestationExpirations[taskId];
+            if (storedExpiration == 0) return false;
+
+            // policyId comes from TaskResponse (generated by operators)
+            NewtonMessage.Attestation memory constructedAttestation = NewtonMessage.Attestation(
+                taskId,
+                taskResponse.policyId,
+                task.policyClient,
+                storedExpiration,
+                task.intent,
+                task.intentSignature
+            );
+            bool result = isAttestationValid(client, constructedAttestation);
+
+            return result;
+        }
+
+        // Optimistic fast path: validate via task response handler before on-chain task exists
+        // Delegates to SourceTaskResponseHandler (BLS) ONLY because the DestinationTaskResponseHandler (certificate) caches state and doesn't allow for view calling
+        // This prevents double spending across both regular and direct flows
+        if (attestationExpirations[taskId] == ATTESTATION_SPENT_SENTINEL) return false;
+
+        // can't stop this from reverting, but will pass if sigs are good
+        ITaskResponseHandler(taskResponseHandler)
+            .verifyTaskResponse(task, taskResponse, signatureData);
+
+        uint32 referenceBlock = uint32(block.number);
+        uint32 expiration = referenceBlock + taskResponse.policyConfig.expireAfter;
+
+        NewtonMessage.Attestation memory attestationForHash = NewtonMessage.Attestation(
+            taskId,
+            taskResponse.policyId,
+            task.policyClient,
+            expiration,
+            task.intent,
+            task.intentSignature
+        );
+
+        TaskLib.sanityCheckAttestation(attestationForHash);
+        if (uint32(block.number) >= expiration) return false;
+
+        return true;
     }
 }

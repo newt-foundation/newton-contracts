@@ -191,20 +191,22 @@ library TaskLib {
 
     // onlyAttestationClient is used to restrict validateAttestation from only being called by the correct policy client
     function onlyAttestationClient(
+        address caller,
         NewtonMessage.Attestation calldata attestation
     ) external view {
-        require(msg.sender.code.length > 0, OnlyPolicyClient());
+        require(caller.code.length > 0, OnlyPolicyClient());
 
         bytes4 interfaceId = type(INewtonPolicyClient).interfaceId;
 
-        (bool success, bytes memory result) = msg.sender
-            .staticcall(abi.encodeWithSelector(IERC165.supportsInterface.selector, interfaceId));
+        (bool success, bytes memory result) = caller.staticcall(
+            abi.encodeWithSelector(IERC165.supportsInterface.selector, interfaceId)
+        );
 
         require(
             success && result.length == 32 && abi.decode(result, (bool)), InterfaceNotSupported()
         );
 
-        require(msg.sender == attestation.policyClient, InvalidPolicyClient());
+        require(caller == attestation.policyClient, InvalidPolicyClient());
     }
 
     function taskHash(
