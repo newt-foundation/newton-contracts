@@ -14,23 +14,28 @@
     via-ir = true
     # Whether or not to enable the Solidity optimizer.
     optimizer = true
+    # Whether to enable dynamic test linking.
+    dynamic_test_linking = true
+
+    bytecode_hash = "none"
 
     # Defines paths for Solidity imports.
     remappings = [
         "@eigenlayer/=lib/eigenlayer-middleware/lib/eigenlayer-contracts/src/",
         "@eigenlayer-scripts/=lib/eigenlayer-middleware/lib/eigenlayer-contracts/script/",
+        "@eigenlayer-utils/=lib/eigenlayer-middleware/lib/eigenlayer-contracts/src/test/utils/",
         "@eigenlayer-middleware/=lib/eigenlayer-middleware/",
         "@openzeppelin/=lib/eigenlayer-middleware/lib/openzeppelin-contracts/",
         "@openzeppelin-upgrades/=lib/eigenlayer-middleware/lib/openzeppelin-contracts-upgradeable/",
         "forge-std/=lib/forge-std/src/",
         "@risc0/=lib/risc0-ethereum/contracts/src",
-        "@sp1-contracts/=lib/sp1-contracts/contracts/src/",
+        "@sp1-contracts/=lib/sp1-contracts/contracts/src",
     ]
 
     # The number of runs specifies roughly how often each opcode of the deployed code will be executed
     # across the life-time of the contract. This means it is a trade-off parameter between code size (deploy cost)
     # and code execution cost (cost after deployment).
-    optimizer_runs = 100
+    optimizer_runs = 1
 
     # Test Configuration
 
@@ -52,11 +57,19 @@
 
     gas_limit = 5000000000
     no-match-contract = "FFI"
-    fs_permissions = [{ access = "read", path = "../../" }, { access = "write", path = "./" }]
+    fs_permissions = [{ access = "read-write", path = "./" }]
 
-[profile.lint]
-    exclude_lints = ["private-vars-leading-underscore", "const-name-snakecase"]
-    exclude = ["lib/**/*", "lib/**/*.sol"]
+[profile.default.lint]
+    ignore = [
+        "lib/**",
+        "script/**",
+        "test/**",
+        "examples/**",
+    ]
+    # Foundry v1.5 runs Solar linting during `forge build` by default.
+    # Solar currently ignores parts of `foundry.toml` (see foundry-rs/foundry#12721),
+    # which can break CI builds by linting vendored dependencies under `lib/`.
+    lint_on_build = false
 
 [profile.default.fmt]
     # Single-line vs multi-line statement blocks
@@ -79,19 +92,6 @@
     number_underscore = "remove"  # Options: "preserve", "thousands", "remove"
     # Whether or not to wrap comments at line_length
     wrap_comments = false
-    # List of files to ignore during formatting (can use glob patterns)
-    # ignore = [
-    #     "./script/**/*",
-    #     "./test/**/*"
-    # ]
-
-# TODO: Decide if we want to enable this.
-# [profile.test.fmt]
-#     int_types = "short"
-#     line_length = 140
-#     ignore = [
-#         "./src/**/*"
-#     ]
 
 [profile.ci.fuzz]
     optimizer=true
@@ -107,11 +107,9 @@
     runs = 16
 
 [rpc_endpoints]
-    mainnet = "${RPC_MAINNET}"
-    sepolia = "${RPC_SEPOLIA}"
-    holesky = "${RPC_HOLESKY}"
+    mainnet = "${RPC_MAINNET:-${RPC_HTTP_URL}}"
+    sepolia = "${RPC_SEPOLIA:-${RPC_HTTP_URL}}"
 
 [etherscan]
     mainnet = { key = "${ETHERSCAN_API_KEY}" }
     sepolia = { key = "${ETHERSCAN_API_KEY}" }
-    holesky = { key = "${ETHERSCAN_API_KEY}" }

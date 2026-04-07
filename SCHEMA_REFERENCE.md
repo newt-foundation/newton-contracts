@@ -164,8 +164,8 @@ struct SetPolicyInfo {
     bytes32 policyId;          // policy id
     address policyAddress;     // policy address
     address owner;             // owner
-    string policyUri;          // policy URI
-    string schemaUri;          // schema URI
+    string policyCid;          // policy CID
+    string schemaCid;          // schema CID
     string entrypoint;         // entrypoint
     PolicyConfig policyConfig; // policy configuration
     address[] policyData;      // policy data addresses
@@ -177,8 +177,8 @@ struct SetPolicyInfo {
 - `policyId`: Unique identifier for the policy
 - `policyAddress`: Address of the policy contract
 - `owner`: Address of the policy owner
-- `policyUri`: URI pointing to the policy location
-- `schemaUri`: URI pointing to the policy schema
+- `policyCid`: CID pointing to the policy location
+- `schemaCid`: CID pointing to the policy schema
 - `entrypoint`: Policy evaluation entrypoint (format: `{package}.{output}`)
 - `policyConfig`: Configuration parameters for the policy
 - `policyData`: Array of policy data contract addresses
@@ -193,9 +193,9 @@ General information about a policy.
 struct PolicyInfo {
     address policyAddress;     // policy address
     address owner;             // owner
-    string metadataUri;        // metadata URI
-    string policyUri;          // policy URI
-    string schemaUri;          // schema URI
+    string metadataCid;        // metadata CID
+    string policyCid;          // policy CID
+    string schemaCid;          // schema CID
     string entrypoint;         // entrypoint
     address[] policyData;      // policy data addresses
 }
@@ -205,9 +205,9 @@ struct PolicyInfo {
 
 - `policyAddress`: Address of the policy contract
 - `owner`: Address of the policy owner
-- `metadataUri`: URI pointing to policy metadata
-- `policyUri`: URI pointing to the policy location
-- `schemaUri`: URI pointing to the policy schema
+- `metadataCid`: CID pointing to policy metadata
+- `policyCid`: CID pointing to the policy location
+- `schemaCid`: CID pointing to the policy schema
 - `entrypoint`: Policy evaluation entrypoint
 - `policyData`: Array of policy data contract addresses
 
@@ -225,9 +225,9 @@ Information about policy data.
 struct PolicyDataInfo {
     address policyDataAddress; // policy data address
     address owner;             // owner
-    string metadataUri;        // metadata URI
-    string policyDataLocation; // policy data location
-    string policyDataArgs;     // policy data arguments
+    string metadataCid;        // metadata CID
+    string wasmCid; // policy data location
+    string secretsSchemaCid;   // secrets schema CID
     uint32 expireAfter;        // expiration time in blocks
 }
 ```
@@ -236,9 +236,9 @@ struct PolicyDataInfo {
 
 - `policyDataAddress`: Address of the policy data contract
 - `owner`: Address of the policy data owner
-- `metadataUri`: URI pointing to policy data metadata
-- `policyDataLocation`: IPFS URL for WASM plugin location
-- `policyDataArgs`: IPFS URL for WASM plugin arguments
+- `metadataCid`: CID pointing to policy data metadata
+- `wasmCid`: IPFS URL for WASM plugin location
+- `secretsSchemaCid`: CID pointing to secrets JSON schema (regorus format)
 - `expireAfter`: Number of blocks after which the policy data expires
 
 ### AttestationInfo Struct
@@ -331,7 +331,7 @@ struct TaskResponse {
 
 **Location:** `interfaces/INewtonProverTaskManager.sol`
 
-TaskResponse Certificate for policy clients to attest the validity of policy evaluation result during intent execution.
+TaskResponse Certificate for policy clients to attest the validity of policy evaluation result dCIDng intent execution.
 
 ```solidity
 struct ResponseCertificate {
@@ -339,8 +339,8 @@ struct ResponseCertificate {
     uint32 referenceBlock;
     // the hash of the non-signers
     bytes32 hashOfNonSigners;
-    // the non-signers and their stakes
-    IBLSSignatureChecker.NonSignerStakesAndSignature nonSignerStakesAndSignature;
+    // encoded signature data (NonSignerStakesAndSignature for source chains, BN254Certificate for destination)
+    bytes signatureData;
     // the block number when the task response expires
     uint32 responseExpireBlock;
 }
@@ -350,7 +350,7 @@ struct ResponseCertificate {
 
 - `referenceBlock`: Block number when the response was submitted
 - `hashOfNonSigners`: Hash of operators who did not sign the response
-- `nonSignerStakesAndSignature`: Non-signers and their stakes
+- `signatureData`: Encoded signature data (NonSignerStakesAndSignature for source chains, BN254Certificate for destination chains)
 - `responseExpireBlock`: Block number after which the response expires
 
 ### ChallengeData Struct
@@ -411,12 +411,12 @@ Main interface for Newton Policy contracts.
 
 **Key Functions:**
 
-- `getMetadataUri()`: Retrieves policy metadata URI
-- `setMetadataUri(string)`: Sets policy metadata URI
+- `getMetadataCid()`: Retrieves policy metadata CID
+- `setMetadataCid(string)`: Sets policy metadata CID
 - `getPolicyId(address)`: Gets policy ID for a client address
 - `getEntrypoint()`: Gets policy evaluation entrypoint
-- `getSchemaUri()`: Gets policy schema URI
-- `getPolicyUri()`: Gets policy location URI
+- `getschemaCid()`: Gets policy schema CID
+- `getpolicyCid()`: Gets policy location CID
 - `getPolicyConfig(bytes32)`: Gets policy configuration by ID
 - `getPolicyData()`: Gets array of policy data contract addresses
 - `isPolicyVerified()`: Checks if policy is verified
@@ -441,12 +441,11 @@ Interface for policy data contracts.
 
 **Key Functions:**
 
-- `getMetadataUri()`: Gets policy data metadata URI
-- `setMetadataUri(string)`: Sets policy data metadata URI
+- `getMetadataCid()`: Gets policy data metadata CID
+- `setMetadataCid(string)`: Sets policy data metadata CID
 - `getAttestationInfo()`: Gets attestation configuration
 - `setAttestationInfo(AttestationInfo)`: Sets attestation configuration
-- `getPolicyDataLocation()`: Gets IPFS URL for WASM plugin
-- `getPolicyDataArgs()`: Gets IPFS URL for WASM plugin arguments
+- `getwasmCid()`: Gets IPFS URL for WASM plugin
 - `getExpireAfter()`: Gets expiration block count
 - `attest(PolicyData)`: Validates policy data attestation
 - `isPolicyDataVerified()`: Checks if policy data is verified
@@ -475,7 +474,7 @@ Main interface for task management in the Newton Prover system.
 **Location:** `NewtonProverTaskManager.sol`
 
 ```solidity
-uint32 public immutable TASK_RESPONSE_WINDOW_BLOCK;  // Set during construction
+uint32 public immutable TASK_RESPONSE_WINDOW_BLOCK;  // Set dCIDng construction
 uint32 public constant TASK_CHALLENGE_WINDOW_BLOCK = 100;
 uint256 internal constant _THRESHOLD_DENOMINATOR = 100;
 uint256 public constant WADS_TO_SLASH = 100000000000000000; // 10%
@@ -584,7 +583,7 @@ error PolicyDataLengthMismatch();
 error PolicyDataAddressMismatch();
 error PolicyDataAttestationFailed();
 error PolicyDataExpired();
-error TaskMismatch();
+error TaskMismatch(bytes32 expected, bytes32 actual);
 error InvalidPolicyId();
 error InvalidPolicyClient();
 error InvalidPolicyAddress();
@@ -599,7 +598,7 @@ error InvalidNonSigners();
 error AttestationHashMismatch();
 error AttestationExpired();
 error AttestationAlreadySpent();
-error OnlyPolicyClient();
+error OnlyAttestationClient();
 error InterfaceNotSupported();
 error PolicyNotVerified();
 error PolicyDataNotVerified();
@@ -643,35 +642,35 @@ event PolicySet(address indexed client, bytes32 indexed policyId, SetPolicyInfo 
 - `policyId`: Unique identifier for the newly set policy
 - `policy`: Complete policy information including configuration and metadata
 
-#### PolicyMetadataUriUpdated Event
+#### policyMetadataCidUpdated Event
 
 **Location:** `interfaces/INewtonPolicy.sol`
 
 ```solidity
-event PolicyMetadataUriUpdated(string metadataUri);
+event policyMetadataCidUpdated(string metadataCid);
 ```
 
-**Description:** Emitted when a policy's metadata URI is updated.
+**Description:** Emitted when a policy's metadata CID is updated.
 
 **Parameters:**
 
-- `metadataUri`: New metadata URI for the policy
+- `metadataCid`: New metadata CID for the policy
 
 ### Policy Data Events
 
-#### PolicyDataMetadataUriUpdated Event
+#### policyDataMetadataCidUpdated Event
 
 **Location:** `core/NewtonPolicyData.sol`
 
 ```solidity
-event PolicyDataMetadataUriUpdated(string metadataUri);
+event policyDataMetadataCidUpdated(string metadataCid);
 ```
 
-**Description:** Emitted when policy data metadata URI is updated.
+**Description:** Emitted when policy data metadata CID is updated.
 
 **Parameters:**
 
-- `metadataUri`: New metadata URI for the policy data
+- `metadataCid`: New metadata CID for the policy data
 
 #### AttestationInfoUpdated Event
 

@@ -1,20 +1,17 @@
 {
   "lib/eigenlayer-middleware": {
-    "tag": {
-      "name": "v1.5.0-testnet-final",
-      "rev": "dbccc2119e1e63ffdfc5bacda7c60f6c1574c347"
-    }
+    "rev": "4d63f27247587607beb67f96fdabec4b2c1321ef"
   },
   "lib/forge-std": {
-    "tag": {
-      "name": "v1.15.0",
-      "rev": "0844d7e1fc5e60d77b68e469bff60265f236c398"
-    }
+    "rev": "0e7097750918380d84dd3cfdef595bee74dabb70"
+  },
+  "lib/risc0-ethereum": {
+    "rev": "e475fe6c8dcff92fb5e67d6556cb11ba3ab4e494"
   },
   "lib/sp1-contracts": {
     "tag": {
-      "name": "v6.0.0",
-      "rev": "1b102609d616d760afd6eadfe2def48c88ab9e3b"
+      "name": "v5.0.0",
+      "rev": "512b5e029abc27f6e46a3c7eba220dac83ecc306"
     }
   }
 }
