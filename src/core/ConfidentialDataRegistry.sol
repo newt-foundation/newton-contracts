@@ -3,6 +3,7 @@
 pragma solidity ^0.8.27;
 
 import {IConfidentialDataRegistry} from "../interfaces/IConfidentialDataRegistry.sol";
+import {INewtonPolicyClient} from "../interfaces/INewtonPolicyClient.sol";
 import {IPolicyClientRegistry} from "../interfaces/IPolicyClientRegistry.sol";
 
 import {Initializable} from "@openzeppelin-upgrades/contracts/proxy/utils/Initializable.sol";
@@ -27,6 +28,7 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 ///      via initialize().
 contract ConfidentialDataRegistry is Initializable, IConfidentialDataRegistry {
     using EnumerableSet for EnumerableSet.AddressSet;
+    using EnumerableSet for EnumerableSet.Bytes32Set;
 
     // -------------------------------------------------------------------------
     // Storage
@@ -49,11 +51,18 @@ contract ConfidentialDataRegistry is Initializable, IConfidentialDataRegistry {
     ///         Used by revokeGlobal to iterate and clear all grants without unbounded external loops.
     mapping(address => mapping(bytes32 => EnumerableSet.AddressSet)) internal _grantedClients;
 
+    /// @notice Reverse index: policyClient -> set of domains with active grants.
+    ///         Used by getGrantedDomains for enumerating all domains a policy client has access to.
+    mapping(address => EnumerableSet.Bytes32Set) internal _clientDomains;
+
+    /// @notice Pending grants proposed by providers awaiting policy client owner acceptance.
+    mapping(address => mapping(bytes32 => mapping(address => bool))) public pendingGrants;
+
     // -------------------------------------------------------------------------
     // Immutables
     // -------------------------------------------------------------------------
 
-    /// @notice PolicyClientRegistry used to validate client registration on grantClient.
+    /// @notice PolicyClientRegistry used to validate client registration.
     ///         Immutable — set on the implementation contract at construction time.
     IPolicyClientRegistry public immutable override policyClientRegistry;
 
@@ -131,7 +140,7 @@ contract ConfidentialDataRegistry is Initializable, IConfidentialDataRegistry {
     // -------------------------------------------------------------------------
 
     /// @inheritdoc IConfidentialDataRegistry
-    function grantClient(
+    function proposeGrant(
         bytes32 domain,
         address policyClient
     ) external override {
@@ -142,12 +151,41 @@ contract ConfidentialDataRegistry is Initializable, IConfidentialDataRegistry {
             PolicyClientNotRegistered(policyClient)
         );
         require(!clientGrants[msg.sender][domain][policyClient], GrantAlreadyExists());
+        require(!pendingGrants[msg.sender][domain][policyClient], GrantAlreadyExists());
 
-        clientGrants[msg.sender][domain][policyClient] = true;
-        _clientProviders[policyClient][domain].add(msg.sender);
-        _grantedClients[msg.sender][domain].add(policyClient);
+        pendingGrants[msg.sender][domain][policyClient] = true;
 
-        emit ClientGranted(msg.sender, domain, policyClient);
+        emit GrantProposed(msg.sender, domain, policyClient);
+    }
+
+    /// @inheritdoc IConfidentialDataRegistry
+    function acceptGrant(
+        address provider,
+        bytes32 domain,
+        address policyClient
+    ) external override {
+        require(
+            INewtonPolicyClient(policyClient).getOwner() == msg.sender,
+            NotPolicyClientOwner(policyClient, msg.sender)
+        );
+        require(pendingGrants[provider][domain][policyClient], GrantNotPending());
+
+        pendingGrants[provider][domain][policyClient] = false;
+        clientGrants[provider][domain][policyClient] = true;
+        _clientProviders[policyClient][domain].add(provider);
+        _grantedClients[provider][domain].add(policyClient);
+        _clientDomains[policyClient].add(domain);
+
+        emit ClientGranted(provider, domain, policyClient);
+    }
+
+    /// @inheritdoc IConfidentialDataRegistry
+    function hasPendingGrant(
+        address provider,
+        bytes32 domain,
+        address policyClient
+    ) external view override returns (bool) {
+        return pendingGrants[provider][domain][policyClient];
     }
 
     /// @inheritdoc IConfidentialDataRegistry
@@ -161,6 +199,11 @@ contract ConfidentialDataRegistry is Initializable, IConfidentialDataRegistry {
         clientGrants[msg.sender][domain][policyClient] = false;
         _clientProviders[policyClient][domain].remove(msg.sender);
         _grantedClients[msg.sender][domain].remove(policyClient);
+
+        // Remove domain from client's domain set if no providers remain for this (client, domain) pair
+        if (_clientProviders[policyClient][domain].length() == 0) {
+            _clientDomains[policyClient].remove(domain);
+        }
 
         emit ClientRevoked(msg.sender, domain, policyClient);
     }
@@ -181,6 +224,9 @@ contract ConfidentialDataRegistry is Initializable, IConfidentialDataRegistry {
             clientGrants[msg.sender][domain][client] = false;
             _clientProviders[client][domain].remove(msg.sender);
             grantedSet.remove(client);
+            if (_clientProviders[client][domain].length() == 0) {
+                _clientDomains[client].remove(domain);
+            }
             length = grantedSet.length();
         }
 
@@ -233,6 +279,9 @@ contract ConfidentialDataRegistry is Initializable, IConfidentialDataRegistry {
             clientGrants[msg.sender][domain][client] = false;
             _clientProviders[client][domain].remove(msg.sender);
             grantedSet.remove(client);
+            if (_clientProviders[client][domain].length() == 0) {
+                _clientDomains[client].remove(domain);
+            }
             unchecked {
                 ++i;
             }
@@ -266,5 +315,12 @@ contract ConfidentialDataRegistry is Initializable, IConfidentialDataRegistry {
         bytes32 domain
     ) external view override returns (DataEntry memory) {
         return providerData[provider][domain];
+    }
+
+    /// @inheritdoc IConfidentialDataRegistry
+    function getGrantedDomains(
+        address policyClient
+    ) external view override returns (bytes32[] memory) {
+        return _clientDomains[policyClient].values();
     }
 }

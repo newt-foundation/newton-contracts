@@ -78,6 +78,17 @@ interface IConfidentialDataRegistry {
     /// @notice The constructor was called with a zero address for the policy client registry
     error InvalidClientRegistryAddress();
 
+    /// @notice No pending grant exists for this (provider, domain, policyClient) triple
+    error GrantNotPending();
+
+    /// @notice Caller is not the owner of the policy client
+    error NotPolicyClientOwner(address policyClient, address caller);
+
+    /// @notice Emitted when a provider proposes a grant (pending acceptance by policy client owner)
+    event GrantProposed(
+        address indexed provider, bytes32 indexed domain, address indexed policyClient
+    );
+
     // Functions
 
     /// @notice Self-register as a confidential data provider. No gatekeeping.
@@ -103,14 +114,37 @@ interface IConfidentialDataRegistry {
         string calldata dataRefId
     ) external;
 
-    /// @notice Grant a policy client access to the caller's data for a domain.
-    ///         The policy client must be registered and active in the PolicyClientRegistry.
-    /// @param domain The domain to grant access for
-    /// @param policyClient The policy client to grant access to
-    function grantClient(
+    /// @notice Propose a grant for a policy client. Does NOT activate the grant — the
+    ///         policy client owner must call acceptGrant to activate it. Prevents
+    ///         malicious providers from unilaterally injecting data into policy evaluation.
+    /// @param domain The domain to propose access for
+    /// @param policyClient The policy client to propose access to
+    function proposeGrant(
         bytes32 domain,
         address policyClient
     ) external;
+
+    /// @notice Accept a pending grant proposed by a provider. Only callable by the policy
+    ///         client's owner (via INewtonPolicyClient.getOwner()). Activates the grant.
+    /// @param provider The provider that proposed the grant
+    /// @param domain The domain to accept access for
+    /// @param policyClient The policy client to accept access for
+    function acceptGrant(
+        address provider,
+        bytes32 domain,
+        address policyClient
+    ) external;
+
+    /// @notice Check whether a pending (unaccepted) grant exists
+    /// @param provider The provider address
+    /// @param domain The domain
+    /// @param policyClient The policy client
+    /// @return True if a pending grant exists
+    function hasPendingGrant(
+        address provider,
+        bytes32 domain,
+        address policyClient
+    ) external view returns (bool);
 
     /// @notice Revoke a specific policy client's access to the caller's data for a domain
     /// @param domain The domain to revoke access for
@@ -191,7 +225,16 @@ interface IConfidentialDataRegistry {
         bytes32 domain
     ) external view returns (DataEntry memory);
 
-    /// @notice The PolicyClientRegistry used to validate client registration on grantClient
+    /// @notice The PolicyClientRegistry used to validate client registration on proposeGrant
     /// @return The registry address
     function policyClientRegistry() external view returns (IPolicyClientRegistry);
+
+    /// @notice Return all domains that have at least one active grant for a policy client.
+    ///         Operators use this at task time to enumerate which confidential data domains
+    ///         are available for a given policy client, instead of relying on policyParams.
+    /// @param policyClient The policy client to query
+    /// @return Array of bytes32 domain identifiers with active grants
+    function getGrantedDomains(
+        address policyClient
+    ) external view returns (bytes32[] memory);
 }

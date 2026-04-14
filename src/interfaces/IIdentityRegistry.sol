@@ -203,4 +203,15 @@ interface IIdentityRegistry {
     ///   immutable, set on the implementation contract
     /// @return The PolicyClientRegistry address
     function policyClientRegistry() external view returns (IPolicyClientRegistry);
+
+    /// @notice Return all identity domains linked for a (policyClient, clientUser) pair.
+    ///         Operators use this at task time to enumerate which identity domains are available,
+    ///         instead of relying on a single identity_domain in policyParams.
+    /// @param policyClient The policy client address
+    /// @param clientUser The client user address (intent signer)
+    /// @return Array of bytes32 identity domain identifiers with active links
+    function getLinkedDomains(
+        address policyClient,
+        address clientUser
+    ) external view returns (bytes32[] memory);
 }

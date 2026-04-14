@@ -11,6 +11,7 @@ import {
 } from "@openzeppelin-upgrades/contracts/utils/cryptography/EIP712Upgradeable.sol";
 import {Nonces} from "../mixins/Nonces.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 /// @title Registry for identity data
 ///
@@ -23,6 +24,7 @@ import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 /// @dev Policy Client: any policy client that wants to link user data. The usage of that data depends on the newton policy attached to that client
 /// @dev Policy Client User (user): the address used by the Signer for the policy client. Usually an embedded wallet within the PolicyClient owner's domain
 contract IdentityRegistry is EIP712Upgradeable, Nonces, IIdentityRegistry {
+    using EnumerableSet for EnumerableSet.Bytes32Set;
     /// mapping that holds the encrypted identity.
     /// The owner eoa address maps to an identity domain identifier which maps to the encrypted data
     mapping(address => mapping(bytes32 => string)) public override identityData;
@@ -32,6 +34,10 @@ contract IdentityRegistry is EIP712Upgradeable, Nonces, IIdentityRegistry {
     mapping(address => mapping(address => mapping(bytes32 => address)))
         public
         override policyClientLinks;
+
+    /// @notice Reverse index: (policyClient, clientUser) -> set of linked identity domains.
+    ///         Used by getLinkedDomains for enumerating all domains linked for a user at a policy client.
+    mapping(address => mapping(address => EnumerableSet.Bytes32Set)) internal _linkedDomains;
 
     /// @notice OperatorRegistry address used to require task submitter privileges for writing identity data.
     ///   immutable, set on the implementation contract.
@@ -367,6 +373,7 @@ contract IdentityRegistry is EIP712Upgradeable, Nonces, IIdentityRegistry {
 
         // update storage
         policyClientLinks[_policyClient][_clientUser][_identityDomain] = _identityOwner;
+        _linkedDomains[_policyClient][_clientUser].add(_identityDomain);
 
         emit IdentityLinked(_identityOwner, _policyClient, _clientUser, _identityDomain);
     }
@@ -391,7 +398,16 @@ contract IdentityRegistry is EIP712Upgradeable, Nonces, IIdentityRegistry {
         );
 
         delete policyClientLinks[_policyClient][_clientUser][_identityDomain];
+        _linkedDomains[_policyClient][_clientUser].remove(_identityDomain);
 
         emit IdentityUnlinked(_caller, _policyClient, _clientUser, _identityDomain);
+    }
+
+    /// @inheritdoc IIdentityRegistry
+    function getLinkedDomains(
+        address policyClient,
+        address clientUser
+    ) external view override returns (bytes32[] memory) {
+        return _linkedDomains[policyClient][clientUser].values();
     }
 }
