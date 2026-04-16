@@ -65,8 +65,14 @@ abstract contract TaskManagerStorage is
     ///      For destination chains: DestinationTaskResponseHandler
     address public taskResponseHandler;
 
-    /// @notice Task-related mappings
+    /// @notice taskId => keccak256(TaskLib.taskHash(task))
     mapping(bytes32 => bytes32) public allTaskHashes;
+
+    /// @notice taskId => keccak256(abi.encode(taskResponse, responseCertificate))
+    /// @dev Stores the task response bundled with its response certificate. This hash
+    ///      is NOT directly comparable to direct-path hashes, which exclude the certificate.
+    ///      For mismatch comparisons with direct-path hashes, use `allNormalizedTaskResponses`
+    ///      (response-only) via `normalizedTaskResponseHash()`.
     mapping(bytes32 => bytes32) public allTaskResponses;
 
     /// @notice Challenge verifier contract address
@@ -95,6 +101,11 @@ abstract contract TaskManagerStorage is
     /// @dev This field is kept for storage layout compatibility. Use minCompatiblePolicyVersion for all version checks.
     string public minCompatiblePolicyDataVersion;
 
+    /// @notice Stores keccak256(abi.encode(taskResponse)) for each task (response-only, no certificate)
+    /// @dev Used by ChallengeVerifier to bind mismatch comparisons to canonical data
+    ///      instead of recomputing from caller-supplied input.
+    mapping(bytes32 => bytes32) public allNormalizedTaskResponses;
+
     // Conditional inheritance based on chain type
     // Source chains extend BLSSignatureChecker for stake registry verification
     // Destination chains do not extend these (they use certificate verification instead)
@@ -119,7 +130,7 @@ abstract contract TaskManagerStorage is
 
     // storage gap for upgradeability
     // slither-disable-next-line shadowing-state
-    uint256[47] private __GAP;
+    uint256[46] private __GAP;
 }
 
 /**

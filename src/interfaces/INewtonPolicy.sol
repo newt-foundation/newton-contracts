@@ -30,6 +30,7 @@ interface INewtonPolicy is IERC165 {
         string entrypoint;
         PolicyConfig policyConfig;
         address[] policyData;
+        bytes32 policyCodeHash;
     }
 
     struct PolicyInfo {
@@ -40,6 +41,7 @@ interface INewtonPolicy is IERC165 {
         string schemaCid;
         string entrypoint;
         address[] policyData;
+        bytes32 policyCodeHash;
     }
 
     /* Events */
@@ -87,6 +89,15 @@ interface INewtonPolicy is IERC165 {
      * @return The policy location for the policy.
      */
     function getPolicyCid() external view returns (string memory);
+
+    /**
+     * @notice Retrieves the keccak256 hash of the raw policy program bytes.
+     * @dev Binds challenge-time `context.policyCodeHash` (from SP1 proof) to the
+     *      policy this contract represents — prevents slashing evasion via
+     *      caller-supplied divergent policy bytes.
+     * @return The keccak256 hash of the policy program bytes.
+     */
+    function getPolicyCodeHash() external view returns (bytes32);
 
     /**
      * @notice Retrieves the policy configuration for the given policyID.

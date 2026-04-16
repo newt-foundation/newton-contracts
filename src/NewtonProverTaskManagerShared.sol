@@ -116,6 +116,9 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
         );
         bytes32 responseHash = keccak256(abi.encode(taskResponse, responseCertificate));
         allTaskResponses[taskId] = responseHash;
+        // Store response-only (normalized) hash for secure mismatch comparisons
+        // in ChallengeVerifier — prevents caller-supplied input from fabricating mismatches
+        allNormalizedTaskResponses[taskId] = keccak256(abi.encode(taskResponse));
         ChallengeVerifier(challengeVerifier)
             .setTaskHashesAndResponses(taskId, allTaskHashes[taskId], responseHash);
         if (TaskLib.evaluateResult(taskResponse.evaluationResult)) {
@@ -262,27 +265,39 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
 
     function challengeDirectlyVerifiedMismatch(
         Task calldata task,
-        TaskResponse calldata taskResponse,
-        bytes calldata signatureData
+        TaskResponse calldata taskResponse
     ) external whenNotPaused {
-        ChallengeVerifier(challengeVerifier)
-            .challengeDirectlyVerifiedMismatch(
-                task, taskResponse, signatureData, taskResponseHandler
-            );
+        ChallengeVerifier(challengeVerifier).challengeDirectlyVerifiedMismatch(task, taskResponse);
         emit TaskChallengedSuccessfully(taskResponse.taskId, msg.sender);
     }
 
     // Wrapper functions to match interface naming (delegate to storage mappings)
+
+    /// @notice Returns `TaskLib.taskHash(task)` recorded when the task was created.
     function taskHash(
         bytes32 taskId
     ) external view returns (bytes32) {
         return allTaskHashes[taskId];
     }
 
+    /// @notice Returns `keccak256(abi.encode(taskResponse, responseCertificate))` recorded
+    /// when the regular (non-direct) response path completed. Includes the response certificate.
+    /// @dev NOT comparable to direct-path hashes. Use `normalizedTaskResponseHash` for that.
     function taskResponseHash(
         bytes32 taskId
     ) external view returns (bytes32) {
         return allTaskResponses[taskId];
+    }
+
+    /// @notice Returns `keccak256(abi.encode(taskResponse))` — the response-only hash with
+    /// the response certificate excluded. Synced with `AttestationValidator.directTaskResponseHashes`
+    /// encoding so the direct and regular paths can be compared without the certificate skew.
+    /// Used by `ChallengeVerifier.challengeDirectlyVerifiedMismatch` as the canonical side of
+    /// the mismatch check.
+    function normalizedTaskResponseHash(
+        bytes32 taskId
+    ) external view returns (bytes32) {
+        return allNormalizedTaskResponses[taskId];
     }
 
     function _getPolicyState(

@@ -20,6 +20,11 @@ contract NewtonPolicy is Initializable, OwnableUpgradeable, ERC165Upgradeable, I
     string public entrypoint;
     address[] public policyData;
     string public metadataCid;
+    /// @notice keccak256 of the raw policy program bytes
+    /// @dev Set at initialize-time. The SP1 circuit commits the same hash into
+    ///      RegoContext.policyCodeHash so the challenge path can bind a proof to
+    ///      the exact policy bytes this contract was deployed for.
+    bytes32 public policyCodeHash;
 
     // mapping of policyId to per policy config
     mapping(bytes32 => INewtonPolicy.PolicyConfig) private _policyIdToConfig;
@@ -30,6 +35,7 @@ contract NewtonPolicy is Initializable, OwnableUpgradeable, ERC165Upgradeable, I
     /* ERRORS */
     error OnlyPolicyClient();
     error InterfaceNotSupported();
+    error InvalidPolicyCodeHash();
 
     /* Modifiers */
     modifier onlyPolicyClient() {
@@ -52,8 +58,10 @@ contract NewtonPolicy is Initializable, OwnableUpgradeable, ERC165Upgradeable, I
         string calldata _schemaCid,
         address[] calldata _policyData,
         string calldata _metadataCid,
-        address _owner
+        address _owner,
+        bytes32 _policyCodeHash
     ) public initializer {
+        require(_policyCodeHash != bytes32(0), InvalidPolicyCodeHash());
         __Ownable_init();
         _transferOwnership(_owner);
         __ERC165_init();
@@ -63,6 +71,7 @@ contract NewtonPolicy is Initializable, OwnableUpgradeable, ERC165Upgradeable, I
         policyData = _policyData;
         entrypoint = _entrypoint;
         metadataCid = _metadataCid;
+        policyCodeHash = _policyCodeHash;
     }
 
     // function to set policy for the msg.sender (client)
@@ -97,7 +106,8 @@ contract NewtonPolicy is Initializable, OwnableUpgradeable, ERC165Upgradeable, I
                 schemaCid,
                 entrypoint,
                 policyConfig,
-                policyData
+                policyData,
+                policyCodeHash
             )
         );
 
@@ -127,6 +137,10 @@ contract NewtonPolicy is Initializable, OwnableUpgradeable, ERC165Upgradeable, I
 
     function getPolicyCid() public view returns (string memory) {
         return policyCid;
+    }
+
+    function getPolicyCodeHash() public view returns (bytes32) {
+        return policyCodeHash;
     }
 
     function getSchemaCid() public view returns (string memory) {

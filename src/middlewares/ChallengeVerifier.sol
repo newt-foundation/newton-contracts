@@ -29,6 +29,10 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
     error OnlySourceChain();
     error UnregisteredDestinationChain(uint256 chainId);
     error CrossChainChallengeAlreadyProcessed(uint256 destChainId, bytes32 taskId);
+    /// @notice Proof-supplied `policyCodeHash` does not match the on-chain policy deployment
+    /// @dev Without this check an attacker could supply divergent policy bytes in the zkVM
+    ///      and slash an operator for a "violation" the real policy never could have produced
+    error PolicyCodeHashMismatch(bytes32 expected, bytes32 actual);
 
     /* EVENTS */
     event ChallengeEnabled(bool indexed isChallengeEnabled);
@@ -148,8 +152,12 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
             TaskLib.taskHash(context.task) == allTaskHashes[taskResponse.taskId],
             TaskLib.TaskMismatch(allTaskHashes[taskResponse.taskId], TaskLib.taskHash(context.task))
         );
+        // Compare proof's taskResponse against the caller-supplied taskResponse
+        // (not against allTaskResponses, which includes the certificate).
+        // The _isChallengable precondition already validated the caller-supplied
+        // (taskResponse, responseCertificate) against the stored response+certificate hash.
         require(
-            keccak256(abi.encode(context.taskResponse)) == allTaskResponses[taskResponse.taskId],
+            keccak256(abi.encode(context.taskResponse)) == keccak256(abi.encode(taskResponse)),
             TaskLib.TaskResponseMismatch()
         );
         require(
@@ -158,29 +166,43 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
             TaskLib.EntrypointMismatch()
         );
 
+        // Bind proof's policyCodeHash to the on-chain policy deployment.
+        // The SP1 circuit commits keccak256 of the raw policy bytes it actually
+        // executed. Without this check, a challenger could supply divergent policy
+        // bytes in the zkVM and slash for a "violation" the real policy never could
+        // have produced.
+        bytes32 onchainPolicyCodeHash = policy.getPolicyCodeHash();
+        require(
+            context.policyCodeHash == onchainPolicyCodeHash,
+            PolicyCodeHashMismatch(onchainPolicyCodeHash, context.policyCodeHash)
+        );
+
         bool challengeSuccess = keccak256(abi.encode(context.evaluation))
             != keccak256(abi.encode(taskResponse.evaluationResult));
 
         require(challengeSuccess, ChallengeFailed());
 
-        // Process non-signing operators and validate
-        (
-            bytes32[] memory hashesOfPubkeysOfNonSigningOperators,
-            address[] memory addressOfNonSigningOperators
-        ) = ChallengeLib.processNonSigners(pubkeysOfNonSigningOperators, blsApkRegistry);
-
-        ChallengeLib.validateSignatoryRecord(
-            task.taskCreatedBlock,
-            hashesOfPubkeysOfNonSigningOperators,
-            responseCertificate.hashOfNonSigners
-        );
-
         // Record challenge success before external calls (CEI: reentrancy safety).
         taskSuccesfullyChallenged[taskResponse.taskId] = true;
 
-        // Slash signing operators only on source chains (where serviceManager is set)
-        // Destination chains don't have slashing capability
+        // Gate non-signer processing and slashing behind source-chain check.
+        // On destination chains blsApkRegistry == address(0), so processNonSigners would
+        // revert on the external call to a zero address.
         if (serviceManager != address(0)) {
+            // Process non-signing operators and validate
+            (
+                bytes32[] memory hashesOfPubkeysOfNonSigningOperators,
+                address[] memory addressOfNonSigningOperators
+            ) = ChallengeLib.processNonSigners(pubkeysOfNonSigningOperators, blsApkRegistry);
+
+            ChallengeLib.validateSignatoryRecord(
+                task.taskCreatedBlock,
+                hashesOfPubkeysOfNonSigningOperators,
+                responseCertificate.hashOfNonSigners
+            );
+
+            // Slash signing operators only on source chains (where serviceManager is set)
+            // Destination chains don't have slashing capability
             ChallengeLib.ChallengeContext memory ctx = ChallengeLib.ChallengeContext({
                 blsApkRegistry: blsApkRegistry,
                 operatorStateRetriever: operatorStateRetriever,
@@ -257,6 +279,15 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
             keccak256(abi.encode(policy.getEntrypoint()))
                 == keccak256(abi.encode(context.entrypoint)),
             TaskLib.EntrypointMismatch()
+        );
+
+        // Bind proof's policyCodeHash to the on-chain policy deployment (same
+        // defense as raiseAndResolveChallenge). Particularly important on
+        // cross-chain paths where the dest-chain caller supplies all inputs.
+        bytes32 onchainPolicyCodeHash = policy.getPolicyCodeHash();
+        require(
+            context.policyCodeHash == onchainPolicyCodeHash,
+            PolicyCodeHashMismatch(onchainPolicyCodeHash, context.policyCodeHash)
         );
 
         // Verify proof output mismatches the task response (challenge is valid)
@@ -436,18 +467,27 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
         }
     }
 
-    // solhint-disable-next-line function-max-lines
+    /// @notice Invalidate a direct-path attestation whose stored hashes do not match
+    /// the canonical (regular-path) task / response hashes.
+    ///
+    /// This function never slashes. A hash divergence between the direct path
+    /// and the regular path does NOT by itself prove operator misbehavior — the direct path may have recorded a bad hash
+    /// while operators signed the correct canonical response. Slashing on this
+    /// condition is unsafe. Instead, the function simply invalidates the direct-path
+    /// attestation so downstream consumers cannot rely on its tainted hashes, and
+    /// marks the task as challenged to prevent replay. Operator slashing for
+    /// incorrect responses is handled by `raiseAndResolveChallenge` (and its
+    /// cross-chain counterpart), which re-executes the policy and produces a ZK
+    /// proof of misbehavior.
     function challengeDirectlyVerifiedMismatch(
         INewtonProverTaskManager.Task calldata task,
-        INewtonProverTaskManager.TaskResponse calldata taskResponse,
-        bytes calldata signatureData,
-        address _taskResponseHandler
+        INewtonProverTaskManager.TaskResponse calldata taskResponse
     ) external onlyTaskManager nonReentrant {
         require(isChallengeEnabled, ChallengeNotEnabled());
 
         bytes32 taskId = taskResponse.taskId;
 
-        // Prevent repeated slashing for the same task
+        // Prevent repeated invalidation for the same task
         require(!taskSuccesfullyChallenged[taskId], NotChallengable());
 
         // 1. Verify attestation was directly verified
@@ -477,14 +517,13 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
         bytes32 directResponseHash =
             AttestationValidator(attestationValidator).directTaskResponseHashes(taskId);
 
-        // 5. Get regular response hash from TaskManager and normalize for comparison.
-        // The regular path stores keccak256(abi.encode(taskResponse, responseCertificate))
-        // while the direct path stores keccak256(abi.encode(taskResponse)).
-        // Compare direct hash against the same encoding: keccak256(abi.encode(taskResponse)).
-        bytes32 regularResponseHash = INewtonProverTaskManager(taskManager).taskResponseHash(taskId);
-        require(regularResponseHash != bytes32(0), NotChallengable());
-
-        bytes32 normalizedRegularResponseHash = keccak256(abi.encode(taskResponse));
+        // 5. Use the stored normalized response hash from TaskManager
+        // instead of recomputing from caller-supplied input. This prevents an attacker
+        // from altering attestation fields (zeroed by computeConsensusDigest) to fabricate
+        // a mismatch that would otherwise block the invalidation check.
+        bytes32 normalizedRegularResponseHash =
+            INewtonProverTaskManager(taskManager).normalizedTaskResponseHash(taskId);
+        require(normalizedRegularResponseHash != bytes32(0), NotChallengable());
 
         // 6. Challenge succeeds if EITHER task hash or response hash mismatches
         // (using compatible encodings for the response hash comparison)
@@ -493,39 +532,12 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
             directResponseHash != bytes32(0) && directResponseHash != normalizedRegularResponseHash;
         require(taskHashMismatch || responseHashMismatch, ChallengeFailed());
 
-        // 6. Re-verify signatures via task response handler
-        ITaskResponseHandler(_taskResponseHandler)
-            .verifyTaskResponse(task, taskResponse, signatureData);
-
-        // 7. Record challenge success before external calls (CEI: reentrancy safety)
+        // 7. Mark challenged and invalidate the tainted direct-path attestation.
+        // CEI: record state before the external call.
         taskSuccesfullyChallenged[taskId] = true;
         AttestationValidator(attestationValidator).invalidateAttestation(taskId);
 
-        // 8. Slash signing operators (only on source chains where blsApkRegistry is set)
-        if (blsApkRegistry != address(0)) {
-            IBLSSignatureCheckerTypes.NonSignerStakesAndSignature memory
-                nonSignerStakesAndSignature =
-                abi.decode(signatureData, (IBLSSignatureCheckerTypes.NonSignerStakesAndSignature));
-
-            (
-                bytes32[] memory hashesOfPubkeysOfNonSigningOperators,
-                address[] memory addressOfNonSigningOperators
-            ) = ChallengeLib.processNonSigners(
-                nonSignerStakesAndSignature.nonSignerPubkeys, blsApkRegistry
-            );
-
-            ChallengeLib.ChallengeContext memory ctx = ChallengeLib.ChallengeContext({
-                blsApkRegistry: blsApkRegistry,
-                operatorStateRetriever: operatorStateRetriever,
-                registryCoordinator: registryCoordinator,
-                allocationManager: allocationManager,
-                instantSlasher: instantSlasher,
-                serviceManager: serviceManager
-            });
-
-            ChallengeLib.slashSigningOperators(
-                ctx, task.quorumNumbers, task.taskCreatedBlock, addressOfNonSigningOperators
-            );
-        }
+        // Silence unused-variable warning for `taskResponse` while keeping the
+        // parameter in the public ABI. `taskResponse.taskId` is used above as `taskId`.
     }
 }

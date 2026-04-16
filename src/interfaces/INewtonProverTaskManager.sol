@@ -186,20 +186,32 @@ interface INewtonProverTaskManager {
         bytes calldata signatureData
     ) external;
 
-    // NOTE: this function challenges directly verified attestations when the direct path
-    // hashes differ from the regular path (createNewTask + respondToTask) hashes.
+    /// @notice Invalidate a direct-path attestation whose stored hashes diverge from
+    /// the canonical regular-path hashes. Marks the task as challenged and invalidates
+    /// the direct-path attestation so downstream consumers stop trusting its hashes.
+    /// Never slashes — hash divergence alone is not proof of operator misbehavior.
+    /// See `ChallengeVerifier.challengeDirectlyVerifiedMismatch` for rationale.
     function challengeDirectlyVerifiedMismatch(
         Task calldata task,
-        TaskResponse calldata taskResponse,
-        bytes calldata signatureData
+        TaskResponse calldata taskResponse
     ) external;
 
-    // NOTE: getter functions for public mappings
+    /// @notice Returns the task-identity hash recorded when the task was created.
     function taskHash(
         bytes32 taskId
     ) external view returns (bytes32);
 
+    /// @notice Returns `keccak256(abi.encode(taskResponse, responseCertificate))` for the
+    /// regular response path. Includes the response certificate, so this is NOT comparable
+    /// to direct-path hashes. Use `normalizedTaskResponseHash` for direct-vs-regular checks.
     function taskResponseHash(
+        bytes32 taskId
+    ) external view returns (bytes32);
+
+    /// @notice Returns `keccak256(abi.encode(taskResponse))` — the response-only hash without
+    /// the response certificate, synced with the direct-path encoding in `AttestationValidator`.
+    /// Used as the canonical side of mismatch checks in `ChallengeVerifier`.
+    function normalizedTaskResponseHash(
         bytes32 taskId
     ) external view returns (bytes32);
 }

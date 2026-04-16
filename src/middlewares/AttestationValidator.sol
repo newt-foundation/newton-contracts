@@ -201,6 +201,16 @@ contract AttestationValidator is Initializable, OwnableUpgradeable {
                 TaskLib.TaskMismatch(expectedTaskHash, TaskLib.taskHash(task))
             );
 
+            // Bind taskResponse to the stored normalized response hash to prevent
+            // poisoning of directTaskResponseHashes from caller-supplied input
+            bytes32 storedNormalizedResponseHash =
+                INewtonProverTaskManager(taskManager).normalizedTaskResponseHash(taskId);
+            require(
+                storedNormalizedResponseHash != bytes32(0)
+                    && keccak256(abi.encode(taskResponse)) == storedNormalizedResponseHash,
+                TaskLib.TaskResponseMismatch()
+            );
+
             // Stored expiration was set as referenceBlock + expireAfter during respondToTask
             uint32 storedExpiration = attestationExpirations[taskId];
             require(storedExpiration != 0, "Attestation expiration not found");
@@ -219,8 +229,8 @@ contract AttestationValidator is Initializable, OwnableUpgradeable {
             // Set direct verification state so callers see consistent results
             // regardless of whether the regular flow had already created an attestation
             directlyVerifiedAttestations[taskId] = true;
-            directTaskHashes[taskId] = TaskLib.taskHash(task);
-            directTaskResponseHashes[taskId] = keccak256(abi.encode(taskResponse));
+            directTaskHashes[taskId] = expectedTaskHash;
+            directTaskResponseHashes[taskId] = storedNormalizedResponseHash;
             emit INewtonProverTaskManager.DirectTaskResponded(taskId, task, taskResponse);
 
             return result;
@@ -231,6 +241,27 @@ contract AttestationValidator is Initializable, OwnableUpgradeable {
         // Prevent double spending across both regular and direct flows
         require(
             attestationExpirations[taskId] != ATTESTATION_SPENT_SENTINEL, AttestationAlreadySpent()
+        );
+
+        // Bind every Task field that overlaps with TaskResponse to prevent a malicious
+        // policy client from committing a crafted task hash that diverges from the signed
+        // response. BLS consensus digest covers only `taskResponse` (see TaskLib.
+        // computeConsensusDigest), so task-only fields (taskCreatedBlock, wasmArgs,
+        // quorumNumbers, quorumThresholdPercentage) remain caller-controlled in this
+        // optimistic branch — they only affect directTaskHashes dedup, not slashing.
+        require(task.taskId == taskResponse.taskId, TaskLib.InvalidTaskId());
+        require(task.policyClient == taskResponse.policyClient, TaskLib.InvalidPolicyClient());
+        require(
+            keccak256(abi.encode(task.intent)) == keccak256(abi.encode(taskResponse.intent)),
+            TaskLib.TaskResponseMismatch()
+        );
+        require(
+            keccak256(task.intentSignature) == keccak256(taskResponse.intentSignature),
+            TaskLib.TaskResponseMismatch()
+        );
+        require(
+            task.initializationTimestamp == taskResponse.initializationTimestamp,
+            TaskLib.TaskResponseMismatch()
         );
 
         ITaskResponseHandler(taskResponseHandler)
@@ -291,6 +322,14 @@ contract AttestationValidator is Initializable, OwnableUpgradeable {
             bytes32 expectedTaskHash = INewtonProverTaskManager(taskManager).taskHash(taskId);
             if (TaskLib.taskHash(task) != expectedTaskHash) return false;
 
+            // Bind taskResponse to stored normalized hash (synced with validateAttestationDirect)
+            bytes32 storedNormalizedResponseHash =
+                INewtonProverTaskManager(taskManager).normalizedTaskResponseHash(taskId);
+            if (
+                storedNormalizedResponseHash == bytes32(0)
+                    || keccak256(abi.encode(taskResponse)) != storedNormalizedResponseHash
+            ) return false;
+
             uint32 storedExpiration = attestationExpirations[taskId];
             if (storedExpiration == 0) return false;
 
@@ -312,6 +351,17 @@ contract AttestationValidator is Initializable, OwnableUpgradeable {
         // Delegates to SourceTaskResponseHandler (BLS) ONLY because the DestinationTaskResponseHandler (certificate) caches state and doesn't allow for view calling
         // This prevents double spending across both regular and direct flows
         if (attestationExpirations[taskId] == ATTESTATION_SPENT_SENTINEL) return false;
+
+        // Bind every Task field that overlaps with TaskResponse (synced with validateAttestationDirect)
+        if (task.taskId != taskResponse.taskId) return false;
+        if (task.policyClient != taskResponse.policyClient) return false;
+        if (keccak256(abi.encode(task.intent)) != keccak256(abi.encode(taskResponse.intent))) {
+            return false;
+        }
+        if (keccak256(task.intentSignature) != keccak256(taskResponse.intentSignature)) {
+            return false;
+        }
+        if (task.initializationTimestamp != taskResponse.initializationTimestamp) return false;
 
         // can't stop this from reverting, but will pass if sigs are good
         ITaskResponseHandler(taskResponseHandler)

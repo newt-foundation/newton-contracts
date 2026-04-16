@@ -247,7 +247,11 @@ library OperatorVerifierLib {
                 )
             );
         }
-        hashOfNonSigners = keccak256(abi.encodePacked(nonSignerPubkeyHashes));
+        // Include taskCreatedBlock in the hash to match the format
+        // expected by ChallengeLib.validateSignatoryRecord, which computes:
+        //   keccak256(abi.encodePacked(taskCreatedBlock, hashesOfPubkeys))
+        // Without this, destination-chain challenges always fail with InvalidNonSigners.
+        hashOfNonSigners = keccak256(abi.encodePacked(task.taskCreatedBlock, nonSignerPubkeyHashes));
 
         return hashOfNonSigners;
     }

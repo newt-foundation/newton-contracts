@@ -76,7 +76,8 @@ contract NewtonPolicyFactory is OwnableUpgradeable, SemVerMixin {
         string memory _schemaCid,
         address[] memory _policyData,
         string memory _metadataCid,
-        address _owner
+        address _owner,
+        bytes32 _policyCodeHash
     ) external returns (address policyAddr) {
         bytes memory initData = abi.encodeWithSelector(
             NewtonPolicy.initialize.selector,
@@ -86,7 +87,8 @@ contract NewtonPolicyFactory is OwnableUpgradeable, SemVerMixin {
             _schemaCid,
             _policyData,
             _metadataCid,
-            _owner
+            _owner,
+            _policyCodeHash
         );
 
         bytes32 salt = keccak256(
@@ -97,7 +99,8 @@ contract NewtonPolicyFactory is OwnableUpgradeable, SemVerMixin {
                 _schemaCid,
                 _policyData,
                 _metadataCid,
-                _owner
+                _owner,
+                _policyCodeHash
             )
         );
 
@@ -129,7 +132,14 @@ contract NewtonPolicyFactory is OwnableUpgradeable, SemVerMixin {
         emit PolicyDeployed(
             policyAddr,
             INewtonPolicy.PolicyInfo(
-                policyAddr, _owner, _metadataCid, _policyCid, _schemaCid, _entrypoint, _policyData
+                policyAddr,
+                _owner,
+                _metadataCid,
+                _policyCid,
+                _schemaCid,
+                _entrypoint,
+                _policyData,
+                _policyCodeHash
             ),
             version()
         );
@@ -154,7 +164,8 @@ contract NewtonPolicyFactory is OwnableUpgradeable, SemVerMixin {
         string memory _schemaCid,
         address[] memory _policyData,
         string memory _metadataCid,
-        address _owner
+        address _owner,
+        bytes32 _policyCodeHash
     ) public view returns (address predicted) {
         bytes memory initData = abi.encodeWithSelector(
             NewtonPolicy.initialize.selector,
@@ -164,7 +175,8 @@ contract NewtonPolicyFactory is OwnableUpgradeable, SemVerMixin {
             _schemaCid,
             _policyData,
             _metadataCid,
-            _owner
+            _owner,
+            _policyCodeHash
         );
 
         bytes32 salt = keccak256(
@@ -175,7 +187,8 @@ contract NewtonPolicyFactory is OwnableUpgradeable, SemVerMixin {
                 _schemaCid,
                 _policyData,
                 _metadataCid,
-                _owner
+                _owner,
+                _policyCodeHash
             )
         );
 
@@ -240,7 +253,7 @@ contract NewtonPolicyFactory is OwnableUpgradeable, SemVerMixin {
 
     /**
      * @dev Override transferOwnership to remove verifier privileges from the old owner
-     * This addresses FIND-013: Old owner retains verifier privileges after ownership transfer
+     * Revokes verifier privileges from the old owner on ownership transfer
      */
     function transferOwnership(
         address newOwner

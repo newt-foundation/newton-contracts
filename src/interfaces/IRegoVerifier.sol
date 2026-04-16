@@ -12,11 +12,16 @@ interface IRegoVerifier {
     // STRUCTS
 
     /// @notice The context of the rego policy evaluation.
+    /// @dev `policyCodeHash` is `keccak256` of the raw policy program bytes that the
+    ///      SP1 circuit actually executed. The challenge path binds this to
+    ///      `INewtonPolicy.getPolicyCodeHash()` so a caller cannot supply divergent
+    ///      policy bytes in the zkVM and still slash an operator.
     struct RegoContext {
         INewtonProverTaskManager.Task task;
         INewtonProverTaskManager.TaskResponse taskResponse;
         string entrypoint;
         bytes evaluation;
+        bytes32 policyCodeHash;
     }
 
     /// @notice The entrypoint for verifying the proof of a rego policy evaluation.
