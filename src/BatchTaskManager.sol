@@ -103,11 +103,13 @@ contract BatchTaskManager is IBatchTaskManager {
     function batchRespondToTasks(
         INewtonProverTaskManager.Task[] calldata tasks,
         INewtonProverTaskManager.TaskResponse[] calldata responses,
-        bytes[] calldata signatureDataArray
+        bytes[] calldata signatureDataArray,
+        bytes[] calldata attestationDataArray
     ) external onlyAuthorized {
         require(tasks.length > 0, EmptyBatch());
         require(
-            tasks.length == responses.length && responses.length == signatureDataArray.length,
+            tasks.length == responses.length && responses.length == signatureDataArray.length
+                && signatureDataArray.length == attestationDataArray.length,
             ArrayLengthMismatch()
         );
 
@@ -115,7 +117,9 @@ contract BatchTaskManager is IBatchTaskManager {
         uint256 failCount;
 
         for (uint256 i; i < tasks.length;) {
-            try taskManager.respondToTask(tasks[i], responses[i], signatureDataArray[i]) {}
+            try taskManager.respondToTask(
+                tasks[i], responses[i], signatureDataArray[i], attestationDataArray[i]
+            ) {}
             catch (bytes memory reason) {
                 failures[failCount] = FailedItem(i, responses[i].taskId, reason);
                 unchecked {
@@ -143,11 +147,13 @@ contract BatchTaskManager is IBatchTaskManager {
     function batchCreateAndRespondToTasks(
         INewtonProverTaskManager.Task[] calldata tasks,
         INewtonProverTaskManager.TaskResponse[] calldata responses,
-        bytes[] calldata signatureDataArray
+        bytes[] calldata signatureDataArray,
+        bytes[] calldata attestationDataArray
     ) external onlyAuthorized {
         require(tasks.length > 0, EmptyBatch());
         require(
-            tasks.length == responses.length && responses.length == signatureDataArray.length,
+            tasks.length == responses.length && responses.length == signatureDataArray.length
+                && signatureDataArray.length == attestationDataArray.length,
             ArrayLengthMismatch()
         );
 
@@ -155,7 +161,9 @@ contract BatchTaskManager is IBatchTaskManager {
         uint256 failCount;
 
         for (uint256 i; i < tasks.length;) {
-            try this._createAndRespond(tasks[i], responses[i], signatureDataArray[i]) {}
+            try this._createAndRespond(
+                tasks[i], responses[i], signatureDataArray[i], attestationDataArray[i]
+            ) {}
             catch (bytes memory reason) {
                 failures[failCount] = FailedItem(i, responses[i].taskId, reason);
                 unchecked {
@@ -184,10 +192,11 @@ contract BatchTaskManager is IBatchTaskManager {
     function _createAndRespond(
         INewtonProverTaskManager.Task calldata task,
         INewtonProverTaskManager.TaskResponse calldata taskResponse,
-        bytes calldata signatureData
+        bytes calldata signatureData,
+        bytes calldata attestationData
     ) external {
         require(msg.sender == address(this), Unauthorized());
         taskManager.createNewTask(task);
-        taskManager.respondToTask(task, taskResponse, signatureData);
+        taskManager.respondToTask(task, taskResponse, signatureData, attestationData);
     }
 }

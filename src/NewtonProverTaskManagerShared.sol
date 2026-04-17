@@ -75,7 +75,8 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
     function respondToTask(
         Task calldata task,
         TaskResponse calldata taskResponse,
-        bytes calldata signatureData
+        bytes calldata signatureData,
+        bytes calldata attestationData
     ) external onlyTaskGenerator onlyValidTaskResponse(task, taskResponse) whenNotPaused {
         bytes32 taskId = taskResponse.taskId;
         require(
@@ -121,6 +122,14 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
         allNormalizedTaskResponses[taskId] = keccak256(abi.encode(taskResponse));
         ChallengeVerifier(challengeVerifier)
             .setTaskHashesAndResponses(taskId, allTaskHashes[taskId], responseHash);
+        // Store attestation hash if provided. For privacy tasks, operators include a
+        // Nitro attestation doc binding the evaluation to a specific enclave. The
+        // ChallengeVerifier Type 2 path checks this at challenge time.
+        // Note: validateAttestationDirect does NOT need attestation_data — it verifies
+        // BLS signatures for policy client contracts, not enclave integrity.
+        if (attestationData.length > 0) {
+            allTaskAttestations[taskId] = keccak256(attestationData);
+        }
         if (TaskLib.evaluateResult(taskResponse.evaluationResult)) {
             AttestationValidator(attestationValidator)
                 .createAttestationHash(

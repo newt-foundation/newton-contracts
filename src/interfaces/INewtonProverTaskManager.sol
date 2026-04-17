@@ -136,7 +136,8 @@ interface INewtonProverTaskManager {
     function respondToTask(
         Task calldata task,
         TaskResponse calldata taskResponse,
-        bytes calldata signatureData
+        bytes calldata signatureData,
+        bytes calldata attestationData
     ) external;
 
     // NOTE: this function raises challenge to existing tasks.

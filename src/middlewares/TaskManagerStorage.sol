@@ -106,6 +106,13 @@ abstract contract TaskManagerStorage is
     ///      instead of recomputing from caller-supplied input.
     mapping(bytes32 => bytes32) public allNormalizedTaskResponses;
 
+    /// @notice Stores keccak256(attestation_data) for each task that provided TEE attestation.
+    /// @dev For privacy tasks, operators include a Nitro attestation document (~3 KB CBOR)
+    ///      with user_data = keccak256(task_id || response_digest). The hash is stored
+    ///      on-chain for challenger verification (ChallengeVerifier Type 2). Empty bytes32
+    ///      means no attestation was provided — permissible for non-privacy tasks.
+    mapping(bytes32 => bytes32) public allTaskAttestations;
+
     // Conditional inheritance based on chain type
     // Source chains extend BLSSignatureChecker for stake registry verification
     // Destination chains do not extend these (they use certificate verification instead)
@@ -130,7 +137,7 @@ abstract contract TaskManagerStorage is
 
     // storage gap for upgradeability
     // slither-disable-next-line shadowing-state
-    uint256[46] private __GAP;
+    uint256[45] private __GAP;
 }
 
 /**

@@ -38,7 +38,8 @@ interface IBatchTaskManager {
     function batchRespondToTasks(
         INewtonProverTaskManager.Task[] calldata tasks,
         INewtonProverTaskManager.TaskResponse[] calldata responses,
-        bytes[] calldata signatureDataArray
+        bytes[] calldata signatureDataArray,
+        bytes[] calldata attestationDataArray
     ) external;
 
     /// @notice Atomically create and respond to multiple tasks in a single transaction.
@@ -48,9 +49,11 @@ interface IBatchTaskManager {
     /// @param tasks Array of tasks to create and respond to
     /// @param responses Array of task responses (must match tasks by index)
     /// @param signatureDataArray Array of BLS signature data (one per response)
+    /// @param attestationDataArray Array of TEE attestation data (one per response, empty bytes for non-privacy tasks)
     function batchCreateAndRespondToTasks(
         INewtonProverTaskManager.Task[] calldata tasks,
         INewtonProverTaskManager.TaskResponse[] calldata responses,
-        bytes[] calldata signatureDataArray
+        bytes[] calldata signatureDataArray,
+        bytes[] calldata attestationDataArray
     ) external;
 }
