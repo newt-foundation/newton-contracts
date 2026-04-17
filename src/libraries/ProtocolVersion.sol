@@ -8,7 +8,7 @@ pragma solidity ^0.8.27;
 // @dev MIN_COMPATIBLE version uses MAJOR.MINOR.0 (patch is ignored for compatibility)
 
 // Protocol version following SemVer 2.0.0 (MAJOR.MINOR.PATCH)
-string constant PROTOCOL_VERSION = "0.2.1";
+string constant PROTOCOL_VERSION = "0.3.0";
 
 // Minimum compatible factory version (MAJOR.MINOR.0)
-string constant MIN_COMPATIBLE_VERSION = "0.2.0";
+string constant MIN_COMPATIBLE_VERSION = "0.3.0";

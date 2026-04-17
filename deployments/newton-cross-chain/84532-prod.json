@@ -1,7 +1,7 @@
 {
   "lastUpdate": {
-    "timestamp": "1776093850",
-    "block_number": "40162781"
+    "timestamp": "1776382412",
+    "block_number": "40307062"
   },
   "type": "destination",
   "sourceChainId": "11155111",
@@ -9,29 +9,29 @@
     "proxyAdmin": "0x71c1731174f747b14cbbcefacc685e4cdaa6f6f0",
     "pauserRegistry": "0x5292eafa9f39b130523b5e9a16bd8f9391fced8c",
     "operatorTableUpdater": "0xafbe6d4dbd73b43621214ca9661b43363258a80f",
-    "operatorTableUpdaterImpl": "0x5b3c63b26786dddef92321c41fcce07090e0d1f8",
+    "operatorTableUpdaterImpl": "0x30261c5536107ec4949444f786bdcd208f0f81ae",
     "bn254CertificateVerifier": "0xc39f5e056310f782f622370a3318037a116ed68c",
-    "bn254CertificateVerifierImpl": "0xf033f820efc0e11458bfa88de0d69f3f2a741cfe",
+    "bn254CertificateVerifierImpl": "0x994f143abcee3e1428a0051804d39b92020e458e",
     "ecdsaCertificateVerifier": "0x9a1ca1daadee3c7f2f81a25f7684d5b731c61055",
-    "ecdsaCertificateVerifierImpl": "0x649e1e8f6e6a77fecd1622c9451916bc43420cdc",
+    "ecdsaCertificateVerifierImpl": "0xc38190cc22cd39ee6e72271f0e30eda189e411ee",
     "newtonProverTaskManager": "0xa5e104ad7f09df5d9036d1e9ad60fada11140071",
-    "newtonProverTaskManagerImpl": "0x026f0fb8336172cbe94d4e2ec69d237c5906b9ad",
+    "newtonProverTaskManagerImpl": "0x3cbb3cc63dee207b76960bc33e6a96b485d0dbf8",
     "challengeVerifier": "0x768a80650fbffc9c30466a782737e1e61b08e807",
-    "challengeVerifierImpl": "0x4d705b1dd85ed5d2a72bb55290e069eb411a90e7",
+    "challengeVerifierImpl": "0x570decf5cfb156328479cacb99fb169d2d4d3a14",
     "regoVerifier": "0x3c126d83c2683a1c377a8c1c6ec2e2e28798c9fa",
-    "regoVerifierImpl": "0x46ca91090ac3bd78c5f0aa3d3ae1e7d5929d78c2",
+    "regoVerifierImpl": "0x98f3905bc03b3b07cd1ef4c240ffb76a77bb5da1",
     "attestationValidator": "0xf345c77e111a5731f88571c7c69919e8460154e5",
-    "attestationValidatorImpl": "0xa6220c2058427c8b4360e29bac4c96c0aab504f3",
+    "attestationValidatorImpl": "0xd41da551952e1e4a6cc9601f4bd2a9c59862a560",
     "socketRegistry": "0xf0423f3a95accb079595a3cee9f2fff4701520d7",
     "socketRegistryImpl": "0x226e4bfa9c98240e0e722629c2edcac81b4822be",
     "operatorRegistry": "0x9f63fa378374678796b8aadb432242727c8b4f7f",
     "operatorRegistryImpl": "0x0e70efc61e9f543c0cf54a9d2bce3d14b0bd2047",
     "policyClientRegistry": "0x2a7b31e48e8b8962b71c36c9377e5a1023b89b0d",
-    "policyClientRegistryImpl": "0x2562360a294bbbf96ec1f9bd692e4c58674b8c1b",
+    "policyClientRegistryImpl": "0x779423b1c6911b2e1c5ebe11cd17349efdf7b6a3",
     "identityRegistry": "0x1b6ad56a68544e3f5d4afa29aa2aee8e62a70130",
-    "identityRegistryImpl": "0x80a213538c7f86f7cc02fcfad8d9d6f4d852918b",
+    "identityRegistryImpl": "0x46d12b878527a2af48b0fc51fabcb0058dfc26a2",
     "confidentialDataRegistry": "0x64866c22ee0fb16b6b7502f5a4ca73d82f3de3d7",
-    "confidentialDataRegistryImpl": "0xfea9c2dd238c02d94d479dc808c60a6e1e263b5e",
-    "batchTaskManager": "0x00984544f6c15880530bf29d15d07001f57b1357"
+    "confidentialDataRegistryImpl": "0x21e6991c2fd55b191541895025869b07c37b1ad1",
+    "batchTaskManager": "0x950585d46f33c71d263d07a4134d2258fb78584d"
   }
 }
