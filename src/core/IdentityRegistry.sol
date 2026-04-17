@@ -39,6 +39,11 @@ contract IdentityRegistry is EIP712Upgradeable, Nonces, IIdentityRegistry {
     ///         Used by getLinkedDomains for enumerating all domains linked for a user at a policy client.
     mapping(address => mapping(address => EnumerableSet.Bytes32Set)) internal _linkedDomains;
 
+    /// @notice Count of active identity links per policy client (across all users and domains).
+    ///         Incremented on new link, decremented on unlink. Used by hasLinkedIdentity for
+    ///         O(1) privacy task detection without knowing the specific clientUser.
+    mapping(address => uint256) internal _policyClientLinkCount;
+
     /// @notice OperatorRegistry address used to require task submitter privileges for writing identity data.
     ///   immutable, set on the implementation contract.
     IOperatorRegistry public immutable override operatorRegistry;
@@ -372,8 +377,14 @@ contract IdentityRegistry is EIP712Upgradeable, Nonces, IIdentityRegistry {
         );
 
         // update storage
+        bool isNewLink = (existing == address(0));
         policyClientLinks[_policyClient][_clientUser][_identityDomain] = _identityOwner;
         _linkedDomains[_policyClient][_clientUser].add(_identityDomain);
+        if (isNewLink) {
+            unchecked {
+                ++_policyClientLinkCount[_policyClient];
+            }
+        }
 
         emit IdentityLinked(_identityOwner, _policyClient, _clientUser, _identityDomain);
     }
@@ -399,6 +410,11 @@ contract IdentityRegistry is EIP712Upgradeable, Nonces, IIdentityRegistry {
 
         delete policyClientLinks[_policyClient][_clientUser][_identityDomain];
         _linkedDomains[_policyClient][_clientUser].remove(_identityDomain);
+        if (_policyClientLinkCount[_policyClient] > 0) {
+            unchecked {
+                --_policyClientLinkCount[_policyClient];
+            }
+        }
 
         emit IdentityUnlinked(_caller, _policyClient, _clientUser, _identityDomain);
     }
@@ -409,5 +425,21 @@ contract IdentityRegistry is EIP712Upgradeable, Nonces, IIdentityRegistry {
         address clientUser
     ) external view override returns (bytes32[] memory) {
         return _linkedDomains[policyClient][clientUser].values();
+    }
+
+    /// @inheritdoc IIdentityRegistry
+    function hasLinkedIdentity(
+        address policyClient
+    ) external view override returns (bool) {
+        return _policyClientLinkCount[policyClient] > 0;
+    }
+
+    /// @inheritdoc IIdentityRegistry
+    function seedLinkCount(
+        address policyClient,
+        uint256 count
+    ) external override {
+        require(operatorRegistry.isTaskGenerator(msg.sender), InvalidIdentitySubmitter());
+        _policyClientLinkCount[policyClient] = count;
     }
 }

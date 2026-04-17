@@ -323,4 +323,11 @@ contract ConfidentialDataRegistry is Initializable, IConfidentialDataRegistry {
     ) external view override returns (bytes32[] memory) {
         return _clientDomains[policyClient].values();
     }
+
+    /// @inheritdoc IConfidentialDataRegistry
+    function hasGrantedDomains(
+        address policyClient
+    ) external view override returns (bool) {
+        return _clientDomains[policyClient].length() > 0;
+    }
 }

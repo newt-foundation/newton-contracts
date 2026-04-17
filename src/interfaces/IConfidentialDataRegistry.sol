@@ -237,4 +237,13 @@ interface IConfidentialDataRegistry {
     function getGrantedDomains(
         address policyClient
     ) external view returns (bytes32[] memory);
+
+    /// @notice Check whether any confidential data domain is granted to this policy client.
+    ///         Used for on-chain privacy task detection — if true, the task involves
+    ///         confidential data and requires TEE attestation for privacy protection.
+    /// @param policyClient The policy client to query
+    /// @return True if at least one domain has an active grant for this policy client
+    function hasGrantedDomains(
+        address policyClient
+    ) external view returns (bool);
 }

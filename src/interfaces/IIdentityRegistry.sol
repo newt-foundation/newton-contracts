@@ -214,4 +214,25 @@ interface IIdentityRegistry {
         address policyClient,
         address clientUser
     ) external view returns (bytes32[] memory);
+
+    /// @notice Check whether any user has linked identity data to this policy client.
+    ///         Used for on-chain privacy task detection — if true, the task involves
+    ///         identity data and requires TEE attestation for privacy protection.
+    /// @param policyClient The policy client address
+    /// @return True if at least one identity link exists for this policy client
+    function hasLinkedIdentity(
+        address policyClient
+    ) external view returns (bool);
+
+    /// @notice Seed the link count for a policy client after contract upgrade.
+    ///         The counter starts at 0 for all existing policy clients — pre-existing
+    ///         links are not reflected until the next link/unlink operation. This function
+    ///         allows a task generator to backfill the count from off-chain enumeration.
+    ///         One-time migration use only.
+    /// @param policyClient The policy client address
+    /// @param count The number of active links to set
+    function seedLinkCount(
+        address policyClient,
+        uint256 count
+    ) external;
 }

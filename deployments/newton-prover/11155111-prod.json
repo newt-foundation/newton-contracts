@@ -1,22 +1,22 @@
 {
   "lastUpdate": {
-    "timestamp": "1776382488",
-    "block_number": "10674318"
+    "timestamp": "1776452316",
+    "block_number": "10679530"
   },
   "addresses": {
     "proxyAdmin": "0xa0c604fe9a00107a648f61c75d1d59dd20dfbe26",
     "newtonProverServiceManager": "0x1c7331aad7c326ea70f22046da7cb967675f398c",
-    "newtonProverServiceManagerImpl": "0xac54d8070821f4dae0cd5d67cfab512f39e37915",
+    "newtonProverServiceManagerImpl": "0x207811260073b510e850bac8fa3005a2aff65b46",
     "newtonProverTaskManager": "0xecb741f4875770f9a5f060cb30f6c9eb5966ed13",
-    "newtonProverTaskManagerImpl": "0xf302b462ef75578021c3b2ea87e3b662c0bbd05c",
+    "newtonProverTaskManagerImpl": "0xb681e5fecc61f3ddc4cf6c2027fac1464ee4fa65",
     "challengeVerifier": "0x5aeefd2b60d0a374557227e090206b2b7c8a0956",
-    "challengeVerifierImpl": "0x6fce3f7f5b5679f0f46e853b6cec2ca140f835e0",
+    "challengeVerifierImpl": "0x8942f692533439112a80177d94179d6c06f732df",
     "regoVerifier": "0x2d9cff295387eefb81630929dbeaedec6ab84a5a",
-    "regoVerifierImpl": "0xb133bb4a96302ee530963f40a3f4f0765a66cca8",
+    "regoVerifierImpl": "0xbd433279850c2ce9b0c2b2ce75c2125ae68b4906",
     "attestationValidator": "0x26f452e4b9c9c28508cb836ba486cceaa95b429c",
-    "attestationValidatorImpl": "0xcc545b1ec6f2edafee55d95664bd18528a271f8c",
+    "attestationValidatorImpl": "0xaba4e23e3469a4e06af481d39425ba641f09dcee",
     "operatorRegistry": "0xbc61fd73c690f7508c5be2ed387f5ae8025146b2",
-    "operatorRegistryImpl": "0xc7f040e7295d34a375672c475faf44bd2b83b733",
+    "operatorRegistryImpl": "0x1b246980ac78ce22a8da7d2814d47f4dd84f2f91",
     "blsApkRegistry": "0xa871d673c26fd05d9995d748e949966b45644e4b",
     "blsApkRegistryImpl": "0x2a558341c69aa8234988084cc3c7c65693ccf365",
     "indexRegistry": "0xb61aa667ff510292d63602ac61440e0ae5c11000",
@@ -29,19 +29,19 @@
     "strategy": "0x904f61b1e1bf1dd155becd576f3abb19722ca902",
     "pauserRegistry": "0x71bbd38ea0e1818c66ddcb3affcb814dcc35981c",
     "policyClientRegistry": "0x0dbd6e44a1814f5efe4f67a00b7f28642e3064dd",
-    "policyClientRegistryImpl": "0xb85ed2b8a1499893889ff80dd42866e77d145f5b",
+    "policyClientRegistryImpl": "0x5809cc8d4da57b9fcb003c8880e73691e0ee0c28",
     "identityRegistry": "0xbb688f4ad1bd896197db9a20e04abe8c6344625a",
-    "identityRegistryImpl": "0x3deb4264f8f6c0b207660858e683abafa4bfb039",
+    "identityRegistryImpl": "0xf5bc23661a981a5ae95bdaf2758c177c766322d6",
     "confidentialDataRegistry": "0xdaee51cda3c2728627b7432eacc09425be6a308b",
-    "confidentialDataRegistryImpl": "0x5308c310b1885edd8238f30936d33f46a7f855eb",
+    "confidentialDataRegistryImpl": "0x3a9efdd11638e256e190b26294550aa333f545f6",
     "epochRegistry": "0x8d07ca319c1eacfac4695250e52646961f997afc",
-    "epochRegistryImpl": "0x59996657a5758b6a535b258d8e5c32295872c781",
+    "epochRegistryImpl": "0xeff64dcac6c954112d21b36139ac9f321e40447e",
     "token": "0x39098a707536932ae736d64b0f98823ad1797709",
     "tokenImpl": "0xc1aeeea055ca1e677fef1da2c4668bb9ea8ac1f5",
     "slasher": "0x774e1c96d3256c5706496b35bc80e3d988d24a08",
     "instantSlasherImpl": "0x76f5415419b03d4de015566d96ada1b0d2d302b0",
     "operatorTableCalculator": "0x0000000000000000000000000000000000000000",
-    "taskResponseHandler": "0xa646a78c5ca79829aa9f9f52cecfabdd25afb4b9",
-    "batchTaskManager": "0xc31d595da04a4f68219122427fb08eebe210640d"
+    "taskResponseHandler": "0xa6f7bd2ae82eaf842feb46b47fec5e6d331c979a",
+    "batchTaskManager": "0xb31964acd5c299f695a45746b935292d609a8ca4"
   }
 }
