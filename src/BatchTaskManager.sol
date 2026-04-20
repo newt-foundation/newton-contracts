@@ -14,6 +14,18 @@ contract BatchTaskManager is IBatchTaskManager {
     error ArrayLengthMismatch();
     error EmptyBatch();
     error Unauthorized();
+    /// @notice Pre-check rejected item: gasleft() below safe forwarding threshold.
+    error InsufficientGasForItem(uint256 index, bytes32 taskId, uint256 gasLeft);
+    /// @notice Inner call reverted with empty reason (bare revert or OOG).
+    error ItemLikelyOutOfGas(uint256 index, bytes32 taskId, uint256 gasForwarded);
+
+    /// @notice Min gas forwarded per inner call. Sized above observed p99 (~2M).
+    uint256 internal constant MIN_GAS_PER_ITEM = 3000000;
+    /// @notice Outer-frame reserve for failure array encoding + event emit.
+    uint256 internal constant OUTER_LOOP_RESERVE = 200000;
+    /// @notice Pre-check threshold; `* 64 / 63` compensates for EIP-150 forwarding.
+    uint256 internal constant MIN_GAS_FOR_ITEM_PRECHECK =
+        (MIN_GAS_PER_ITEM * 64) / 63 + OUTER_LOOP_RESERVE;
 
     INewtonProverTaskManager public immutable taskManager;
 
@@ -117,11 +129,33 @@ contract BatchTaskManager is IBatchTaskManager {
         uint256 failCount;
 
         for (uint256 i; i < tasks.length;) {
-            try taskManager.respondToTask(
+            bytes32 taskId = responses[i].taskId;
+            // Pre-check: forwardable gas (64/63-adjusted) + OUTER_LOOP_RESERVE must fit.
+            uint256 gasAvailable = gasleft();
+            if (gasAvailable < MIN_GAS_FOR_ITEM_PRECHECK) {
+                failures[failCount] = FailedItem(
+                    i,
+                    taskId,
+                    abi.encodeWithSelector(InsufficientGasForItem.selector, i, taskId, gasAvailable)
+                );
+                unchecked {
+                    ++failCount;
+                    ++i;
+                }
+                continue;
+            }
+
+            try taskManager.respondToTask{gas: MIN_GAS_PER_ITEM}(
                 tasks[i], responses[i], signatureDataArray[i], attestationDataArray[i]
             ) {}
             catch (bytes memory reason) {
-                failures[failCount] = FailedItem(i, responses[i].taskId, reason);
+                // Empty reason = bare revert()/OOG; substitute typed selector for classifiability.
+                if (reason.length == 0) {
+                    reason = abi.encodeWithSelector(
+                        ItemLikelyOutOfGas.selector, i, taskId, MIN_GAS_PER_ITEM
+                    );
+                }
+                failures[failCount] = FailedItem(i, taskId, reason);
                 unchecked {
                     ++failCount;
                 }
@@ -161,11 +195,31 @@ contract BatchTaskManager is IBatchTaskManager {
         uint256 failCount;
 
         for (uint256 i; i < tasks.length;) {
-            try this._createAndRespond(
+            bytes32 taskId = responses[i].taskId;
+            uint256 gasAvailable = gasleft();
+            if (gasAvailable < MIN_GAS_FOR_ITEM_PRECHECK) {
+                failures[failCount] = FailedItem(
+                    i,
+                    taskId,
+                    abi.encodeWithSelector(InsufficientGasForItem.selector, i, taskId, gasAvailable)
+                );
+                unchecked {
+                    ++failCount;
+                    ++i;
+                }
+                continue;
+            }
+
+            try this._createAndRespond{gas: MIN_GAS_PER_ITEM}(
                 tasks[i], responses[i], signatureDataArray[i], attestationDataArray[i]
             ) {}
             catch (bytes memory reason) {
-                failures[failCount] = FailedItem(i, responses[i].taskId, reason);
+                if (reason.length == 0) {
+                    reason = abi.encodeWithSelector(
+                        ItemLikelyOutOfGas.selector, i, taskId, MIN_GAS_PER_ITEM
+                    );
+                }
+                failures[failCount] = FailedItem(i, taskId, reason);
                 unchecked {
                     ++failCount;
                 }
