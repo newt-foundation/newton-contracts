@@ -215,4 +215,11 @@ interface INewtonProverTaskManager {
     function normalizedTaskResponseHash(
         bytes32 taskId
     ) external view returns (bytes32);
+
+    /// @notice Returns `keccak256(attestation_data)` for the given task, or bytes32(0) if
+    /// no attestation was provided. Used by ChallengeVerifier Type 2 to detect missing
+    /// TEE attestation on privacy tasks.
+    function allTaskAttestations(
+        bytes32 taskId
+    ) external view returns (bytes32);
 }

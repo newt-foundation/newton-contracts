@@ -18,6 +18,8 @@ import "@openzeppelin-upgrades/contracts/security/ReentrancyGuardUpgradeable.sol
 import {RegoVerifier} from "./RegoVerifier.sol";
 import {IRegoVerifier} from "../interfaces/IRegoVerifier.sol";
 import {INewtonPolicy} from "../interfaces/INewtonPolicy.sol";
+import {IIdentityRegistry} from "../interfaces/IIdentityRegistry.sol";
+import {IConfidentialDataRegistry} from "../interfaces/IConfidentialDataRegistry.sol";
 
 contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
     /* CUSTOM ERRORS */
@@ -33,6 +35,10 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
     /// @dev Without this check an attacker could supply divergent policy bytes in the zkVM
     ///      and slash an operator for a "violation" the real policy never could have produced
     error PolicyCodeHashMismatch(bytes32 expected, bytes32 actual);
+    /// @notice The task is not a privacy task — TEE attestation challenge not applicable
+    error NotPrivacyTask(bytes32 taskId);
+    /// @notice Attestation is present — missing-attestation challenge does not apply
+    error AttestationNotMissing(bytes32 taskId);
 
     /* EVENTS */
     event ChallengeEnabled(bool indexed isChallengeEnabled);
@@ -40,6 +46,9 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
     event CrossChainChallengeRelayed(
         uint256 indexed destChainId, bytes32 indexed taskId, address challenger
     );
+    event TeeAttestationChallenged(bytes32 indexed taskId, address challenger);
+    event IdentityRegistrySet(address indexed identityRegistry);
+    event ConfidentialDataRegistrySet(address indexed confidentialDataRegistry);
 
     /* STORAGE */
     address public immutable taskManager;
@@ -69,7 +78,12 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
     /// @notice Whitelisted destination chain IDs for cross-chain challenge relay
     mapping(uint256 => bool) public registeredDestinationChains;
 
-    uint256[45] private __gap;
+    /// @notice IdentityRegistry address for privacy task detection
+    address public identityRegistry;
+    /// @notice ConfidentialDataRegistry address for privacy task detection
+    address public confidentialDataRegistry;
+
+    uint256[43] private __gap;
 
     /* MODIFIERS */
     modifier onlyTaskManager() {
@@ -539,5 +553,125 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
 
         // Silence unused-variable warning for `taskResponse` while keeping the
         // parameter in the public ABI. `taskResponse.taskId` is used above as `taskId`.
+    }
+
+    /* TEE ATTESTATION CHALLENGE (Type 2) */
+
+    /// @notice Challenge a privacy task response that is missing TEE attestation.
+    ///         Anyone can call this (permissionless). If the task is a privacy task
+    ///         and allTaskAttestations[taskId] is empty, the response is slashable.
+    ///         This is the "missing attestation" case — the simplest slashable condition.
+    ///         For invalid attestation (bad cert chain, wrong PCR0, binding mismatch),
+    ///         a separate ZK proof path will be added with NEWT-994.
+    /// @param task The task being challenged
+    /// @param taskResponse The task response being challenged
+    /// @param responseCertificate The response certificate (for challenge window check)
+    /// @param pubkeysOfNonSigningOperators BLS G1 pubkeys of non-signing operators
+    function challengeMissingTeeAttestation(
+        INewtonProverTaskManager.Task calldata task,
+        INewtonProverTaskManager.TaskResponse calldata taskResponse,
+        INewtonProverTaskManager.ResponseCertificate calldata responseCertificate,
+        BN254.G1Point[] calldata pubkeysOfNonSigningOperators
+    ) external nonReentrant {
+        require(isChallengeEnabled, ChallengeNotEnabled());
+        bytes32 taskId = taskResponse.taskId;
+
+        // 1. Task must exist and not already challenged
+        require(
+            TaskLib.taskHash(task) == allTaskHashes[taskId],
+            TaskLib.TaskMismatch(allTaskHashes[taskId], TaskLib.taskHash(task))
+        );
+        require(!taskSuccesfullyChallenged[taskId], NotChallengable());
+
+        // 2. Response must match stored hash (same precondition as raiseAndResolveChallenge)
+        require(
+            allTaskResponses[taskId] == keccak256(abi.encode(taskResponse, responseCertificate)),
+            NotChallengable()
+        );
+
+        // 3. Must be within challenge window
+        require(
+            uint32(block.number) < responseCertificate.referenceBlock + taskChallengeWindowBlock,
+            ChallengePeriodExpired()
+        );
+
+        // 4. Task must be a privacy task (trustless on-chain detection)
+        require(_isPrivacyTask(taskResponse.policyClient), NotPrivacyTask(taskId));
+
+        // 5. Attestation must be missing — the core slashable condition
+        bytes32 attestationHash = INewtonProverTaskManager(taskManager).allTaskAttestations(taskId);
+        require(attestationHash == bytes32(0), AttestationNotMissing(taskId));
+
+        // 6. Record challenge success before external calls (CEI)
+        taskSuccesfullyChallenged[taskId] = true;
+        emit TeeAttestationChallenged(taskId, msg.sender);
+
+        // 7. Slash signing operators (source chain only)
+        if (serviceManager != address(0)) {
+            (
+                bytes32[] memory hashesOfPubkeysOfNonSigningOperators,
+                address[] memory addressOfNonSigningOperators
+            ) = ChallengeLib.processNonSigners(pubkeysOfNonSigningOperators, blsApkRegistry);
+
+            ChallengeLib.validateSignatoryRecord(
+                task.taskCreatedBlock,
+                hashesOfPubkeysOfNonSigningOperators,
+                responseCertificate.hashOfNonSigners
+            );
+
+            ChallengeLib.ChallengeContext memory ctx = ChallengeLib.ChallengeContext({
+                blsApkRegistry: blsApkRegistry,
+                operatorStateRetriever: operatorStateRetriever,
+                registryCoordinator: registryCoordinator,
+                allocationManager: allocationManager,
+                instantSlasher: instantSlasher,
+                serviceManager: serviceManager
+            });
+
+            ChallengeLib.slashSigningOperators(
+                ctx, task.quorumNumbers, task.taskCreatedBlock, addressOfNonSigningOperators
+            );
+        }
+    }
+
+    /// @notice Check if a task involves privacy data (identity, confidential, or inline ephemeral).
+    ///         Derived trustlessly from on-chain registry state — no gateway flag.
+    /// @param policyClient The policy client address from the task response
+    function _isPrivacyTask(
+        address policyClient
+    ) internal view returns (bool) {
+        if (
+            identityRegistry != address(0)
+                && IIdentityRegistry(identityRegistry).hasLinkedIdentity(policyClient)
+        ) {
+            return true;
+        }
+        if (
+            confidentialDataRegistry != address(0)
+                && IConfidentialDataRegistry(confidentialDataRegistry)
+                    .hasGrantedDomains(policyClient)
+        ) {
+            return true;
+        }
+        // Inline ephemeral privacy (wasmArgs._newton.privacy[]) cannot be checked
+        // on-chain cheaply — it requires parsing calldata. Deferred to the challenger
+        // off-chain, which submits the challenge only when it detects inline privacy.
+        return false;
+    }
+
+    /// @notice Set the IdentityRegistry address for privacy task detection
+    function setIdentityRegistry(
+        address _identityRegistry
+    ) external onlyOwner {
+        identityRegistry = _identityRegistry;
+        emit IdentityRegistrySet(_identityRegistry);
+    }
+
+    /// @notice Set the ConfidentialDataRegistry address for privacy task detection
+    function setConfidentialDataRegistry(
+        address _confidentialDataRegistry
+    ) external onlyOwner {
+        confidentialDataRegistry = _confidentialDataRegistry;
+        emit ConfidentialDataRegistrySet(_confidentialDataRegistry);
     }
 }
