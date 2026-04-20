@@ -4,6 +4,8 @@ pragma solidity ^0.8.27;
 
 import {IEpochRegistry} from "../interfaces/IEpochRegistry.sol";
 import {IOperatorRegistry} from "../interfaces/IOperatorRegistry.sol";
+import {INewtonAddressesProvider} from "../interfaces/INewtonAddressesProvider.sol";
+import {AddressesProviderConsumer} from "../mixins/AddressesProviderConsumer.sol";
 
 import {Initializable} from "@openzeppelin-upgrades/contracts/proxy/utils/Initializable.sol";
 import {OwnableUpgradeable} from "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
@@ -26,14 +28,12 @@ import {OwnableUpgradeable} from "@openzeppelin-upgrades/contracts/access/Ownabl
 ///        slot 0: mpk (bytes32)
 ///        slot 1: operatorSetHash (bytes32)
 ///        slot 2: epochId (uint64) + startBlock (uint64) + threshold (uint8) + committeeSize (uint8)
-contract EpochRegistry is Initializable, OwnableUpgradeable, IEpochRegistry {
-    // -------------------------------------------------------------------------
-    // Immutables
-    // -------------------------------------------------------------------------
-
-    /// @notice OperatorRegistry used to validate task generator authorization.
-    IOperatorRegistry public immutable operatorRegistry;
-
+contract EpochRegistry is
+    Initializable,
+    OwnableUpgradeable,
+    AddressesProviderConsumer,
+    IEpochRegistry
+{
     // -------------------------------------------------------------------------
     // Storage
     // -------------------------------------------------------------------------
@@ -56,10 +56,9 @@ contract EpochRegistry is Initializable, OwnableUpgradeable, IEpochRegistry {
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor(
-        address _operatorRegistry
-    ) {
-        require(_operatorRegistry != address(0), InvalidOperatorRegistryAddress());
-        operatorRegistry = IOperatorRegistry(_operatorRegistry);
+        INewtonAddressesProvider _provider
+    ) AddressesProviderConsumer(_provider) {
+        require(address(operatorRegistry) != address(0), InvalidOperatorRegistryAddress());
         _disableInitializers();
     }
 

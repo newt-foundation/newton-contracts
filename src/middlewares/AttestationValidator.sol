@@ -4,13 +4,15 @@ pragma solidity ^0.8.27;
 import {INewtonProverTaskManager} from "../interfaces/INewtonProverTaskManager.sol";
 import {INewtonPolicy} from "../interfaces/INewtonPolicy.sol";
 import {INewtonPolicyClient} from "../interfaces/INewtonPolicyClient.sol";
+import {INewtonAddressesProvider} from "../interfaces/INewtonAddressesProvider.sol";
+import {AddressesProviderConsumer} from "../mixins/AddressesProviderConsumer.sol";
 import {NewtonMessage} from "../core/NewtonMessage.sol";
 import {TaskLib} from "../libraries/TaskLib.sol";
 import {ITaskResponseHandler} from "../interfaces/ITaskResponseHandler.sol";
 import "@openzeppelin-upgrades/contracts/proxy/utils/Initializable.sol";
 import "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
 
-contract AttestationValidator is Initializable, OwnableUpgradeable {
+contract AttestationValidator is Initializable, OwnableUpgradeable, AddressesProviderConsumer {
     /* CUSTOM ERRORS */
     error AttestationHashMismatch();
     error AttestationExpired();
@@ -23,8 +25,6 @@ contract AttestationValidator is Initializable, OwnableUpgradeable {
     uint32 public constant ATTESTATION_SPENT_SENTINEL = type(uint32).max;
 
     /* STORAGE */
-    address public immutable taskManager;
-    address public immutable operatorRegistry;
     mapping(bytes32 => bytes32) public attestations;
     mapping(bytes32 => bool) public directlyVerifiedAttestations;
     /// @notice Tracks attestation expirations. Values:
@@ -46,12 +46,8 @@ contract AttestationValidator is Initializable, OwnableUpgradeable {
 
     /* CONSTRUCTOR */
     constructor(
-        address _taskManager,
-        address _operatorRegistry
-    ) {
-        taskManager = _taskManager;
-        operatorRegistry = _operatorRegistry;
-    }
+        INewtonAddressesProvider _provider
+    ) AddressesProviderConsumer(_provider) {}
 
     /* INITIALIZER */
     function initialize(

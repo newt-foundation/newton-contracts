@@ -225,10 +225,6 @@ interface IConfidentialDataRegistry {
         bytes32 domain
     ) external view returns (DataEntry memory);
 
-    /// @notice The PolicyClientRegistry used to validate client registration on proposeGrant
-    /// @return The registry address
-    function policyClientRegistry() external view returns (IPolicyClientRegistry);
-
     /// @notice Return all domains that have at least one active grant for a policy client.
     ///         Operators use this at task time to enumerate which confidential data domains
     ///         are available for a given policy client, instead of relying on policyParams.

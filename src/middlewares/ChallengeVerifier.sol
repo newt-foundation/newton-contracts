@@ -20,8 +20,15 @@ import {IRegoVerifier} from "../interfaces/IRegoVerifier.sol";
 import {INewtonPolicy} from "../interfaces/INewtonPolicy.sol";
 import {IIdentityRegistry} from "../interfaces/IIdentityRegistry.sol";
 import {IConfidentialDataRegistry} from "../interfaces/IConfidentialDataRegistry.sol";
+import {INewtonAddressesProvider} from "../interfaces/INewtonAddressesProvider.sol";
+import {AddressesProviderConsumer} from "../mixins/AddressesProviderConsumer.sol";
 
-contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
+contract ChallengeVerifier is
+    Initializable,
+    OwnableUpgradeable,
+    ReentrancyGuardUpgradeable,
+    AddressesProviderConsumer
+{
     /* CUSTOM ERRORS */
     error ChallengeNotEnabled();
     error NotChallengable();
@@ -50,16 +57,11 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
     event IdentityRegistrySet(address indexed identityRegistry);
     event ConfidentialDataRegistrySet(address indexed confidentialDataRegistry);
 
-    /* STORAGE */
-    address public immutable taskManager;
-    address public immutable serviceManager;
+    /* STORAGE — source-chain-only immutables (address(0) on dest chains) */
     address public immutable registryCoordinator;
     address public immutable blsApkRegistry;
     address public immutable allocationManager;
     address public immutable instantSlasher;
-    address public immutable regoVerifier;
-    address public immutable attestationValidator;
-    address public immutable operatorRegistry;
     address public immutable operatorStateRetriever;
 
     bool public isChallengeEnabled;
@@ -93,26 +95,18 @@ contract ChallengeVerifier is Initializable, OwnableUpgradeable, ReentrancyGuard
 
     /* CONSTRUCTOR */
     constructor(
-        address _serviceManager,
-        address _taskManager,
+        INewtonAddressesProvider _provider,
         address _registryCoordinator,
         address _blsApkRegistry,
         address _allocationManager,
         address _instantSlasher,
-        address _regoVerifier,
-        address _attestationValidator,
-        address _operatorRegistry,
         address _operatorStateRetriever
-    ) {
-        taskManager = _taskManager;
-        serviceManager = _serviceManager;
+    ) AddressesProviderConsumer(_provider) {
+        // Source-chain-only deps passed directly (address(0) on dest chains)
         registryCoordinator = _registryCoordinator;
         blsApkRegistry = _blsApkRegistry;
         allocationManager = _allocationManager;
         instantSlasher = _instantSlasher;
-        regoVerifier = _regoVerifier;
-        attestationValidator = _attestationValidator;
-        operatorRegistry = _operatorRegistry;
         operatorStateRetriever = _operatorStateRetriever;
     }
 

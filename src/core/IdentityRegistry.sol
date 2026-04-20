@@ -5,6 +5,8 @@ pragma solidity ^0.8.27;
 import {IIdentityRegistry} from "../interfaces/IIdentityRegistry.sol";
 import {IPolicyClientRegistry} from "../interfaces/IPolicyClientRegistry.sol";
 import {IOperatorRegistry} from "../interfaces/IOperatorRegistry.sol";
+import {INewtonAddressesProvider} from "../interfaces/INewtonAddressesProvider.sol";
+import {AddressesProviderConsumer} from "../mixins/AddressesProviderConsumer.sol";
 
 import {
     EIP712Upgradeable
@@ -23,7 +25,12 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 /// @dev Identity Data: encrypted data from users, stored for use in task evaluation for identity requiring policies
 /// @dev Policy Client: any policy client that wants to link user data. The usage of that data depends on the newton policy attached to that client
 /// @dev Policy Client User (user): the address used by the Signer for the policy client. Usually an embedded wallet within the PolicyClient owner's domain
-contract IdentityRegistry is EIP712Upgradeable, Nonces, IIdentityRegistry {
+contract IdentityRegistry is
+    EIP712Upgradeable,
+    Nonces,
+    AddressesProviderConsumer,
+    IIdentityRegistry
+{
     using EnumerableSet for EnumerableSet.Bytes32Set;
     /// mapping that holds the encrypted identity.
     /// The owner eoa address maps to an identity domain identifier which maps to the encrypted data
@@ -43,13 +50,6 @@ contract IdentityRegistry is EIP712Upgradeable, Nonces, IIdentityRegistry {
     ///         Incremented on new link, decremented on unlink. Used by hasLinkedIdentity for
     ///         O(1) privacy task detection without knowing the specific clientUser.
     mapping(address => uint256) internal _policyClientLinkCount;
-
-    /// @notice OperatorRegistry address used to require task submitter privileges for writing identity data.
-    ///   immutable, set on the implementation contract.
-    IOperatorRegistry public immutable override operatorRegistry;
-    /// @notice PolicyClientRegistry address used to enforce that only registered and active policy clients
-    ///   can link identity data. immutable, set on the implementation contract.
-    IPolicyClientRegistry public immutable override policyClientRegistry;
 
     /// typehash for doing signTypedData for as the identityOwner to provide to the user for linkIdentityAsUser
     bytes32 public constant override LINK_SIGNER_TYPEHASH = keccak256(
@@ -71,13 +71,10 @@ contract IdentityRegistry is EIP712Upgradeable, Nonces, IIdentityRegistry {
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor(
-        address _operatorRegistry,
-        address _policyClientRegistry
-    ) {
-        require(_operatorRegistry != address(0), InvalidOperatorRegistryAddress());
-        require(_policyClientRegistry != address(0), InvalidClientRegistryAddress());
-        operatorRegistry = IOperatorRegistry(_operatorRegistry);
-        policyClientRegistry = IPolicyClientRegistry(_policyClientRegistry);
+        INewtonAddressesProvider _provider
+    ) AddressesProviderConsumer(_provider) {
+        require(address(operatorRegistry) != address(0), InvalidOperatorRegistryAddress());
+        require(address(policyClientRegistry) != address(0), InvalidClientRegistryAddress());
         _disableInitializers();
     }
 

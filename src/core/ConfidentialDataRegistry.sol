@@ -5,6 +5,8 @@ pragma solidity ^0.8.27;
 import {IConfidentialDataRegistry} from "../interfaces/IConfidentialDataRegistry.sol";
 import {INewtonPolicyClient} from "../interfaces/INewtonPolicyClient.sol";
 import {IPolicyClientRegistry} from "../interfaces/IPolicyClientRegistry.sol";
+import {INewtonAddressesProvider} from "../interfaces/INewtonAddressesProvider.sol";
+import {AddressesProviderConsumer} from "../mixins/AddressesProviderConsumer.sol";
 
 import {Initializable} from "@openzeppelin-upgrades/contracts/proxy/utils/Initializable.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
@@ -26,7 +28,11 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 ///      The contract is deployed behind a TransparentUpgradeableProxy. The implementation
 ///      constructor calls _disableInitializers() and is stateless. All mutable state is set
 ///      via initialize().
-contract ConfidentialDataRegistry is Initializable, IConfidentialDataRegistry {
+contract ConfidentialDataRegistry is
+    Initializable,
+    AddressesProviderConsumer,
+    IConfidentialDataRegistry
+{
     using EnumerableSet for EnumerableSet.AddressSet;
     using EnumerableSet for EnumerableSet.Bytes32Set;
 
@@ -59,23 +65,14 @@ contract ConfidentialDataRegistry is Initializable, IConfidentialDataRegistry {
     mapping(address => mapping(bytes32 => mapping(address => bool))) public pendingGrants;
 
     // -------------------------------------------------------------------------
-    // Immutables
-    // -------------------------------------------------------------------------
-
-    /// @notice PolicyClientRegistry used to validate client registration.
-    ///         Immutable — set on the implementation contract at construction time.
-    IPolicyClientRegistry public immutable override policyClientRegistry;
-
-    // -------------------------------------------------------------------------
     // Constructor (implementation only — sets immutables and disables initializers)
     // -------------------------------------------------------------------------
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor(
-        address _policyClientRegistry
-    ) {
-        require(_policyClientRegistry != address(0), InvalidClientRegistryAddress());
-        policyClientRegistry = IPolicyClientRegistry(_policyClientRegistry);
+        INewtonAddressesProvider _provider
+    ) AddressesProviderConsumer(_provider) {
+        require(address(policyClientRegistry) != address(0), InvalidClientRegistryAddress());
         _disableInitializers();
     }
 

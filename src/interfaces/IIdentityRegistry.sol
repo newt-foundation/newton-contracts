@@ -194,16 +194,6 @@ interface IIdentityRegistry {
         bytes32[] calldata _identityDomains
     ) external;
 
-    /// @notice Get the OperatorRegistry address used to require task submitter privileges for writing identity data.
-    ///   immutable, set on the implementation contract
-    /// @return The OperatorRegistry address
-    function operatorRegistry() external view returns (IOperatorRegistry);
-
-    /// @notice Get the PolicyClientRegistry address used to enforce client registration during linking.
-    ///   immutable, set on the implementation contract
-    /// @return The PolicyClientRegistry address
-    function policyClientRegistry() external view returns (IPolicyClientRegistry);
-
     /// @notice Return all identity domains linked for a (policyClient, clientUser) pair.
     ///         Operators use this at task time to enumerate which identity domains are available,
     ///         instead of relying on a single identity_domain in policyParams.
