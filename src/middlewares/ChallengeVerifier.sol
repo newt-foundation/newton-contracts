@@ -20,7 +20,10 @@ import {IRegoVerifier} from "../interfaces/IRegoVerifier.sol";
 import {INewtonPolicy} from "../interfaces/INewtonPolicy.sol";
 import {IIdentityRegistry} from "../interfaces/IIdentityRegistry.sol";
 import {IConfidentialDataRegistry} from "../interfaces/IConfidentialDataRegistry.sol";
+import {IAttestationProofVerifier} from "../interfaces/IAttestationProofVerifier.sol";
 import {INewtonAddressesProvider} from "../interfaces/INewtonAddressesProvider.sol";
+import {EnclaveVersionRegistry} from "../core/EnclaveVersionRegistry.sol";
+import {IEnclaveVersionRegistry} from "../interfaces/IEnclaveVersionRegistry.sol";
 import {AddressesProviderConsumer} from "../mixins/AddressesProviderConsumer.sol";
 
 contract ChallengeVerifier is
@@ -46,6 +49,8 @@ contract ChallengeVerifier is
     error NotPrivacyTask(bytes32 taskId);
     /// @notice Attestation is present — missing-attestation challenge does not apply
     error AttestationNotMissing(bytes32 taskId);
+    /// @notice AttestationProofVerifier not configured or proof data empty
+    error AttestationProofNotProvided(bytes32 taskId);
 
     /* EVENTS */
     event ChallengeEnabled(bool indexed isChallengeEnabled);
@@ -56,6 +61,7 @@ contract ChallengeVerifier is
     event TeeAttestationChallenged(bytes32 indexed taskId, address challenger);
     event IdentityRegistrySet(address indexed identityRegistry);
     event ConfidentialDataRegistrySet(address indexed confidentialDataRegistry);
+    event AttestationProofVerifierSet(address indexed attestationProofVerifier);
 
     /* STORAGE — source-chain-only immutables (address(0) on dest chains) */
     address public immutable registryCoordinator;
@@ -84,8 +90,10 @@ contract ChallengeVerifier is
     address public identityRegistry;
     /// @notice ConfidentialDataRegistry address for privacy task detection
     address public confidentialDataRegistry;
+    /// @notice AttestationProofVerifier for Type 2b challenges (invalid attestation with ZK proof)
+    address public attestationProofVerifier;
 
-    uint256[43] private __gap;
+    uint256[42] private __gap;
 
     /* MODIFIERS */
     modifier onlyTaskManager() {
@@ -555,16 +563,20 @@ contract ChallengeVerifier is
     ///         Anyone can call this (permissionless). If the task is a privacy task
     ///         and allTaskAttestations[taskId] is empty, the response is slashable.
     ///         This is the "missing attestation" case — the simplest slashable condition.
-    ///         For invalid attestation (bad cert chain, wrong PCR0, binding mismatch),
-    ///         a separate ZK proof path will be added with NEWT-994.
+    ///         Handles both missing attestation (no proof needed) and invalid attestation
+    ///         (SP1 proof required via AttestationProofVerifier).
     /// @param task The task being challenged
     /// @param taskResponse The task response being challenged
     /// @param responseCertificate The response certificate (for challenge window check)
+    /// @param attestationProofData ABI-encoded public values from SP1 attestation circuit (empty for missing attestation)
+    /// @param attestationProofBytes SP1 Groth16 proof bytes (empty for missing attestation)
     /// @param pubkeysOfNonSigningOperators BLS G1 pubkeys of non-signing operators
-    function challengeMissingTeeAttestation(
+    function challengeInvalidTeeAttestation(
         INewtonProverTaskManager.Task calldata task,
         INewtonProverTaskManager.TaskResponse calldata taskResponse,
         INewtonProverTaskManager.ResponseCertificate calldata responseCertificate,
+        bytes calldata attestationProofData,
+        bytes calldata attestationProofBytes,
         BN254.G1Point[] calldata pubkeysOfNonSigningOperators
     ) external nonReentrant {
         require(isChallengeEnabled, ChallengeNotEnabled());
@@ -577,7 +589,7 @@ contract ChallengeVerifier is
         );
         require(!taskSuccesfullyChallenged[taskId], NotChallengable());
 
-        // 2. Response must match stored hash (same precondition as raiseAndResolveChallenge)
+        // 2. Response must match stored hash
         require(
             allTaskResponses[taskId] == keccak256(abi.encode(taskResponse, responseCertificate)),
             NotChallengable()
@@ -592,9 +604,39 @@ contract ChallengeVerifier is
         // 4. Task must be a privacy task (trustless on-chain detection)
         require(_isPrivacyTask(taskResponse.policyClient), NotPrivacyTask(taskId));
 
-        // 5. Attestation must be missing — the core slashable condition
+        // 5. Determine challenge type: missing attestation vs invalid attestation
         bytes32 attestationHash = INewtonProverTaskManager(taskManager).allTaskAttestations(taskId);
-        require(attestationHash == bytes32(0), AttestationNotMissing(taskId));
+
+        if (attestationHash == bytes32(0)) {
+            // Type 2a: Missing attestation — no proof needed, instant slash
+        } else {
+            // Type 2b: Attestation present but invalid — requires SP1 proof
+            require(attestationProofVerifier != address(0), AttestationProofNotProvided(taskId));
+            require(attestationProofData.length > 0, AttestationProofNotProvided(taskId));
+
+            IAttestationProofVerifier.AttestationContext memory ctx = IAttestationProofVerifier(
+                    attestationProofVerifier
+                ).verifyAttestationProof(attestationProofData, attestationProofBytes);
+
+            // Bind proof outputs to on-chain state
+            require(ctx.taskId == taskId, ChallengeFailed());
+            require(ctx.responseDigest == keccak256(abi.encode(taskResponse)), ChallengeFailed());
+            require(ctx.attestationHash == attestationHash, ChallengeFailed());
+            require(!ctx.isValid, ChallengeFailed());
+
+            // Verify root CA trust anchor matches on-chain registry
+            address evr = INewtonAddressesProvider(addressesProvider).getEnclaveVersionRegistry();
+            require(
+                ctx.rootCertHash == EnclaveVersionRegistry(evr).rootCertHash(), ChallengeFailed()
+            );
+
+            // Verify PCR0 is not in the active whitelist (unapproved enclave binary)
+            if (ctx.failureReason == 2) {
+                require(
+                    !IEnclaveVersionRegistry(evr).isActiveVersion(ctx.pcr0Hash), ChallengeFailed()
+                );
+            }
+        }
 
         // 6. Record challenge success before external calls (CEI)
         taskSuccesfullyChallenged[taskId] = true;
@@ -667,5 +709,12 @@ contract ChallengeVerifier is
     ) external onlyOwner {
         confidentialDataRegistry = _confidentialDataRegistry;
         emit ConfidentialDataRegistrySet(_confidentialDataRegistry);
+    }
+
+    function setAttestationProofVerifier(
+        address _attestationProofVerifier
+    ) external onlyOwner {
+        attestationProofVerifier = _attestationProofVerifier;
+        emit AttestationProofVerifierSet(_attestationProofVerifier);
     }
 }

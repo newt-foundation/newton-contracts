@@ -45,11 +45,16 @@ contract EnclaveVersionRegistry is
     /// @notice Count of currently active (non-deprecated) versions.
     uint256 internal _activeCount;
 
+    /// @notice keccak256 of the AWS Nitro root CA DER certificate.
+    ///         Used by the SP1 attestation circuit to bind the root trust anchor.
+    ///         Set by admin via setRootCertHash(). Zero means not configured.
+    bytes32 public rootCertHash;
+
     // -------------------------------------------------------------------------
     // Gap
     // -------------------------------------------------------------------------
 
-    uint256[48] private __gap;
+    uint256[47] private __gap;
 
     // -------------------------------------------------------------------------
     // Modifiers
@@ -147,4 +152,20 @@ contract EnclaveVersionRegistry is
     function activeVersionCount() external view returns (uint256) {
         return _activeCount;
     }
+
+    // -------------------------------------------------------------------------
+    // Admin functions
+    // -------------------------------------------------------------------------
+
+    /// @notice Set the trusted AWS Nitro root CA certificate hash.
+    ///         The SP1 attestation circuit uses this to bind the root trust anchor.
+    /// @param _rootCertHash keccak256 of the root CA DER bytes
+    function setRootCertHash(
+        bytes32 _rootCertHash
+    ) external onlyOwner {
+        rootCertHash = _rootCertHash;
+        emit RootCertHashUpdated(_rootCertHash);
+    }
+
+    event RootCertHashUpdated(bytes32 indexed rootCertHash);
 }
