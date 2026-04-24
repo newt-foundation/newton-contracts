@@ -50,11 +50,16 @@ contract EnclaveVersionRegistry is
     ///         Set by admin via setRootCertHash(). Zero means not configured.
     bytes32 public rootCertHash;
 
+    /// @notice Operator enclave ephemeral X25519 public keys.
+    ///         Registered by the gateway after off-chain attestation verification.
+    ///         Changes on enclave reboot (ephemeral per boot).
+    mapping(address => bytes32) internal _enclaveKeys;
+
     // -------------------------------------------------------------------------
     // Gap
     // -------------------------------------------------------------------------
 
-    uint256[47] private __gap;
+    uint256[46] private __gap;
 
     // -------------------------------------------------------------------------
     // Modifiers
@@ -151,6 +156,29 @@ contract EnclaveVersionRegistry is
     /// @inheritdoc IEnclaveVersionRegistry
     function activeVersionCount() external view returns (uint256) {
         return _activeCount;
+    }
+
+    // -------------------------------------------------------------------------
+    // Enclave key registration
+    // -------------------------------------------------------------------------
+
+    /// @inheritdoc IEnclaveVersionRegistry
+    function registerEnclaveKey(
+        address operator,
+        bytes32 pubkey
+    ) external onlyTaskGenerator {
+        require(operator != address(0), InvalidOperator());
+        require(pubkey != bytes32(0), InvalidPubkey());
+
+        _enclaveKeys[operator] = pubkey;
+        emit EnclaveKeyRegistered(operator, pubkey);
+    }
+
+    /// @inheritdoc IEnclaveVersionRegistry
+    function getEnclaveKey(
+        address operator
+    ) external view returns (bytes32) {
+        return _enclaveKeys[operator];
     }
 
     // -------------------------------------------------------------------------

@@ -42,7 +42,36 @@ interface IEnclaveVersionRegistry {
     /// @notice Caller is not a task generator
     error NotTaskGenerator();
 
+    /// @notice Zero address is not a valid operator
+    error InvalidOperator();
+
+    /// @notice Zero bytes32 is not a valid enclave pubkey
+    error InvalidPubkey();
+
+    /// @notice Emitted when an operator's enclave ephemeral pubkey is registered
+    event EnclaveKeyRegistered(address indexed operator, bytes32 pubkey);
+
     // Functions
+
+    /// @notice Register an operator's enclave ephemeral X25519 public key.
+    ///         Called by the gateway (task generator) after verifying the operator's
+    ///         attestation document off-chain. Ephemeral because Nitro Enclaves have
+    ///         no persistent storage — key is regenerated on every enclave boot.
+    ///         Provides forward secrecy: old encrypted partial DH blobs become
+    ///         undecryptable after reboot.
+    /// @param operator The operator address whose enclave pubkey is being registered
+    /// @param pubkey The enclave's ephemeral X25519 public key (32 bytes)
+    function registerEnclaveKey(
+        address operator,
+        bytes32 pubkey
+    ) external;
+
+    /// @notice Get an operator's registered enclave ephemeral public key.
+    /// @param operator The operator address
+    /// @return The enclave pubkey (bytes32(0) if not registered)
+    function getEnclaveKey(
+        address operator
+    ) external view returns (bytes32);
 
     /// @notice Register a new whitelisted enclave version.
     ///         Only callable by task generators (gateway operators).
