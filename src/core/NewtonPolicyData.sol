@@ -11,13 +11,19 @@ import "@openzeppelin/contracts/utils/Create2.sol";
 import "./NewtonPolicyDataFactory.sol";
 import "../interfaces/INewtonPolicyData.sol";
 import "../interfaces/INewtonPolicy.sol";
+import {SemVerMixin} from "../mixins/SemVerMixin.sol";
 
 contract NewtonPolicyData is
     Initializable,
     OwnableUpgradeable,
     ERC165Upgradeable,
-    INewtonPolicyData
+    INewtonPolicyData,
+    SemVerMixin
 {
+    constructor() SemVerMixin("0.3.0") {
+        _disableInitializers();
+    }
+
     /* STORAGE */
     address public factory;
     string private _wasmCid;
@@ -108,6 +114,16 @@ contract NewtonPolicyData is
     function isPolicyDataVerified() external view returns (bool) {
         return
             NewtonPolicyDataFactory(factory).getPolicyDataVerificationInfo(address(this)).verified;
+    }
+
+    /// @inheritdoc SemVerMixin
+    function version()
+        public
+        view
+        override(INewtonPolicyData, SemVerMixin)
+        returns (string memory)
+    {
+        return super.version();
     }
 
     /// @notice Function to check if a contract implements an interface

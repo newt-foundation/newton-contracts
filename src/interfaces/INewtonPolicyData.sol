@@ -3,6 +3,7 @@
 pragma solidity ^0.8.27;
 
 import {IERC165} from "@openzeppelin/contracts/interfaces/IERC165.sol";
+import {ISemVerMixin} from "./ISemVerMixin.sol";
 
 /// @notice Interface for a NewtonPolicyData
 interface INewtonPolicyData is IERC165 {
@@ -52,4 +53,8 @@ interface INewtonPolicyData is IERC165 {
      * @return The address of the factory contract
      */
     function factory() external view returns (address);
+
+    /// @notice Returns the semantic version of the policy data implementation
+    /// @return The version string in SemVer format (e.g., "0.3.0")
+    function version() external view returns (string memory);
 }
