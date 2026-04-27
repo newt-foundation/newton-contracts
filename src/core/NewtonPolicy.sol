@@ -99,7 +99,8 @@ contract NewtonPolicy is
                 entrypoint,
                 policyConfig,
                 policyData,
-                block.timestamp
+                block.timestamp,
+                version()
             )
         );
 
@@ -118,7 +119,8 @@ contract NewtonPolicy is
                 entrypoint,
                 policyConfig,
                 policyData,
-                policyCodeHash
+                policyCodeHash,
+                version()
             )
         );
 

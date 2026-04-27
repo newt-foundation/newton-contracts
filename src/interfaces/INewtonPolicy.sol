@@ -3,7 +3,6 @@
 pragma solidity ^0.8.27;
 
 import {IERC165} from "@openzeppelin/contracts/interfaces/IERC165.sol";
-import {ISemVerMixin} from "./ISemVerMixin.sol";
 
 /// @notice Interface for a NewtonPolicy
 /// @dev For Rego policy grammar, refer to https://github.com/microsoft/regorus/blob/main/docs/grammar.md
@@ -32,6 +31,7 @@ interface INewtonPolicy is IERC165 {
         PolicyConfig policyConfig;
         address[] policyData;
         bytes32 policyCodeHash;
+        string version;
     }
 
     struct PolicyInfo {
