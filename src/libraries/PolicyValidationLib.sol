@@ -15,7 +15,6 @@ library PolicyValidationLib {
     error PolicyAddressMismatch();
     error PolicyDataLengthMismatch();
     error PolicyDataAddressMismatch();
-    error PolicyDataAttestationFailed();
     error PolicyDataExpired();
     error PolicyNotVerified();
     error PolicyDataNotVerified();
@@ -38,8 +37,8 @@ library PolicyValidationLib {
     }
 
     /**
-     * @dev Validates policy data attestations
-     * @notice Called during respondToTask to validate operator-generated policyTaskData
+     * @dev Validates policy data addresses, verification status, and expiry.
+     * @notice Called during respondToTask to validate operator-generated policyTaskData.
      */
     function validatePolicyData(
         address policyAddress,
@@ -63,10 +62,6 @@ library PolicyValidationLib {
                 PolicyDataNotVerified()
             );
 
-            require(
-                INewtonPolicyData(policyDataAddresses[i]).attest(policyData[i]),
-                PolicyDataAttestationFailed()
-            );
             require(policyData[i].expireBlock >= currentBlock, PolicyDataExpired());
 
             unchecked {

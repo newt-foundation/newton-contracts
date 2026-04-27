@@ -1,4 +1,10 @@
 {
+  "../libs/regorus": {
+    "rev": "989b14e8776b831b73d57fb1afede42316e36922"
+  },
+  "../libs/tlsn": {
+    "rev": "9a3d73c5bdeeab0255bdb05c89116554cebf6dbe"
+  },
   "lib/eigenlayer-middleware": {
     "rev": "4d63f27247587607beb67f96fdabec4b2c1321ef"
   },

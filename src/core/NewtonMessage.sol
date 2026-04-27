@@ -38,14 +38,12 @@ contract NewtonMessage {
         bytes intentSignature;
     }
 
-    /// @notice PolicyData struct for a policy data and its attestation proof
+    /// @notice PolicyData struct for a policy evaluation
     struct PolicyData {
         // task request WASM args
         bytes wasmArgs;
         // encoded policy data
         bytes data;
-        // attestation proof for the policy data.
-        bytes attestation;
         // policy data address
         address policyDataAddress;
         // expiration block number for the policy data
@@ -60,7 +58,7 @@ contract NewtonMessage {
         address policyAddress;
         // policy program binary
         bytes policy;
-        // an array of policy data with attestation
+        // an array of policy data entries
         // NOTE: order matters, the first policy data is the first policy data in the policy data set of the policy.
         PolicyData[] policyData;
     }

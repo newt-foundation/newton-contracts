@@ -241,30 +241,6 @@ struct PolicyDataInfo {
 - `secretsSchemaCid`: CID pointing to secrets JSON schema (regorus format)
 - `expireAfter`: Number of blocks after which the policy data expires
 
-### AttestationInfo Struct
-
-**Location:** `interfaces/INewtonPolicyData.sol`
-
-Information about how policy data should be attested.
-
-```solidity
-struct AttestationInfo {
-    address[] attesters;           // Only used for ECDSA or BLS signature attestation
-    AttestationType attestationType; // The attestation type for the policy data
-    address verifier;              // Verifier contract address (ZK-SNARK groth16 only)
-    bytes32 verificationKey;       // Verification key (ZK-SNARK groth16 only)
-}
-```
-
-**Fields:**
-
-- `attesters`: Array of addresses authorized to attest (used for ECDSA/BLS signature types)
-- `attestationType`: Type of attestation required (see AttestationType enum)
-- `verifier`: Address of verifier contract (used only for GROTH16 attestation)
-- `verificationKey`: Cryptographic verification key (used only for GROTH16 attestation)
-
----
-
 ## Task Management
 
 ### Task Struct
@@ -443,11 +419,8 @@ Interface for policy data contracts.
 
 - `getMetadataCid()`: Gets policy data metadata CID
 - `setMetadataCid(string)`: Sets policy data metadata CID
-- `getAttestationInfo()`: Gets attestation configuration
-- `setAttestationInfo(AttestationInfo)`: Sets attestation configuration
 - `getwasmCid()`: Gets IPFS URL for WASM plugin
 - `getExpireAfter()`: Gets expiration block count
-- `attest(PolicyData)`: Validates policy data attestation
 - `isPolicyDataVerified()`: Checks if policy data is verified
 
 ### INewtonProverTaskManager Interface
@@ -504,28 +477,6 @@ bytes32 private constant _NEWTON_POLICY_CLIENT_STORAGE_SLOT =
 
 ## Enums
 
-### AttestationType Enum
-
-**Location:** `interfaces/INewtonPolicyData.sol`
-
-Defines the types of attestation supported for policy data.
-
-```solidity
-enum AttestationType {
-    ECDSA,      // ECDSA signature attestation
-    BN254,      // BN254 curve signature attestation
-    BLS12_381,  // BLS signature on BLS12-381 curve
-    GROTH16     // GROTH16 zero-knowledge proof attestation
-}
-```
-
-**Values:**
-
-- `ECDSA`: Standard ECDSA signature attestation using secp256k1
-- `BN254`: Signature attestation using the BN254 elliptic curve
-- `BLS12_381`: BLS signature attestation using the BLS12-381 curve
-- `GROTH16`: Zero-knowledge proof attestation using GROTH16 proving system
-
 ---
 
 ## Error Types
@@ -557,7 +508,6 @@ error InterfaceNotSupported();
 error InvalidSignature();
 error SignatureVerificationFailed();
 error InvalidPolicyData();
-error InvalidAttestationInfo();
 ```
 
 ### Factory Errors
@@ -671,20 +621,6 @@ event policyDataMetadataCidUpdated(string metadataCid);
 **Parameters:**
 
 - `metadataCid`: New metadata CID for the policy data
-
-#### AttestationInfoUpdated Event
-
-**Location:** `core/NewtonPolicyData.sol`
-
-```solidity
-event AttestationInfoUpdated(INewtonPolicyData.AttestationInfo attestationInfo);
-```
-
-**Description:** Emitted when attestation configuration is updated for policy data.
-
-**Parameters:**
-
-- `attestationInfo`: New attestation configuration including type, attesters, and verification details
 
 ### Factory Events
 
@@ -862,7 +798,6 @@ event AttestationSpent(bytes32 indexed taskId, NewtonMessage.Attestation attesta
 1. Deploy policy using `NewtonPolicyFactory.deployPolicy()`
 2. Set policy verification using `NewtonPolicyFactory.setPolicyVerification()`
 3. Deploy policy data using `NewtonPolicyDataFactory.deployPolicyData()`
-4. Configure attestation info using `INewtonPolicyData.setAttestationInfo()`
 
 ### Task Execution Flow
 

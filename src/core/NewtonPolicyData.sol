@@ -8,11 +8,9 @@ import "@openzeppelin-upgrades/contracts/utils/introspection/ERC165Upgradeable.s
 import "@openzeppelin/contracts/interfaces/IERC165.sol";
 import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import "@openzeppelin/contracts/utils/Create2.sol";
-import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "./NewtonPolicyDataFactory.sol";
 import "../interfaces/INewtonPolicyData.sol";
 import "../interfaces/INewtonPolicy.sol";
-import "./NewtonMessage.sol";
 
 contract NewtonPolicyData is
     Initializable,
@@ -20,15 +18,12 @@ contract NewtonPolicyData is
     ERC165Upgradeable,
     INewtonPolicyData
 {
-    using ECDSA for bytes32;
-
     /* STORAGE */
     address public factory;
     string private _wasmCid;
     string private _secretsSchemaCid;
     uint32 private _expireAfter;
     string private _metadataCid;
-    INewtonPolicyData.AttestationInfo private _attestationInfo;
 
     /* ERRORS */
     error OnlyNewtonPolicy();
@@ -36,14 +31,12 @@ contract NewtonPolicyData is
     error InvalidSignature();
     error SignatureVerificationFailed();
     error InvalidPolicyData(bytes data);
-    error InvalidAttestationInfo();
     error InvalidExpireAfter();
     error InvalidSecretsSchemaCid();
 
     /* EVENTS */
     event PolicyDataMetadataCidUpdated(string metadataCid);
     event SecretsSchemaCidUpdated(string secretsSchemaCid);
-    event AttestationInfoUpdated(INewtonPolicyData.AttestationInfo attestationInfo);
 
     /* Modifiers */
     modifier onlyNewtonPolicy() {
@@ -108,82 +101,8 @@ contract NewtonPolicyData is
         emit SecretsSchemaCidUpdated(secretsSchemaCid);
     }
 
-    function getAttestationInfo() public view returns (INewtonPolicyData.AttestationInfo memory) {
-        return _attestationInfo;
-    }
-
-    function setAttestationInfo(
-        INewtonPolicyData.AttestationInfo calldata attestationInfo
-    ) public onlyOwner {
-        if (
-            attestationInfo.attestationType == AttestationType.ECDSA
-                || attestationInfo.attestationType == AttestationType.BLS12_381
-                || attestationInfo.attestationType == AttestationType.BN254
-        ) {
-            require(attestationInfo.attesters.length > 0, InvalidAttestationInfo());
-        } else if (attestationInfo.attestationType == AttestationType.GROTH16) {
-            require(
-                attestationInfo.verifier != address(0)
-                    && attestationInfo.verificationKey != bytes32(0),
-                InvalidAttestationInfo()
-            );
-        }
-        _attestationInfo = attestationInfo;
-        emit AttestationInfoUpdated(attestationInfo);
-    }
-
     function getExpireAfter() public view returns (uint32) {
         return _expireAfter;
-    }
-
-    function attest(
-        NewtonMessage.PolicyData calldata policyData
-    ) external view returns (bool) {
-        require(policyData.data.length > 0, InvalidPolicyData(policyData.data));
-
-        if (_attestationInfo.attestationType == INewtonPolicyData.AttestationType.ECDSA) {
-            return _verifyECDSASignature(policyData);
-        }
-        // TODO: implement other validation type verications
-        return false;
-    }
-
-    /// @notice Verifies ECDSA signature for policy data attestation
-    /// @param policyData The policy data containing the attestation signature
-    /// @return True if signature is valid, false otherwise
-    function _verifyECDSASignature(
-        NewtonMessage.PolicyData calldata policyData
-    ) internal view returns (bool) {
-        // Check if attestation has the correct length (65 bytes for ECDSA signature)
-        if (policyData.attestation.length != 65) {
-            return false;
-        }
-
-        (address signer, ECDSA.RecoverError error) = ECDSA.tryRecover(
-            keccak256(
-                abi.encodePacked(
-                    policyData.wasmArgs,
-                    policyData.data,
-                    policyData.policyDataAddress,
-                    policyData.expireBlock,
-                    _wasmCid,
-                    _secretsSchemaCid
-                )
-            ),
-            policyData.attestation
-        );
-
-        if (error != ECDSA.RecoverError.NoError) {
-            return false;
-        }
-
-        // Check if the signer is in the attesters list
-        for (uint256 i; i < _attestationInfo.attesters.length; ++i) {
-            if (signer == _attestationInfo.attesters[i]) {
-                return true;
-            }
-        }
-        return false;
     }
 
     function isPolicyDataVerified() external view returns (bool) {

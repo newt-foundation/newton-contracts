@@ -99,7 +99,6 @@ library TaskLib {
 
         uint32 currentBlock = uint32(block.number);
 
-        // Validate policy data attestations from response
         PolicyValidationLib.validatePolicyData(
             policyAddress, taskResponse.policyTaskData, currentBlock
         );
@@ -228,27 +227,13 @@ library TaskLib {
     }
 
     /**
-     * @notice Computes the consensus digest by zeroing out attestation fields
+     * @notice Computes the consensus digest for BLS signature aggregation.
      * @param taskResponse The task response to compute the consensus digest for
-     * @return The keccak256 hash of the task response with attestations zeroed
-     * @dev This function creates a copy of the taskResponse, zeros out all attestation
-     *      fields in policyData, then computes the hash. This enables BLS signature
-     *      aggregation when operators have different ECDSA attestations but the same
-     *      policy evaluation data.
-     *
-     *      The attestations are validated separately during task response validation -
-     *      they just cannot be part of the BLS-signed digest since each operator
-     *      produces a unique ECDSA signature.
+     * @return The keccak256 hash of the task response
      */
     function computeConsensusDigest(
         INewtonProverTaskManager.TaskResponse memory taskResponse
     ) internal pure returns (bytes32) {
-        // Zero out attestation fields for consensus
-        // Each operator signs policyData with their own ECDSA key, producing unique attestations.
-        // By zeroing these before hashing, operators can achieve consensus on the core data.
-        for (uint256 i = 0; i < taskResponse.policyTaskData.policyData.length; ++i) {
-            taskResponse.policyTaskData.policyData[i].attestation = "";
-        }
         return keccak256(abi.encode(taskResponse));
     }
 }
