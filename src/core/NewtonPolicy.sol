@@ -12,6 +12,7 @@ import {NewtonPolicyFactory} from "./NewtonPolicyFactory.sol";
 import {INewtonPolicyClient} from "../interfaces/INewtonPolicyClient.sol";
 import {INewtonPolicy} from "../interfaces/INewtonPolicy.sol";
 import {SemVerMixin} from "../mixins/SemVerMixin.sol";
+import {PROTOCOL_VERSION} from "../libraries/ProtocolVersion.sol";
 
 contract NewtonPolicy is
     Initializable,
@@ -20,7 +21,7 @@ contract NewtonPolicy is
     INewtonPolicy,
     SemVerMixin
 {
-    constructor() SemVerMixin("0.3.0") {
+    constructor() SemVerMixin(PROTOCOL_VERSION) {
         _disableInitializers();
     }
 
