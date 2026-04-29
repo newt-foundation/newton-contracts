@@ -68,13 +68,33 @@ interface INewtonAddressesProvider {
     function getPolicyDataFactory() external view returns (address);
 
     // -------------------------------------------------------------------------
+    // Private data storage — typed getters
+    // -------------------------------------------------------------------------
+
+    /// @notice Unified per-chain JMT state-root registry for PDS namespaces
+    ///         (identity `0x01`, confidential `0x02`, secrets `0x03`). Anchors
+    ///         120s BLS-gated `commitStateRoot` and disaster-recovery sealed
+    ///         snapshots via `IStateRootCommittable`.
+    /// @dev NEWT-1036 — supersedes `IdentityRegistry` and
+    ///      `ConfidentialDataRegistry`. Registered so
+    ///      `AddressesProviderConsumer`-derived contracts can resolve the
+    ///      registry at deploy time rather than constructor-injecting it.
+    function getStateCommitRegistry() external view returns (address);
+
+    // -------------------------------------------------------------------------
     // Privacy layer — typed getters (may be address(0) if not deployed)
     // -------------------------------------------------------------------------
 
     /// @notice Identity data references and policy client linkages
+    /// @dev @deprecated NEWT-1036 — scheduled for deletion; identity data relocates
+    ///      to the unified `StateCommitRegistry` under namespace `0x01`. Callers
+    ///      should migrate to signed-RPC reads against the operator state tree.
     function getIdentityRegistry() external view returns (address);
 
     /// @notice Provider-managed versioned confidential data with per-client grants
+    /// @dev @deprecated NEWT-1036 — scheduled for deletion; confidential data
+    ///      relocates to the unified `StateCommitRegistry` under namespace `0x02`.
+    ///      Callers should migrate to signed-RPC reads against the operator state tree.
     function getConfidentialDataRegistry() external view returns (address);
 
     /// @notice Privacy epoch lifecycle and threshold MPK commitments
@@ -93,6 +113,19 @@ interface INewtonAddressesProvider {
 
     /// @notice SP1 Rego policy proof verification
     function getRegoVerifier() external view returns (address);
+
+    /// @notice Stateless BN254 BLS certificate verifier. Used by StateCommitRegistry
+    ///         (and other view-call paths) to verify aggregated operator signatures
+    ///         without the SSTORE cache that EigenLayer's BN254CertificateVerifier
+    ///         uses — making EIP-1271 isValidSignature view-compatible on destination
+    ///         chains.
+    /// @dev NEWT-1036 forward use — this getter is registered ahead of its main
+    ///      consumer (`StateCommitRegistry`, B2 task NEWT-1051) so the consumer can
+    ///      resolve the verifier through `AddressesProviderConsumer` at deploy time
+    ///      rather than constructor-injecting the address. Populate via
+    ///      `setViewBN254CertificateVerifier` on the per-chain provider before any
+    ///      mixin consumer is deployed.
+    function getViewBN254CertificateVerifier() external view returns (address);
 
     // -------------------------------------------------------------------------
     // Cross-chain — typed getters (chain-role dependent)
@@ -143,9 +176,14 @@ interface INewtonAddressesProvider {
     function setPolicyDataFactory(
         address addr
     ) external;
+    function setStateCommitRegistry(
+        address addr
+    ) external;
+    /// @dev @deprecated NEWT-1036 — see `getIdentityRegistry` deprecation note.
     function setIdentityRegistry(
         address addr
     ) external;
+    /// @dev @deprecated NEWT-1036 — see `getConfidentialDataRegistry` deprecation note.
     function setConfidentialDataRegistry(
         address addr
     ) external;
@@ -159,6 +197,9 @@ interface INewtonAddressesProvider {
         address addr
     ) external;
     function setRegoVerifier(
+        address addr
+    ) external;
+    function setViewBN254CertificateVerifier(
         address addr
     ) external;
 

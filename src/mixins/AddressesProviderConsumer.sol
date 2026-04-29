@@ -5,6 +5,8 @@ pragma solidity ^0.8.27;
 import {INewtonAddressesProvider} from "../interfaces/INewtonAddressesProvider.sol";
 import {IOperatorRegistry} from "../interfaces/IOperatorRegistry.sol";
 import {IPolicyClientRegistry} from "../interfaces/IPolicyClientRegistry.sol";
+import {IStateRootCommittable} from "../interfaces/IStateRootCommittable.sol";
+import {IViewBN254CertificateVerifier} from "../interfaces/IViewBN254CertificateVerifier.sol";
 
 /// @title AddressesProviderConsumer
 ///
@@ -31,9 +33,11 @@ abstract contract AddressesProviderConsumer {
     address public immutable attestationValidator;
     IPolicyClientRegistry public immutable policyClientRegistry;
     address public immutable regoVerifier;
+    IViewBN254CertificateVerifier public immutable viewBN254CertificateVerifier;
     address public immutable serviceManager;
     address public immutable socketRegistry;
     address public immutable batchTaskManager;
+    IStateRootCommittable public immutable stateCommitRegistry;
 
     constructor(
         INewtonAddressesProvider _provider
@@ -45,8 +49,11 @@ abstract contract AddressesProviderConsumer {
         attestationValidator = _provider.getAttestationValidator();
         policyClientRegistry = IPolicyClientRegistry(_provider.getPolicyClientRegistry());
         regoVerifier = _provider.getRegoVerifier();
+        viewBN254CertificateVerifier =
+            IViewBN254CertificateVerifier(_provider.getViewBN254CertificateVerifier());
         serviceManager = _provider.getServiceManager();
         socketRegistry = _provider.getSocketRegistry();
         batchTaskManager = _provider.getBatchTaskManager();
+        stateCommitRegistry = IStateRootCommittable(_provider.getStateCommitRegistry());
     }
 }

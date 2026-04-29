@@ -40,11 +40,14 @@ contract NewtonAddressesProvider is
     bytes32 public constant SERVICE_MANAGER = keccak256("SERVICE_MANAGER");
     bytes32 public constant POLICY_FACTORY = keccak256("POLICY_FACTORY");
     bytes32 public constant POLICY_DATA_FACTORY = keccak256("POLICY_DATA_FACTORY");
+    bytes32 public constant STATE_COMMIT_REGISTRY = keccak256("STATE_COMMIT_REGISTRY");
     bytes32 public constant IDENTITY_REGISTRY = keccak256("IDENTITY_REGISTRY");
     bytes32 public constant CONFIDENTIAL_DATA_REGISTRY = keccak256("CONFIDENTIAL_DATA_REGISTRY");
     bytes32 public constant EPOCH_REGISTRY = keccak256("EPOCH_REGISTRY");
     bytes32 public constant ENCLAVE_VERSION_REGISTRY = keccak256("ENCLAVE_VERSION_REGISTRY");
     bytes32 public constant REGO_VERIFIER = keccak256("REGO_VERIFIER");
+    bytes32 public constant VIEW_BN254_CERTIFICATE_VERIFIER =
+        keccak256("VIEW_BN254_CERTIFICATE_VERIFIER");
     bytes32 public constant SOCKET_REGISTRY = keccak256("SOCKET_REGISTRY");
 
     // -------------------------------------------------------------------------
@@ -148,6 +151,15 @@ contract NewtonAddressesProvider is
     }
 
     // -------------------------------------------------------------------------
+    // Private data storage — typed getters
+    // -------------------------------------------------------------------------
+
+    /// @inheritdoc INewtonAddressesProvider
+    function getStateCommitRegistry() external view returns (address) {
+        return _addresses[STATE_COMMIT_REGISTRY];
+    }
+
+    // -------------------------------------------------------------------------
     // Privacy layer — typed getters
     // -------------------------------------------------------------------------
 
@@ -182,6 +194,11 @@ contract NewtonAddressesProvider is
     /// @inheritdoc INewtonAddressesProvider
     function getRegoVerifier() external view returns (address) {
         return _addresses[REGO_VERIFIER];
+    }
+
+    /// @inheritdoc INewtonAddressesProvider
+    function getViewBN254CertificateVerifier() external view returns (address) {
+        return _addresses[VIEW_BN254_CERTIFICATE_VERIFIER];
     }
 
     // -------------------------------------------------------------------------
@@ -272,6 +289,13 @@ contract NewtonAddressesProvider is
     }
 
     /// @inheritdoc INewtonAddressesProvider
+    function setStateCommitRegistry(
+        address addr
+    ) external onlyOwner {
+        _setAddress(STATE_COMMIT_REGISTRY, addr);
+    }
+
+    /// @inheritdoc INewtonAddressesProvider
     function setIdentityRegistry(
         address addr
     ) external onlyOwner {
@@ -311,6 +335,13 @@ contract NewtonAddressesProvider is
         address addr
     ) external onlyOwner {
         _setAddress(REGO_VERIFIER, addr);
+    }
+
+    /// @inheritdoc INewtonAddressesProvider
+    function setViewBN254CertificateVerifier(
+        address addr
+    ) external onlyOwner {
+        _setAddress(VIEW_BN254_CERTIFICATE_VERIFIER, addr);
     }
 
     /// @inheritdoc INewtonAddressesProvider
