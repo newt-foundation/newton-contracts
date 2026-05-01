@@ -107,4 +107,16 @@ interface IEnclaveVersionRegistry {
     /// @notice Return the number of currently active (non-deprecated) versions.
     /// @return Count of active versions
     function activeVersionCount() external view returns (uint256);
+
+    /// @notice Check whether a PCR0 hash was whitelisted at a specific block number.
+    ///         Used by the aggregator to verify operator attestations against the
+    ///         task's reference block (taskCreatedBlock), ensuring the enclave image
+    ///         was approved at the time the task was created.
+    /// @param pcr0Hash keccak256 of the PCR0 to check
+    /// @param blockNumber The historical block number to check against
+    /// @return True if the version was active (activated and not yet deprecated) at blockNumber
+    function wasPcr0WhitelistedAt(
+        bytes32 pcr0Hash,
+        uint256 blockNumber
+    ) external view returns (bool);
 }

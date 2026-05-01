@@ -158,6 +158,16 @@ contract EnclaveVersionRegistry is
         return _activeCount;
     }
 
+    /// @inheritdoc IEnclaveVersionRegistry
+    function wasPcr0WhitelistedAt(
+        bytes32 pcr0Hash,
+        uint256 blockNumber
+    ) external view returns (bool) {
+        EnclaveVersion storage v = _versions[pcr0Hash];
+        if (v.activatedAt == 0 || v.activatedAt > blockNumber) return false;
+        return v.deprecatedAt == 0 || v.deprecatedAt > blockNumber;
+    }
+
     // -------------------------------------------------------------------------
     // Enclave key registration
     // -------------------------------------------------------------------------
