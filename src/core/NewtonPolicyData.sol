@@ -39,7 +39,6 @@ contract NewtonPolicyData is
     error SignatureVerificationFailed();
     error InvalidPolicyData(bytes data);
     error InvalidExpireAfter();
-    error InvalidSecretsSchemaCid();
 
     /* EVENTS */
     event PolicyDataMetadataCidUpdated(string metadataCid);
@@ -76,7 +75,6 @@ contract NewtonPolicyData is
         _wasmCid = wasmCid;
         _secretsSchemaCid = secretsSchemaCid;
         require(expireAfter > 0, InvalidExpireAfter());
-        require(bytes(secretsSchemaCid).length > 0, InvalidSecretsSchemaCid());
         _expireAfter = expireAfter;
         _metadataCid = metadataCid;
     }
@@ -103,7 +101,6 @@ contract NewtonPolicyData is
     function setSecretsSchemaCid(
         string calldata secretsSchemaCid
     ) public onlyOwner {
-        require(bytes(secretsSchemaCid).length > 0, InvalidSecretsSchemaCid());
         _secretsSchemaCid = secretsSchemaCid;
         emit SecretsSchemaCidUpdated(secretsSchemaCid);
     }

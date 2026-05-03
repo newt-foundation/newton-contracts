@@ -73,7 +73,6 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable, SemVerMixin {
     /* ERRORS */
     error OnlyNewtonPolicyData();
     error InterfaceNotSupported();
-    error InvalidSecretsSchemaCid();
     error OnlyVerifiers();
     error InvalidImplementationAddress();
 
@@ -105,7 +104,6 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable, SemVerMixin {
         string memory _metadataCid,
         address _owner
     ) external returns (address policyDataAddr) {
-        require(bytes(_secretsSchemaCid).length > 0, InvalidSecretsSchemaCid());
         bytes memory initData = abi.encodeWithSelector(
             NewtonPolicyData.initialize.selector,
             address(this),
