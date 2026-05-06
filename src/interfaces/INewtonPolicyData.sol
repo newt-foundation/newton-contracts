@@ -37,6 +37,12 @@ interface INewtonPolicyData is IERC165 {
     function getWasmCid() external view returns (string memory);
 
     /**
+     * @notice Retrieves the secrets schema CID for this policy data.
+     * @return The IPFS CID of the secrets JSON schema, or empty string if no secrets.
+     */
+    function getSecretsSchemaCid() external view returns (string memory);
+
+    /**
      * @notice Retrieves the expire after block number for the policy data.
      * @return The block number after which the policy data should expire.
      */

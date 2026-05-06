@@ -23,10 +23,14 @@ interface IAttestationProofVerifier {
         bytes32 pcr0Hash;
         /// keccak256(root_cert_der) — matches EnclaveVersionRegistry.rootCertHash
         bytes32 rootCertHash;
+        /// keccak256(policy_bytes) — matches NewtonPolicy.policyCodeHash for binding
+        bytes32 policyCodeHash;
         /// false when the circuit proves the attestation is invalid
         bool isValid;
         /// 0=valid, 1=invalid_cert_chain, 2=pcr0_not_whitelisted, 3=task_binding_mismatch, 4=expired
         uint8 failureReason;
+        /// true when the Rego source references privacy namespaces
+        bool isPrivacyPolicy;
     }
 
     /// @notice Verify an SP1 attestation proof and decode the public values.

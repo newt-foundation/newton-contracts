@@ -18,6 +18,7 @@ import "@openzeppelin-upgrades/contracts/security/ReentrancyGuardUpgradeable.sol
 import {RegoVerifier} from "./RegoVerifier.sol";
 import {IRegoVerifier} from "../interfaces/IRegoVerifier.sol";
 import {INewtonPolicy} from "../interfaces/INewtonPolicy.sol";
+import {INewtonPolicyClient} from "../interfaces/INewtonPolicyClient.sol";
 import {IIdentityRegistry} from "../interfaces/IIdentityRegistry.sol";
 import {IConfidentialDataRegistry} from "../interfaces/IConfidentialDataRegistry.sol";
 import {IAttestationProofVerifier} from "../interfaces/IAttestationProofVerifier.sol";
@@ -601,26 +602,45 @@ contract ChallengeVerifier is
             ChallengePeriodExpired()
         );
 
-        // 4. Task must be a privacy task (trustless on-chain detection)
-        require(_isPrivacyTask(taskResponse.policyClient), NotPrivacyTask(taskId));
+        // 4. Verify SP1 proof (proves both privacy classification and attestation validity)
+        require(attestationProofVerifier != address(0), AttestationProofNotProvided(taskId));
+        require(attestationProofData.length > 0, AttestationProofNotProvided(taskId));
 
-        // 5. Determine challenge type: missing attestation vs invalid attestation
+        IAttestationProofVerifier.AttestationContext memory ctx = IAttestationProofVerifier(
+                attestationProofVerifier
+            ).verifyAttestationProof(attestationProofData, attestationProofBytes);
+
+        // 5. Bind proof outputs to on-chain state
+        require(ctx.taskId == taskId, ChallengeFailed());
+        require(ctx.responseDigest == keccak256(abi.encode(taskResponse)), ChallengeFailed());
+
+        // 6. Circuit must prove this is a privacy policy (from Rego source scan)
+        require(ctx.isPrivacyPolicy, NotPrivacyTask(taskId));
+
+        // 7. Verify policyCodeHash matches on-chain policy.
+        //    try/catch guards against malformed policyClient (EOA, non-standard) —
+        //    challenger pre-screens off-chain via isPrivacyTask() before proving.
+        {
+            try INewtonPolicyClient(taskResponse.policyClient).getPolicyAddress() returns (
+                address policyAddr
+            ) {
+                require(
+                    ctx.policyCodeHash == INewtonPolicy(policyAddr).getPolicyCodeHash(),
+                    ChallengeFailed()
+                );
+            } catch {
+                revert ChallengeFailed();
+            }
+        }
+
+        // 8. Determine challenge type: missing vs invalid attestation
         bytes32 attestationHash = INewtonProverTaskManager(taskManager).allTaskAttestations(taskId);
 
         if (attestationHash == bytes32(0)) {
-            // Type 2a: Missing attestation — no proof needed, instant slash
+            // Type 2a: Missing attestation — circuit proved this is a privacy policy,
+            // and no attestation was submitted. Slash.
         } else {
-            // Type 2b: Attestation present but invalid — requires SP1 proof
-            require(attestationProofVerifier != address(0), AttestationProofNotProvided(taskId));
-            require(attestationProofData.length > 0, AttestationProofNotProvided(taskId));
-
-            IAttestationProofVerifier.AttestationContext memory ctx = IAttestationProofVerifier(
-                    attestationProofVerifier
-                ).verifyAttestationProof(attestationProofData, attestationProofBytes);
-
-            // Bind proof outputs to on-chain state
-            require(ctx.taskId == taskId, ChallengeFailed());
-            require(ctx.responseDigest == keccak256(abi.encode(taskResponse)), ChallengeFailed());
+            // Type 2b: Attestation present but invalid
             require(ctx.attestationHash == attestationHash, ChallengeFailed());
             require(!ctx.isValid, ChallengeFailed());
 
@@ -670,12 +690,18 @@ contract ChallengeVerifier is
         }
     }
 
-    /// @notice Check if a task involves privacy data (identity, confidential, or inline ephemeral).
-    ///         Derived trustlessly from on-chain registry state — no gateway flag.
+    /// @notice Check whether a policy client's task requires TEE attestation.
+    /// @dev Returns true if the policy client has linked identity domains or granted
+    ///      confidential data domains (user PII threshold decryption paths).
+    ///      Secrets-bearing WASM plugins (secretsSchemaCid) execute in TEE but are
+    ///      NOT privacy tasks for on-chain attestation — their attestation is
+    ///      verified off-chain by the gateway/operator during Prepare phase.
+    ///      Challengers call this off-chain to determine if a task is challengeable
+    ///      for missing/invalid attestation before submitting on-chain.
     /// @param policyClient The policy client address from the task response
-    function _isPrivacyTask(
+    function isPrivacyTask(
         address policyClient
-    ) internal view returns (bool) {
+    ) public view returns (bool) {
         if (
             identityRegistry != address(0)
                 && IIdentityRegistry(identityRegistry).hasLinkedIdentity(policyClient)
@@ -689,6 +715,12 @@ contract ChallengeVerifier is
         ) {
             return true;
         }
+        // Note: secretsSchemaCid (WASM plugin secrets like API keys) is NOT a privacy
+        // task for attestation purposes. Secrets execute in TEE for confidentiality of
+        // the keys, but don't involve user PII threshold decryption. The gateway/operator
+        // verifies Prepare-phase TEE attestation off-chain for secrets; on-chain
+        // challengeInvalidTeeAttestation only covers identity/confidential/ephemeral.
+
         // Inline ephemeral privacy (wasmArgs._newton.privacy[]) cannot be checked
         // on-chain cheaply — it requires parsing calldata. Deferred to the challenger
         // off-chain, which submits the challenge only when it detects inline privacy.
