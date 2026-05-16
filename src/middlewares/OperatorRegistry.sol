@@ -15,31 +15,103 @@ import {IAllocationManager} from "@eigenlayer/contracts/interfaces/IAllocationMa
 import {IPauserRegistry} from "@eigenlayer/contracts/interfaces/IPauserRegistry.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {ChainLib} from "../libraries/ChainLib.sol";
-import {IOperatorRegistry} from "../interfaces/IOperatorRegistry.sol";
+import {IOperatorRegistryEpochGovernance} from "./IOperatorRegistryEpochGovernance.sol";
 
-contract OperatorRegistry is SlashingRegistryCoordinator, IOperatorRegistry {
+/// @title OperatorRegistry
+/// @notice Whitelisted operator + task-generator registry for the Newton AVS.
+///
+/// @dev    SCOPE
+///
+///         This contract owns three things:
+///         1. The EigenLayer-coupled operator registration / deregistration
+///            hooks (`_beforeRegisterOperator`, `_afterRegisterOperator`,
+///            `_beforeDeregisterOperator`, `_afterDeregisterOperator`).
+///         2. The `_whitelistedOperators` and `_taskGenerators` EnumerableSets
+///            — these have to live here because the register-time gate reads
+///            from `_whitelistedOperators` and the EigenLayer middleware
+///            inheritance chain forces us into the same contract address.
+///         3. A single mutation entry point `applyMutations(...)` callable
+///            only by the sibling `OperatorRegistryEpochGovernance` contract.
+///
+///         All queue mutators, bootstrap mutators, dereg-approval state, and
+///         epoch governance live on the sibling contract. See its source for
+///         the deployment order and bootstrap flow.
+///
+///         The split exists because `SlashingRegistryCoordinator` (parent
+///         from EigenLayer middleware) plus the Newton epoch governance
+///         machinery exceeded the EIP-170 24,576-byte runtime-code limit.
+///
+/// @dev    EJECTOR BYPASS
+///
+///         The EigenLayer-inherited `ejector` role bypasses the dereg gate
+///         here (emergency override; future Security Council multisig per
+///         NEWT-1176). On destination chains the `ejector` is `address(0)`
+///         by deploy convention, so the gate is unbypassable there — which
+///         matches destination registries not participating in operator
+///         self-dereg in the first place.
+contract OperatorRegistry is SlashingRegistryCoordinator {
     using EnumerableSet for EnumerableSet.AddressSet;
 
     /* CUSTOM ERRORS */
-    error GeneratorDoesNotExist();
-    error GeneratorAlreadyExists();
+    /// @dev Mainnet whitelist gate: register attempts revert with this when
+    ///      the operator is not in `_whitelistedOperators`. Tested by
+    ///      `_beforeRegisterOperator`.
     error OperatorNotWhitelisted(address operator);
-    error OperatorAlreadyWhitelisted(address operator);
-    error OperatorNotInWhitelist(address operator);
+    /// @dev `setEpochGovernance` rejects `address(0)`.
     error InvalidAddress();
+    /// @dev `applyMutations` rejects callers other than the wired sibling
+    ///      governance contract. Distinct from `EpochGovernanceUnset` so
+    ///      off-chain decoders can tell "wrong caller" from "not yet wired".
+    error OnlyEpochGovernance();
+    /// @dev Returned by `_beforeDeregisterOperator` when `epochGovernance`
+    ///      has not been set yet. Pre-bootstrap deregistration is therefore
+    ///      blocked entirely except via the `ejector` role — a stronger
+    ///      invariant than fail-open.
+    error EpochGovernanceUnset();
+    /// @dev `setEpochGovernance` is one-shot — re-set is rejected to make
+    ///      a misconfiguration impossible to silently overwrite.
+    error EpochGovernanceAlreadySet();
 
     /* EVENTS */
     event TaskGeneratorAdded(address indexed generator);
     event TaskGeneratorRemoved(address indexed generator);
     event OperatorWhitelisted(address indexed operator, bool indexed isWhitelisted);
+    event EpochGovernanceSet(address indexed governance);
 
-    /* STORAGE */
+    /* STORAGE — Slots 252-256 (existing, do not reorder)
+     *
+     *   252  _quorumNumberToOperators            mapping(bytes32 => mapping(address => OperatorInfo))
+     *   253  _whitelistedOperators._values       address[]   (EnumerableSet.AddressSet, slot[0])
+     *   254  _whitelistedOperators._indexes      mapping     (EnumerableSet.AddressSet, slot[1])
+     *   255  _taskGenerators._values             address[]
+     *   256  _taskGenerators._indexes            mapping
+     */
     /// @notice mapping from quorum number to registered operators
     mapping(bytes32 => mapping(address => ISlashingRegistryCoordinatorTypes.OperatorInfo)) private
         _quorumNumberToOperators;
 
     EnumerableSet.AddressSet private _whitelistedOperators;
     EnumerableSet.AddressSet private _taskGenerators;
+
+    /* STORAGE — Slot 257+ (sibling-contract pointer + gap) */
+
+    /// @notice Sibling middleware driving queue + bootstrap mutations and the
+    ///         dereg-approval gate. Set once via `setEpochGovernance`. Until
+    ///         set, register flows still work but the dereg gate is fully
+    ///         **closed** for non-`ejector` callers — `_beforeDeregisterOperator`
+    ///         reverts with `EpochGovernanceUnset` for any operator dereg
+    ///         attempt during the wiring window. Only the inherited
+    ///         EigenLayer `ejector` role can dereg pre-bootstrap; this is the
+    ///         emergency-removal escape hatch.
+    IOperatorRegistryEpochGovernance public epochGovernance;
+
+    /// @dev Reserved storage to absorb the slots vacated by the pre-split
+    ///      governance state (currentEpoch / epochStartBlock /
+    ///      epochDurationBlocks / 4 pending mappings / approvedDeregisterEpoch
+    ///      / pendingEpochDurationBlocks). Sized at uint256[42] so the slot
+    ///      occupancy through slot 299 matches the previous layout for any
+    ///      contracts (libraries, mixins) that may have indexed into them.
+    uint256[42] private __gap;
 
     constructor(
         IStakeRegistry _stakeRegistry,
@@ -60,6 +132,58 @@ contract OperatorRegistry is SlashingRegistryCoordinator, IOperatorRegistry {
             _version
         )
     {}
+
+    /// @notice One-shot setter for the sibling governance contract. Owner-only;
+    ///         reverts on re-set so an incorrect wiring can't be silently
+    ///         replaced.
+    function setEpochGovernance(
+        address governance
+    ) external onlyOwner {
+        if (governance == address(0)) revert InvalidAddress();
+        if (address(epochGovernance) != address(0)) revert EpochGovernanceAlreadySet();
+        epochGovernance = IOperatorRegistryEpochGovernance(governance);
+        emit EpochGovernanceSet(governance);
+    }
+
+    /// @notice Sole mutation entry point for the whitelist + task-generator
+    ///         sets. Callable only by the sibling governance contract.
+    /// @dev    Apply order per set: additions before removals (last-call wins
+    ///         for the typo case, matching the previous in-contract
+    ///         applyPendingChanges semantics). Skip-if-already-present is
+    ///         intentional for additions; idempotent.
+    function applyMutations(
+        address[] calldata whitelistAdditions,
+        address[] calldata whitelistRemovals,
+        address[] calldata taskGeneratorAdditions,
+        address[] calldata taskGeneratorRemovals
+    ) external {
+        if (msg.sender != address(epochGovernance)) revert OnlyEpochGovernance();
+
+        for (uint256 i = 0; i < whitelistAdditions.length; ++i) {
+            address op = whitelistAdditions[i];
+            if (op != address(0) && _whitelistedOperators.add(op)) {
+                emit OperatorWhitelisted(op, true);
+            }
+        }
+        for (uint256 i = 0; i < whitelistRemovals.length; ++i) {
+            address op = whitelistRemovals[i];
+            if (_whitelistedOperators.remove(op)) {
+                emit OperatorWhitelisted(op, false);
+            }
+        }
+        for (uint256 i = 0; i < taskGeneratorAdditions.length; ++i) {
+            address tg = taskGeneratorAdditions[i];
+            if (tg != address(0) && _taskGenerators.add(tg)) {
+                emit TaskGeneratorAdded(tg);
+            }
+        }
+        for (uint256 i = 0; i < taskGeneratorRemovals.length; ++i) {
+            address tg = taskGeneratorRemovals[i];
+            if (_taskGenerators.remove(tg)) {
+                emit TaskGeneratorRemoved(tg);
+            }
+        }
+    }
 
     /// @dev Hook to allow for any pre-register logic in `_registerOperator`
     function _beforeRegisterOperator(
@@ -84,20 +208,49 @@ contract OperatorRegistry is SlashingRegistryCoordinator, IOperatorRegistry {
         uint192 /* newBitmap */
     ) internal virtual override {
         bytes32 quorumNumberHash = keccak256(quorumNumbers);
-        // Update quorum number to operators registered mapping
         _quorumNumberToOperators[quorumNumberHash][operator] =
             ISlashingRegistryCoordinatorTypes.OperatorInfo(
                 operatorId, ISlashingRegistryCoordinatorTypes.OperatorStatus.REGISTERED
             );
     }
 
-    /// @dev Hook to allow for any pre-deregister logic in `_deregisterOperator`
+    /// @dev Pre-deregister hook: enforce epoch-bounded deregistration via the
+    ///      sibling governance contract. Bypassed for the inherited `ejector`
+    ///      role (emergency override). On destination chains the `ejector` is
+    ///      `address(0)` so the gate is unbypassable.
+    ///
+    ///      PRE-BOOTSTRAP INVARIANT: with `epochGovernance == address(0)` —
+    ///      i.e., between contract deployment and the one-shot
+    ///      `setEpochGovernance` call — every dereg attempt by a non-ejector
+    ///      reverts with `EpochGovernanceUnset`. This is intentional: it
+    ///      makes accidental dereg-without-approval impossible during the
+    ///      window where the governance pointer hasn't been wired yet.
+    ///      Mainnet deploys MUST call `setEpochGovernance` before exposing
+    ///      the contract to operators.
     function _beforeDeregisterOperator(
         address operator,
-        bytes32 operatorId,
-        bytes memory quorumNumbers,
-        uint192 currentBitmap
-    ) internal virtual override {}
+        bytes32, /* operatorId */
+        bytes memory, /* quorumNumbers */
+        uint192 /* currentBitmap */
+    ) internal virtual override {
+        IOperatorRegistryEpochGovernance gov = epochGovernance;
+        if (msg.sender == ejector) {
+            // Cancel any pending dereg approval the operator may have queued
+            // before being ejected. Without this, the operator's slot in
+            // `pendingDeregistersForEpoch[approvedEpoch]` leaks until the
+            // bucket clears on advance — and if the ejection happens after
+            // the bucket has already cleared, the per-operator
+            // `_approvedDeregisterEpoch` entry would linger and let a
+            // later spurious `consumeDeregisterApproval` call succeed.
+            // Idempotent — no-op if the operator never queued.
+            if (address(gov) != address(0)) {
+                gov.cancelDeregisterApproval(operator);
+            }
+            return;
+        }
+        if (address(gov) == address(0)) revert EpochGovernanceUnset();
+        gov.consumeDeregisterApproval(operator);
+    }
 
     /// @dev Hook to allow for any post-deregister logic in `_deregisterOperator`
     function _afterDeregisterOperator(
@@ -112,14 +265,13 @@ contract OperatorRegistry is SlashingRegistryCoordinator, IOperatorRegistry {
                 == ISlashingRegistryCoordinatorTypes.OperatorStatus.REGISTERED,
             OperatorNotRegisteredForQuorum()
         );
-        // Update quorum number to operators registered mapping
         _quorumNumberToOperators[quorumNumberHash][operator] =
             ISlashingRegistryCoordinatorTypes.OperatorInfo(
                 operatorId, ISlashingRegistryCoordinatorTypes.OperatorStatus.DEREGISTERED
             );
     }
 
-    /* WHITELIST MANAGEMENT FUNCTIONS */
+    /* QUERY FUNCTIONS */
 
     /**
      * @notice Get all operators registered for a given quorum number
@@ -153,56 +305,8 @@ contract OperatorRegistry is SlashingRegistryCoordinator, IOperatorRegistry {
     }
 
     /**
-     * @notice Add an operator to the whitelist
-     * @param operator The operator address to whitelist
-     * @dev Only callable by the owner
-     */
-    function addToWhitelist(
-        address operator
-    ) external onlyOwner {
-        if (operator == address(0)) revert InvalidAddress();
-        if (!_whitelistedOperators.add(operator)) {
-            revert OperatorAlreadyWhitelisted(operator);
-        }
-        emit OperatorWhitelisted(operator, true);
-    }
-
-    /**
-     * @notice Remove an operator from the whitelist
-     * @param operator The operator address to remove from whitelist
-     * @dev Only callable by the owner
-     */
-    function removeFromWhitelist(
-        address operator
-    ) external onlyOwner {
-        if (!_whitelistedOperators.remove(operator)) {
-            revert OperatorNotInWhitelist(operator);
-        }
-        emit OperatorWhitelisted(operator, false);
-    }
-
-    /**
-     * @notice Add multiple operators to the whitelist in a single transaction
-     * @param operators Array of operator addresses to whitelist
-     * @dev Only callable by the owner
-     */
-    function addMultipleToWhitelist(
-        address[] calldata operators
-    ) external onlyOwner {
-        for (uint256 i = 0; i < operators.length; ++i) {
-            address operator = operators[i];
-            if (operator == address(0)) revert InvalidAddress();
-            if (!_whitelistedOperators.add(operator)) {
-                revert OperatorAlreadyWhitelisted(operator);
-            }
-            emit OperatorWhitelisted(operator, true);
-        }
-    }
-
-    /**
      * @notice Check if an operator is whitelisted
      * @param operator The operator address to check
-     * @return True if the operator is whitelisted, false otherwise
      */
     function isOperatorWhitelisted(
         address operator
@@ -211,50 +315,8 @@ contract OperatorRegistry is SlashingRegistryCoordinator, IOperatorRegistry {
     }
 
     /**
-     * @notice Add a task generator
-     * @param generator The task generator address to add
-     * @dev Only callable by the owner
-     */
-    function addTaskGenerator(
-        address generator
-    ) external onlyOwner {
-        if (generator == address(0)) revert InvalidAddress();
-        if (!_taskGenerators.add(generator)) revert GeneratorAlreadyExists();
-        emit TaskGeneratorAdded(generator);
-    }
-
-    /**
-     * @notice Add multiple task generators in a single transaction
-     * @param generators Array of task generator addresses to add
-     * @dev Only callable by the owner
-     */
-    function addMultipleToTaskGenerators(
-        address[] calldata generators
-    ) external onlyOwner {
-        for (uint256 i = 0; i < generators.length; ++i) {
-            address generator = generators[i];
-            if (generator == address(0)) revert InvalidAddress();
-            if (!_taskGenerators.add(generator)) revert GeneratorAlreadyExists();
-            emit TaskGeneratorAdded(generator);
-        }
-    }
-
-    /**
-     * @notice Remove a task generator
-     * @param generator The task generator address to remove
-     * @dev Only callable by the owner
-     */
-    function removeTaskGenerator(
-        address generator
-    ) external onlyOwner {
-        if (!_taskGenerators.remove(generator)) revert GeneratorDoesNotExist();
-        emit TaskGeneratorRemoved(generator);
-    }
-
-    /**
      * @notice Check if a generator is a task generator
      * @param generator The generator address to check
-     * @return True if the generator is a task generator, false otherwise
      */
     function isTaskGenerator(
         address generator
@@ -268,5 +330,24 @@ contract OperatorRegistry is SlashingRegistryCoordinator, IOperatorRegistry {
      */
     function getAllTaskGenerators() external view returns (address[] memory) {
         return _taskGenerators.values();
+    }
+
+    /// @notice Active epoch duration in blocks. Forwarded from the sibling
+    ///         governance contract. Returns 0 if governance is unset (i.e.,
+    ///         in the bootstrap phase before `setEpochGovernance`); other
+    ///         contracts (`TaskManager.epochBlocks()`) treat zero as
+    ///         "not yet initialized."
+    function epochDurationBlocks() external view returns (uint32) {
+        IOperatorRegistryEpochGovernance gov = epochGovernance;
+        if (address(gov) == address(0)) return 0;
+        return gov.epochDurationBlocks();
+    }
+
+    /// @notice Active epoch number. Forwarded from the sibling governance.
+    ///         Returns 0 if governance is unset.
+    function currentEpoch() external view returns (uint32) {
+        IOperatorRegistryEpochGovernance gov = epochGovernance;
+        if (address(gov) == address(0)) return 0;
+        return gov.currentEpoch();
     }
 }

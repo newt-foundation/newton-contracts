@@ -203,11 +203,11 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
         taskResponseWindowBlock = _taskResponseWindowBlock;
     }
 
-    function updateEpochBlocks(
-        uint32 _epochBlocks
-    ) external onlyOwner {
-        epochBlocks = _epochBlocks;
-    }
+    // NOTE: `updateEpochBlocks(uint32)` removed in NEWT-1175. The epoch length is now owned
+    // exclusively by `OperatorRegistryEpochGovernance` (sibling of `OperatorRegistry` after
+    // the EIP-170 split); updates flow through `setEpochDurationBlocks(uint32)` +
+    // `applyPendingChanges()` on the governance contract, and TaskManager reads through
+    // `epochBlocks()` which proxies to `OperatorRegistry.epochDurationBlocks()`.
 
     function updateTaskCreationBufferWindow(
         uint32 _taskCreationBufferWindow

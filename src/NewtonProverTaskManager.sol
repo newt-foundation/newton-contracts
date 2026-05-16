@@ -39,8 +39,7 @@ contract NewtonProverTaskManager is
         address _taskResponseHandler,
         address _challengeVerifier,
         address _attestationValidator,
-        uint32 _taskResponseWindowBlock,
-        uint32 _epochBlocks
+        uint32 _taskResponseWindowBlock
     ) public initializer {
         _transferOwnership(initialOwner);
         aggregator = _aggregator; // DEPRECATED: kept for storage layout compatibility
@@ -50,6 +49,7 @@ contract NewtonProverTaskManager is
         challengeVerifier = _challengeVerifier;
         attestationValidator = _attestationValidator;
         taskResponseWindowBlock = _taskResponseWindowBlock;
-        epochBlocks = _epochBlocks;
+        // NOTE: epochBlocks is no longer set here — it delegates to
+        // `OperatorRegistry.epochDurationBlocks()`, seeded by the deployer's `initializeEpochs` call on `OperatorRegistryEpochGovernance`.
     }
 }

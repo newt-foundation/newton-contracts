@@ -1,1 +1,43 @@
-{"lastUpdate":{"timestamp":"1777331288","block_number":"40781500"},"type":"destination","sourceChainId":"11155111","addresses":{"proxyAdmin":"0xaa9c7596f918b16e79faaca21eb7f97c9056478e","pauserRegistry":"0xd6c0fa8f46bbc40c63a0c45eec9f8d1f0363f414","operatorTableUpdater":"0x756d94b4462dd0ff620278a58d620139adf0c3b1","operatorTableUpdaterImpl":"0x4d811a3740731ef807e6d8d39db9e34692ad9118","bn254CertificateVerifier":"0xe8af04e71782265c40e466d00c0bc98a6308c389","bn254CertificateVerifierImpl":"0xbf5881e922910fe3dbea70ee9850787b8dc75c3e","ecdsaCertificateVerifier":"0xe844563e26455f2808d76deacdcb1afbe0431d1d","ecdsaCertificateVerifierImpl":"0x250d55c62cb37ed5e7c9d4fa41d54615dd9cb5b2","newtonProverTaskManager":"0xda128a87412be6f2161bb87200f0f40e89744bd9","newtonProverTaskManagerImpl":"0x0b193881a694091cf28a7a149c86fc42071014f1","challengeVerifier":"0x66044f02cc6d0393122008807f829eafb9b2e4ff","challengeVerifierImpl":"0x47856363a8c277a0ce95d2ea33ffd911bd151621","regoVerifier":"0x2ef87907452e9c1295db0ad82c8fc16bb8ebed92","regoVerifierImpl":"0xb1662c217fd10df3f1499fbf82b07b85f1723663","attestationValidator":"0x57a7d9c6c3b5dc43f8ca542dd16925cb519270b3","attestationValidatorImpl":"0x5d7db08e186c3417aab48bf4df02ecc07e69ffaa","socketRegistry":"0x18e921a1b9924f02cd1ce7fd22bc182e7ddbf82e","socketRegistryImpl":"0x17fa5ea577a54df98891f4436727a03c4a9cab98","operatorRegistry":"0xfd779c14ca9e4e2275fe11ff7b80742bf3e0da4f","operatorRegistryImpl":"0x183421f6bc1bdb8431c48ff497082726fa51b7e6","policyClientRegistry":"0x3cfef33b37ee120bb0522dff77ed09fd97d4b40e","policyClientRegistryImpl":"0xe76516f80da8064a752c3437390caa86645d1e77","identityRegistry":"0x3c7565e9a7b5b9b9931a600fd40afb9d7567f043","identityRegistryImpl":"0x92adba074864d315622c6134f07d0407200e4ad6","confidentialDataRegistry":"0x403578cfcece034e48bc1fbde217d1eb77122b5e","confidentialDataRegistryImpl":"0xf0c54a21e5fc4d68c46ecfeeaea0e5dc473b1a63","enclaveVersionRegistry":"0x2c250a78b41e25f5fd2f9ad0506ea52cfb72dd45","enclaveVersionRegistryImpl":"0x8211ff04e7ebda656d97905cd6a87e64add9eccb","batchTaskManager":"0x63f821f6c3a69b127d60540e9dd1a2e597445760","addressesProvider":"0xc36e5a1cf8eb9a1c57334aaf4c57b063727532ac","addressesProviderImpl":"0x1b3fb1d026ab18ff9a6fe771443727f4ad9c1dc7"}}
+{
+  "lastUpdate": {
+    "timestamp": "1778955588",
+    "block_number": "41593650"
+  },
+  "type": "destination",
+  "sourceChainId": "11155111",
+  "addresses": {
+    "proxyAdmin": "0xaa9c7596f918b16e79faaca21eb7f97c9056478e",
+    "pauserRegistry": "0xd6c0fa8f46bbc40c63a0c45eec9f8d1f0363f414",
+    "operatorTableUpdater": "0x756d94b4462dd0ff620278a58d620139adf0c3b1",
+    "operatorTableUpdaterImpl": "0x9889dfc6a61c500260dea6a74d144542eabfbace",
+    "bn254CertificateVerifier": "0xe8af04e71782265c40e466d00c0bc98a6308c389",
+    "bn254CertificateVerifierImpl": "0x0e1cfb36228067df87cba531377fc26c058e0a3d",
+    "ecdsaCertificateVerifier": "0xe844563e26455f2808d76deacdcb1afbe0431d1d",
+    "ecdsaCertificateVerifierImpl": "0xc835671e255dfbfd69fd51f7ddb6d9c46ac58431",
+    "newtonProverTaskManager": "0xda128a87412be6f2161bb87200f0f40e89744bd9",
+    "newtonProverTaskManagerImpl": "0xae4d8dc6540a1d866f447fd8a7ee89e4f46eed26",
+    "challengeVerifier": "0x66044f02cc6d0393122008807f829eafb9b2e4ff",
+    "challengeVerifierImpl": "0x408af4f8edb8a4ae7bd4c7678e811a4c97cd4b33",
+    "regoVerifier": "0x2ef87907452e9c1295db0ad82c8fc16bb8ebed92",
+    "regoVerifierImpl": "0x1e6ab6e294f66c14eba8798efd6fdc6f198c9c37",
+    "attestationValidator": "0x57a7d9c6c3b5dc43f8ca542dd16925cb519270b3",
+    "attestationValidatorImpl": "0x649118cdf6b2f5b057ede76654182f59dbc729cf",
+    "socketRegistry": "0x18e921a1b9924f02cd1ce7fd22bc182e7ddbf82e",
+    "socketRegistryImpl": "0x02d4248d3733a514c820485b454d4d929de30fe4",
+    "operatorRegistry": "0xfd779c14ca9e4e2275fe11ff7b80742bf3e0da4f",
+    "operatorRegistryImpl": "0x3e6fcd1129c1f0d592683f0a2c6f3fce235772d3",
+    "epochGovernance": "0x905848b70749378fbb26f3ca0c3e91143c8bd3ae",
+    "epochGovernanceImpl": "0xd594879cec6f3f631ea9d34c41a691d267253c36",
+    "policyClientRegistry": "0x3cfef33b37ee120bb0522dff77ed09fd97d4b40e",
+    "policyClientRegistryImpl": "0x172dc60ddcb28b7e5047ed29a30f82f97472cf57",
+    "identityRegistry": "0x3c7565e9a7b5b9b9931a600fd40afb9d7567f043",
+    "identityRegistryImpl": "0x057073af094911e795a40a184f4d7e4ff53f6b53",
+    "confidentialDataRegistry": "0x403578cfcece034e48bc1fbde217d1eb77122b5e",
+    "confidentialDataRegistryImpl": "0x9fe9dbfa7e52dc505f1f23d16d0cacfef66d7086",
+    "enclaveVersionRegistry": "0x2c250a78b41e25f5fd2f9ad0506ea52cfb72dd45",
+    "enclaveVersionRegistryImpl": "0x2da9c9856336cc2008e7cbb589f44bbe1436b7ed",
+    "batchTaskManager": "0x15c221d37fddefa5307e0f6dba828789e5d73052",
+    "addressesProvider": "0xc36e5a1cf8eb9a1c57334aaf4c57b063727532ac",
+    "addressesProviderImpl": "0xff66e64f9c38efe021b82a4af1d714248557abec"
+  }
+}

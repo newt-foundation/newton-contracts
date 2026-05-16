@@ -84,8 +84,15 @@ abstract contract TaskManagerStorage is
     /// @notice The task response window block
     uint32 public taskResponseWindowBlock;
 
-    /// @notice The epoch time in number of blocks
-    uint32 public epochBlocks;
+    /// @notice DEPRECATED: Previously held the epoch length (NEWT-1175 collapses this to a
+    ///         single source of truth on `OperatorRegistry`). Do not remove - required for
+    ///         upgrade safety. Use the explicit `epochBlocks()` getter below, which delegates
+    ///         to `IOperatorRegistry(operatorRegistry).epochDurationBlocks()`.
+    /// @dev    `internal` visibility suppresses the auto-generated public getter so the
+    ///         delegating function below can take its place without an ABI clash. The 4-byte
+    ///         storage slot is preserved at the same offset; `__deprecated_epochBlocks` is
+    ///         never read or written after this change.
+    uint32 internal __deprecated_epochBlocks;
 
     /// @notice The maximum allowed age (in blocks) of taskCreatedBlock when creating a task
     /// @dev This limits how far in the past the offchain estimated block can be.
@@ -113,6 +120,17 @@ abstract contract TaskManagerStorage is
     ///      means no attestation was provided — permissible for non-privacy tasks.
     mapping(bytes32 => bytes32) public allTaskAttestations;
 
+    /// @notice The active epoch length, in blocks, of the source-chain operator-set governance cycle.
+    /// @dev Delegates to `OperatorRegistry.epochDurationBlocks()` — the single source of truth post
+    ///      NEWT-1175. Returning zero means OperatorRegistry has not yet had `OperatorRegistryEpochGovernance.initializeEpochs(uint32)`
+    ///      called on it (bootstrap phase). The function is `public` (not `external`) so internal
+    ///      Solidity readers (e.g., legacy ABI consumers, future TaskManager logic) can call it
+    ///      with the same syntax as the previous public state variable. Satisfies the
+    ///      `epochBlocks()` declaration on `INewtonProverTaskManager`.
+    function epochBlocks() public view returns (uint32) {
+        return IOperatorRegistry(operatorRegistry).epochDurationBlocks();
+    }
+
     // Conditional inheritance based on chain type
     // Source chains extend BLSSignatureChecker for stake registry verification
     // Destination chains do not extend these (they use certificate verification instead)
@@ -131,8 +149,9 @@ abstract contract TaskManagerStorage is
         operatorRegistry = address(_operatorRegistry);
         isDestinationChain = _isDestinationChain;
         taskResponseWindowBlock = 30; // default to 30 blocks
-        epochBlocks = 7200; // default to 7200 blocks (matches current hardcoded value)
         taskCreationBufferWindow = 2; // default to 2 blocks for task creation buffer
+        // NOTE: epochBlocks is no longer stored here — it delegates to
+        // `IOperatorRegistry(operatorRegistry).epochDurationBlocks()`. See `epochBlocks()` below.
     }
 
     // storage gap for upgradeability
