@@ -401,6 +401,52 @@ contract BN254TableCalculator is
     }
 
     /**
+     * @notice Gets the canonical ordered list of `BN254OperatorInfo` (pubkey +
+     *         weights) for an operator set, in the SAME order used to build the
+     *         on-chain `operatorInfoTreeRoot`.
+     *
+     * @dev    Off-chain consumers (state-commit aggregator) need this to
+     *         reconstruct the Merkle tree and produce non-signer witnesses
+     *         (ELIP-008). The position of each entry in the returned array IS
+     *         the operator's index in the on-chain Merkle tree, so callers can
+     *         feed it directly to off-chain `getProofKeccak`-equivalent logic.
+     *
+     * @dev    Mirrors the EigenLayer middleware
+     *         `BN254TableCalculatorBase.getOperatorInfos` shape. Newton's
+     *         calculator maintains its own internal storage rather than
+     *         inheriting that base, so the function is reproduced here against
+     *         our `_operatorData` mapping. All returned operators are
+     *         registered (no default-zero entries) — the calculator's
+     *         `registerOperator` guarantees `_operatorData[opSetHash][op]`
+     *         carries a non-zero pubkey for every address in `setData.operators[]`.
+     *
+     * @param  operatorSet The operator set to query
+     * @return operatorInfos The canonical ordered `BN254OperatorInfo[]`
+     */
+    function getOperatorInfos(
+        OperatorSet calldata operatorSet
+    )
+        external
+        view
+        returns (IOperatorTableCalculatorTypes.BN254OperatorInfo[] memory operatorInfos)
+    {
+        bytes32 opSetHash = _hashOperatorSet(operatorSet);
+        OperatorSetData storage setData = _operatorSetData[opSetHash];
+        require(setData.isConfigured, OperatorSetNotConfigured());
+
+        uint256 numOperators = setData.operators.length;
+        operatorInfos = new IOperatorTableCalculatorTypes.BN254OperatorInfo[](numOperators);
+
+        for (uint256 i = 0; i < numOperators; i++) {
+            address op = setData.operators[i];
+            OperatorData storage opData = _operatorData[opSetHash][op];
+            operatorInfos[i] = IOperatorTableCalculatorTypes.BN254OperatorInfo({
+                pubkey: opData.pubkey, weights: opData.weights
+            });
+        }
+    }
+
+    /**
      * @notice Gets the weights for a specific operator
      * @param operatorSet The operator set to query
      * @param operator The operator address
