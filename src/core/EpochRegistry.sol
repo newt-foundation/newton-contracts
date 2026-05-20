@@ -6,9 +6,9 @@ import {IEpochRegistry} from "../interfaces/IEpochRegistry.sol";
 import {IOperatorRegistry} from "../interfaces/IOperatorRegistry.sol";
 import {INewtonAddressesProvider} from "../interfaces/INewtonAddressesProvider.sol";
 import {AddressesProviderConsumer} from "../mixins/AddressesProviderConsumer.sol";
+import {AdminMixin} from "../mixins/AdminMixin.sol";
 
 import {Initializable} from "@openzeppelin-upgrades/contracts/proxy/utils/Initializable.sol";
-import {OwnableUpgradeable} from "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
 
 /// @title EpochRegistry
 ///
@@ -28,12 +28,7 @@ import {OwnableUpgradeable} from "@openzeppelin-upgrades/contracts/access/Ownabl
 ///        slot 0: mpk (bytes32)
 ///        slot 1: operatorSetHash (bytes32)
 ///        slot 2: epochId (uint64) + startBlock (uint64) + threshold (uint8) + committeeSize (uint8)
-contract EpochRegistry is
-    Initializable,
-    OwnableUpgradeable,
-    AddressesProviderConsumer,
-    IEpochRegistry
-{
+contract EpochRegistry is Initializable, AdminMixin, AddressesProviderConsumer, IEpochRegistry {
     // -------------------------------------------------------------------------
     // Storage
     // -------------------------------------------------------------------------
@@ -76,6 +71,12 @@ contract EpochRegistry is
         __Ownable_init();
         _transferOwnership(owner);
         gracePeriodEpochs = _gracePeriodEpochs;
+    }
+
+    function initializeV2(
+        address admin
+    ) external onlyOwner reinitializer(2) {
+        _initializeAdmin(admin);
     }
 
     // -------------------------------------------------------------------------
@@ -149,7 +150,7 @@ contract EpochRegistry is
     // -------------------------------------------------------------------------
 
     /// @inheritdoc IEpochRegistry
-    function triggerEmergencyRotation() external override onlyOwner {
+    function triggerEmergencyRotation() external override onlyAdmin {
         emergencyRotationRequested = true;
         emit EmergencyRotationTriggered(currentEpochId, msg.sender);
     }
@@ -157,7 +158,7 @@ contract EpochRegistry is
     /// @inheritdoc IEpochRegistry
     function setGracePeriodEpochs(
         uint256 _gracePeriodEpochs
-    ) external override onlyOwner {
+    ) external override onlyAdmin {
         gracePeriodEpochs = _gracePeriodEpochs;
         emit GracePeriodUpdated(_gracePeriodEpochs);
     }

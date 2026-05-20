@@ -2,7 +2,6 @@
 pragma solidity ^0.8.27;
 
 import "@openzeppelin-upgrades/contracts/proxy/utils/Initializable.sol";
-import "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
 import "@eigenlayer/contracts/permissions/Pausable.sol";
 import {IOperatorRegistry} from "../interfaces/IOperatorRegistry.sol";
 import {BLSSignatureChecker} from "@eigenlayer-middleware/src/BLSSignatureChecker.sol";
@@ -11,6 +10,7 @@ import {
 } from "@eigenlayer-middleware/src/interfaces/ISlashingRegistryCoordinator.sol";
 import "@eigenlayer-middleware/src/libraries/BN254.sol";
 import {INewtonProverTaskManager} from "../interfaces/INewtonProverTaskManager.sol";
+import {AdminMixin} from "../mixins/AdminMixin.sol";
 
 /**
  * @title Unified TaskManagerStorage for both source and destination chains
@@ -18,7 +18,7 @@ import {INewtonProverTaskManager} from "../interfaces/INewtonProverTaskManager.s
  */
 abstract contract TaskManagerStorage is
     Initializable,
-    OwnableUpgradeable,
+    AdminMixin,
     Pausable,
     INewtonProverTaskManager
 {

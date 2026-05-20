@@ -2,10 +2,10 @@
 pragma solidity ^0.8.27;
 
 import {Initializable} from "@openzeppelin-upgrades/contracts/proxy/utils/Initializable.sol";
-import {OwnableUpgradeable} from "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
 import {
     ISlashingRegistryCoordinatorTypes
 } from "@eigenlayer-middleware/src/interfaces/ISlashingRegistryCoordinator.sol";
+import {AdminMixin} from "../mixins/AdminMixin.sol";
 
 /// @notice Sibling-contract callback interface implemented by `OperatorRegistry`.
 ///         The governance contract drives all mutations to the registry's
@@ -77,7 +77,7 @@ interface IOperatorRegistryEpochSync {
 ///         (the only place that knows about `ejector`). On destination
 ///         chains the `ejector` is `address(0)` by deploy convention so
 ///         the gate is unbypassable there.
-contract OperatorRegistryEpochGovernance is Initializable, OwnableUpgradeable {
+contract OperatorRegistryEpochGovernance is Initializable, AdminMixin {
     /* CUSTOM ERRORS */
     error InvalidAddress();
     error InvalidEpochDuration();
@@ -186,13 +186,22 @@ contract OperatorRegistryEpochGovernance is Initializable, OwnableUpgradeable {
         operatorRegistry = IOperatorRegistryEpochSync(_operatorRegistry);
     }
 
+    /// @notice Initialize access control and grant the guardian the ADMIN_ROLE.
+    /// @dev    Uses reinitializer(3) so it can run on deployments where initializeEpochs
+    ///         already consumed reinitializer(2).
+    function initializeV2(
+        address admin
+    ) external onlyOwner reinitializer(3) {
+        _initializeAdmin(admin);
+    }
+
     /// @notice Flip out of the bootstrap phase by setting the initial
-    ///         epoch duration. One-shot via `reinitializer(2)` so an
-    ///         upgrade path exists if we ever need to reset.
+    ///         epoch duration. One-shot via `reinitializer(4)` — called last
+    ///         after all bootstrap-phase mutations are complete.
     /// @param _initialEpochDurationBlocks Epoch duration in blocks. Must be > 0.
     function initializeEpochs(
         uint32 _initialEpochDurationBlocks
-    ) external reinitializer(2) onlyOwner {
+    ) external reinitializer(4) onlyOwner {
         if (_initialEpochDurationBlocks == 0) revert InvalidEpochDuration();
         currentEpoch = 0;
         epochStartBlock = uint64(block.number);
@@ -200,7 +209,7 @@ contract OperatorRegistryEpochGovernance is Initializable, OwnableUpgradeable {
         emit EpochAdvanced(0, uint64(block.number), _initialEpochDurationBlocks);
     }
 
-    /* ───────── BOOTSTRAP-PHASE MUTATORS — owner-only, gated on `epochDurationBlocks == 0` ───────── */
+    /* ───────── BOOTSTRAP-PHASE MUTATORS — owner-gated, gated on `epochDurationBlocks == 0` ───────── */
 
     /// @notice Add an operator to the whitelist (bootstrap phase only).
     function addToWhitelist(
@@ -250,19 +259,19 @@ contract OperatorRegistryEpochGovernance is Initializable, OwnableUpgradeable {
         _flushRemove(generator, false);
     }
 
-    /* ───────── QUEUE MUTATORS — owner-only, applied at next epoch boundary ───────── */
+    /* ───────── QUEUE MUTATORS — admin-gated, applied at next epoch boundary ───────── */
 
     /// @notice Queue an operator for whitelist addition at the next epoch.
     function queueAddToWhitelist(
         address operator
-    ) external onlyOwner {
+    ) external onlyAdmin {
         _queueWhitelistAdd(operator, currentEpoch + 1);
     }
 
     /// @notice Queue multiple operators for whitelist addition at the next epoch.
     function queueAddMultipleToWhitelist(
         address[] calldata operators
-    ) external onlyOwner {
+    ) external onlyAdmin {
         uint32 effectiveEpoch = currentEpoch + 1;
         for (uint256 i = 0; i < operators.length; ++i) {
             _queueWhitelistAdd(operators[i], effectiveEpoch);
@@ -275,7 +284,7 @@ contract OperatorRegistryEpochGovernance is Initializable, OwnableUpgradeable {
     ///         events that off-chain indexers would mis-index.
     function queueRemoveFromWhitelist(
         address operator
-    ) external onlyOwner {
+    ) external onlyAdmin {
         if (operator == address(0)) revert InvalidAddress();
         uint32 effectiveEpoch = currentEpoch + 1;
         _pendingWhitelistRemovals[effectiveEpoch].push(operator);
@@ -285,14 +294,14 @@ contract OperatorRegistryEpochGovernance is Initializable, OwnableUpgradeable {
     /// @notice Queue a task generator for addition at the next epoch.
     function queueAddTaskGenerator(
         address generator
-    ) external onlyOwner {
+    ) external onlyAdmin {
         _queueTaskGeneratorAdd(generator, currentEpoch + 1);
     }
 
     /// @notice Queue multiple task generators for addition at the next epoch.
     function queueAddMultipleToTaskGenerators(
         address[] calldata generators
-    ) external onlyOwner {
+    ) external onlyAdmin {
         uint32 effectiveEpoch = currentEpoch + 1;
         for (uint256 i = 0; i < generators.length; ++i) {
             _queueTaskGeneratorAdd(generators[i], effectiveEpoch);
@@ -304,7 +313,7 @@ contract OperatorRegistryEpochGovernance is Initializable, OwnableUpgradeable {
     ///         see `queueRemoveFromWhitelist` for rationale.
     function queueRemoveTaskGenerator(
         address generator
-    ) external onlyOwner {
+    ) external onlyAdmin {
         if (generator == address(0)) revert InvalidAddress();
         uint32 effectiveEpoch = currentEpoch + 1;
         _pendingTaskGeneratorRemovals[effectiveEpoch].push(generator);
@@ -386,12 +395,12 @@ contract OperatorRegistryEpochGovernance is Initializable, OwnableUpgradeable {
     /* ───────── EPOCH DURATION GOVERNANCE ───────── */
 
     /// @notice Queue a new epoch duration; takes effect at the next advance.
-    /// @dev    Owner-only. The new duration is consumed at the next
+    /// @dev    The new duration is consumed at the next
     ///         `applyPendingChanges()` and replaces `epochDurationBlocks`.
     ///         A queued duration overwrites any prior pending duration.
     function setEpochDurationBlocks(
         uint32 newDuration
-    ) external onlyOwner {
+    ) external onlyAdmin {
         if (newDuration == 0) revert InvalidEpochDuration();
         pendingEpochDurationBlocks = newDuration;
         emit EpochDurationBlocksQueued(newDuration, currentEpoch + 1);

@@ -199,7 +199,7 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
 
     function updateTaskResponseWindowBlock(
         uint32 _taskResponseWindowBlock
-    ) external onlyOwner {
+    ) external onlyAdmin {
         taskResponseWindowBlock = _taskResponseWindowBlock;
     }
 
@@ -208,10 +208,9 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
     // the EIP-170 split); updates flow through `setEpochDurationBlocks(uint32)` +
     // `applyPendingChanges()` on the governance contract, and TaskManager reads through
     // `epochBlocks()` which proxies to `OperatorRegistry.epochDurationBlocks()`.
-
     function updateTaskCreationBufferWindow(
         uint32 _taskCreationBufferWindow
-    ) external onlyOwner {
+    ) external onlyAdmin {
         taskCreationBufferWindow = _taskCreationBufferWindow;
     }
 
@@ -219,7 +218,7 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
     /// @param _version Min factory version (empty string to disable)
     function setMinCompatibleVersion(
         string calldata _version
-    ) external onlyOwner {
+    ) external onlyAdmin {
         minCompatiblePolicyVersion = _version;
     }
 
@@ -228,7 +227,7 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
     /// @dev This is needed when SourceTaskResponseHandler code changes since it's not upgradeable
     function updateTaskResponseHandler(
         address _taskResponseHandler
-    ) external onlyOwner {
+    ) external onlyAdmin {
         require(_taskResponseHandler != address(0), TaskManagerErrors.InvalidTaskResponseHandler());
         taskResponseHandler = _taskResponseHandler;
         emit TaskResponseHandlerUpdated(_taskResponseHandler);

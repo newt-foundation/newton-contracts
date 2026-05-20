@@ -2,14 +2,14 @@
 pragma solidity ^0.8.27;
 
 import {ISP1Verifier} from "@sp1-contracts/ISP1Verifier.sol";
-import {OwnableUpgradeable} from "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
 import {INewtonProverTaskManager} from "../interfaces/INewtonProverTaskManager.sol";
 import {IRegoVerifier} from "../interfaces/IRegoVerifier.sol";
+import {AdminMixin} from "../mixins/AdminMixin.sol";
 
 /// @title RegoVerifier
 /// @author denniswon
 /// @notice This contract implements verifying the proof of evaluating a rego policy.
-contract RegoVerifier is OwnableUpgradeable, IRegoVerifier {
+contract RegoVerifier is AdminMixin, IRegoVerifier {
     address public verifier;
     bytes32 public regoProgramVKey;
 
@@ -31,6 +31,12 @@ contract RegoVerifier is OwnableUpgradeable, IRegoVerifier {
         _transferOwnership(_owner);
         verifier = _verifier;
         regoProgramVKey = _regoProgramVKey;
+    }
+
+    function initializeV2(
+        address admin
+    ) external onlyOwner reinitializer(2) {
+        _initializeAdmin(admin);
     }
 
     /// @notice Update the verifier address

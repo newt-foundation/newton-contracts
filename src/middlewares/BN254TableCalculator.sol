@@ -2,9 +2,9 @@
 pragma solidity ^0.8.27;
 
 import "@openzeppelin-upgrades/contracts/proxy/utils/Initializable.sol";
-import "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
 import "@eigenlayer/contracts/permissions/Pausable.sol";
 import "@eigenlayer/contracts/mixins/SemVerMixin.sol";
+import {AdminMixin} from "../mixins/AdminMixin.sol";
 
 import {OperatorSet} from "@eigenlayer/contracts/libraries/OperatorSetLib.sol";
 import {BN254} from "@eigenlayer/contracts/libraries/BN254.sol";
@@ -23,16 +23,12 @@ import {
  */
 contract BN254TableCalculator is
     Initializable,
-    OwnableUpgradeable,
+    AdminMixin,
     Pausable,
     SemVerMixin,
     IOperatorTableCalculator
 {
     using BN254 for BN254.G1Point;
-
-    // =============================================================
-    //                           CONSTANTS
-    // =============================================================
 
     /// @notice Pause flag for operator updates
     uint8 public constant PAUSED_OPERATOR_UPDATES = 0;
@@ -152,6 +148,12 @@ contract BN254TableCalculator is
         _setPausedStatus(initialPausedStatus);
     }
 
+    function initializeV2(
+        address admin
+    ) external onlyOwner reinitializer(2) {
+        _initializeAdmin(admin);
+    }
+
     // =============================================================
     //                 OPERATOR SET CONFIGURATION
     // =============================================================
@@ -164,7 +166,7 @@ contract BN254TableCalculator is
     function configureOperatorSet(
         OperatorSet calldata operatorSet,
         uint256 numWeightTypes
-    ) external onlyOwner {
+    ) external onlyAdmin {
         bytes32 opSetHash = _hashOperatorSet(operatorSet);
 
         OperatorSetData storage data = _operatorSetData[opSetHash];
@@ -191,7 +193,7 @@ contract BN254TableCalculator is
         address operator,
         BN254.G1Point calldata pubkey,
         uint256[] calldata weights
-    ) external onlyOwner onlyWhenNotPaused(PAUSED_OPERATOR_UPDATES) {
+    ) external onlyAdmin onlyWhenNotPaused(PAUSED_OPERATOR_UPDATES) {
         require(pubkey.X != 0 || pubkey.Y != 0, InvalidBLSPubkey());
         require(weights.length > 0, EmptyWeights());
 
@@ -234,7 +236,7 @@ contract BN254TableCalculator is
     function deregisterOperator(
         OperatorSet calldata operatorSet,
         address operator
-    ) external onlyOwner onlyWhenNotPaused(PAUSED_OPERATOR_UPDATES) {
+    ) external onlyAdmin onlyWhenNotPaused(PAUSED_OPERATOR_UPDATES) {
         bytes32 opSetHash = _hashOperatorSet(operatorSet);
         OperatorSetData storage setData = _operatorSetData[opSetHash];
         require(setData.isConfigured, OperatorSetNotConfigured());
@@ -276,7 +278,7 @@ contract BN254TableCalculator is
         OperatorSet calldata operatorSet,
         address operator,
         uint256[] calldata newWeights
-    ) external onlyOwner onlyWhenNotPaused(PAUSED_OPERATOR_UPDATES) {
+    ) external onlyAdmin onlyWhenNotPaused(PAUSED_OPERATOR_UPDATES) {
         bytes32 opSetHash = _hashOperatorSet(operatorSet);
         OperatorSetData storage setData = _operatorSetData[opSetHash];
         require(setData.isConfigured, OperatorSetNotConfigured());
@@ -308,7 +310,7 @@ contract BN254TableCalculator is
         OperatorSet calldata operatorSet,
         address operator,
         BN254.G1Point calldata newPubkey
-    ) external onlyOwner onlyWhenNotPaused(PAUSED_OPERATOR_UPDATES) {
+    ) external onlyAdmin onlyWhenNotPaused(PAUSED_OPERATOR_UPDATES) {
         require(newPubkey.X != 0 || newPubkey.Y != 0, InvalidBLSPubkey());
 
         bytes32 opSetHash = _hashOperatorSet(operatorSet);
@@ -339,7 +341,7 @@ contract BN254TableCalculator is
     function setOperatorInfoTreeRoot(
         OperatorSet calldata operatorSet,
         bytes32 operatorInfoTreeRoot
-    ) external onlyOwner {
+    ) external onlyAdmin {
         bytes32 opSetHash = _hashOperatorSet(operatorSet);
         OperatorSetData storage setData = _operatorSetData[opSetHash];
         require(setData.isConfigured, OperatorSetNotConfigured());

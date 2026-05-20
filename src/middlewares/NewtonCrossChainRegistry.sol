@@ -2,9 +2,9 @@
 pragma solidity ^0.8.27;
 
 import "@openzeppelin-upgrades/contracts/proxy/utils/Initializable.sol";
-import "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
 import "@eigenlayer/contracts/permissions/Pausable.sol";
 import "@eigenlayer/contracts/mixins/SemVerMixin.sol";
+import {AdminMixin} from "../mixins/AdminMixin.sol";
 
 import {OperatorSet} from "@eigenlayer/contracts/libraries/OperatorSetLib.sol";
 import {
@@ -22,11 +22,7 @@ import {ICrossChainRegistryTypes} from "@eigenlayer/contracts/interfaces/ICrossC
  *      Newton's registry handles other L2s (e.g., Arbitrum, Optimism, Polygon) that EigenLayer
  *      cross-chain infrastructure doesn't yet support.
  */
-contract NewtonCrossChainRegistry is Initializable, OwnableUpgradeable, Pausable, SemVerMixin {
-    // =============================================================
-    //                           CONSTANTS
-    // =============================================================
-
+contract NewtonCrossChainRegistry is Initializable, AdminMixin, Pausable, SemVerMixin {
     /// @notice Pause flag for operator set configuration updates
     uint8 public constant PAUSED_OPERATOR_SET_CONFIG = 0;
 
@@ -140,6 +136,12 @@ contract NewtonCrossChainRegistry is Initializable, OwnableUpgradeable, Pausable
         _setPausedStatus(initialPausedStatus);
     }
 
+    function initializeV2(
+        address admin
+    ) external onlyOwner reinitializer(2) {
+        _initializeAdmin(admin);
+    }
+
     // =============================================================
     //                    OPERATOR SET MANAGEMENT
     // =============================================================
@@ -155,7 +157,7 @@ contract NewtonCrossChainRegistry is Initializable, OwnableUpgradeable, Pausable
         OperatorSet calldata operatorSet,
         IOperatorTableCalculator operatorTableCalculator,
         ICrossChainRegistryTypes.OperatorSetConfig calldata operatorSetConfig
-    ) external onlyOwner onlyWhenNotPaused(PAUSED_OPERATOR_SET_CONFIG) {
+    ) external onlyAdmin onlyWhenNotPaused(PAUSED_OPERATOR_SET_CONFIG) {
         require(address(operatorTableCalculator) != address(0), InvalidOperatorTableCalculator());
         require(operatorSetConfig.owner != address(0), InvalidOwner());
 
@@ -258,7 +260,7 @@ contract NewtonCrossChainRegistry is Initializable, OwnableUpgradeable, Pausable
      */
     function addChainIDsToWhitelist(
         uint256[] calldata chainIds
-    ) external onlyOwner onlyWhenNotPaused(PAUSED_CHAIN_WHITELIST) {
+    ) external onlyAdmin onlyWhenNotPaused(PAUSED_CHAIN_WHITELIST) {
         require(chainIds.length > 0, EmptyChainIds());
 
         for (uint256 i = 0; i < chainIds.length; i++) {
@@ -277,7 +279,7 @@ contract NewtonCrossChainRegistry is Initializable, OwnableUpgradeable, Pausable
      */
     function removeChainIDsFromWhitelist(
         uint256[] calldata chainIds
-    ) external onlyOwner onlyWhenNotPaused(PAUSED_CHAIN_WHITELIST) {
+    ) external onlyAdmin onlyWhenNotPaused(PAUSED_CHAIN_WHITELIST) {
         require(chainIds.length > 0, EmptyChainIds());
 
         for (uint256 i = 0; i < chainIds.length; i++) {

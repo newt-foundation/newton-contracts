@@ -6,9 +6,9 @@ import {IEnclaveVersionRegistry} from "../interfaces/IEnclaveVersionRegistry.sol
 import {IOperatorRegistry} from "../interfaces/IOperatorRegistry.sol";
 import {INewtonAddressesProvider} from "../interfaces/INewtonAddressesProvider.sol";
 import {AddressesProviderConsumer} from "../mixins/AddressesProviderConsumer.sol";
+import {AdminMixin} from "../mixins/AdminMixin.sol";
 
 import {Initializable} from "@openzeppelin-upgrades/contracts/proxy/utils/Initializable.sol";
-import {OwnableUpgradeable} from "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
 
 /// @title EnclaveVersionRegistry
 ///
@@ -31,7 +31,7 @@ import {OwnableUpgradeable} from "@openzeppelin-upgrades/contracts/access/Ownabl
 ///      trusted orchestrator for protocol state transitions.
 contract EnclaveVersionRegistry is
     Initializable,
-    OwnableUpgradeable,
+    AdminMixin,
     AddressesProviderConsumer,
     IEnclaveVersionRegistry
 {
@@ -93,6 +93,12 @@ contract EnclaveVersionRegistry is
     ) external initializer {
         __Ownable_init();
         _transferOwnership(_owner);
+    }
+
+    function initializeV2(
+        address admin
+    ) external onlyOwner reinitializer(2) {
+        _initializeAdmin(admin);
     }
 
     // -------------------------------------------------------------------------
@@ -200,7 +206,7 @@ contract EnclaveVersionRegistry is
     /// @param _rootCertHash keccak256 of the root CA DER bytes
     function setRootCertHash(
         bytes32 _rootCertHash
-    ) external onlyOwner {
+    ) external onlyAdmin {
         rootCertHash = _rootCertHash;
         emit RootCertHashUpdated(_rootCertHash);
     }

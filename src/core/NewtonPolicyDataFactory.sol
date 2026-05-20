@@ -2,7 +2,6 @@
 pragma solidity ^0.8.27;
 
 import "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
-import "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
 import "@openzeppelin/contracts/utils/Create2.sol";
 import {IERC165} from "@openzeppelin/contracts/interfaces/IERC165.sol";
@@ -12,8 +11,9 @@ import {INewtonPolicyData} from "../interfaces/INewtonPolicyData.sol";
 import {NewtonPolicyData} from "./NewtonPolicyData.sol";
 import {ChainLib} from "../libraries/ChainLib.sol";
 import {SemVerMixin} from "../mixins/SemVerMixin.sol";
+import {AdminMixin} from "../mixins/AdminMixin.sol";
 
-contract NewtonPolicyDataFactory is OwnableUpgradeable, SemVerMixin {
+contract NewtonPolicyDataFactory is AdminMixin, SemVerMixin {
     using EnumerableSet for EnumerableSet.AddressSet;
 
     error Create2Failed();
@@ -70,10 +70,15 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable, SemVerMixin {
         _verifiers.add(owner);
     }
 
+    function initializeV2(
+        address admin
+    ) external onlyOwner reinitializer(2) {
+        _initializeAdmin(admin);
+    }
+
     /* ERRORS */
     error OnlyNewtonPolicyData();
     error InterfaceNotSupported();
-    error OnlyVerifiers();
     error InvalidImplementationAddress();
 
     /* Modifiers */
@@ -89,11 +94,6 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable, SemVerMixin {
             success && result.length == 32 && abi.decode(result, (bool)), InterfaceNotSupported()
         );
 
-        _;
-    }
-
-    modifier onlyVerifiers() {
-        require(msg.sender == owner() || _verifiers.contains(msg.sender), OnlyVerifiers());
         _;
     }
 
@@ -177,7 +177,7 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable, SemVerMixin {
     ///      storage.
     function setImplementation(
         address newImplementation
-    ) external onlyOwner {
+    ) external onlyAdmin {
         require(newImplementation.code.length > 0, InvalidImplementationAddress());
         address old = implementation;
         implementation = newImplementation;
@@ -232,7 +232,7 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable, SemVerMixin {
     function setPolicyDataVerified(
         address policyDataAddr,
         bool verified
-    ) external onlyVerifiers {
+    ) external onlyAdmin {
         policyDataVerifications[policyDataAddr] =
             NewtonMessage.VerificationInfo(msg.sender, verified, block.timestamp);
         emit PolicyDataVerificationUpdated(policyDataAddr, policyDataVerifications[policyDataAddr]);
@@ -246,7 +246,7 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable, SemVerMixin {
 
     function addVerifier(
         address verifier
-    ) external onlyOwner {
+    ) external onlyAdmin {
         if (_verifiers.add(verifier)) {
             emit VerifierAdded(verifier);
         }
@@ -254,7 +254,7 @@ contract NewtonPolicyDataFactory is OwnableUpgradeable, SemVerMixin {
 
     function removeVerifier(
         address verifier
-    ) external onlyOwner {
+    ) external onlyAdmin {
         if (_verifiers.remove(verifier)) {
             emit VerifierRemoved(verifier);
         }

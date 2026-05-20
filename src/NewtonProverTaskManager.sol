@@ -52,4 +52,10 @@ contract NewtonProverTaskManager is
         // NOTE: epochBlocks is no longer set here — it delegates to
         // `OperatorRegistry.epochDurationBlocks()`, seeded by the deployer's `initializeEpochs` call on `OperatorRegistryEpochGovernance`.
     }
+
+    function initializeV2(
+        address admin
+    ) external onlyOwner reinitializer(2) {
+        _initializeAdmin(admin);
+    }
 }

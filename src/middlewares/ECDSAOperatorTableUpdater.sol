@@ -2,10 +2,10 @@
 pragma solidity ^0.8.27;
 
 import "@openzeppelin-upgrades/contracts/proxy/utils/Initializable.sol";
-import "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
 import "@openzeppelin-upgrades/contracts/security/ReentrancyGuardUpgradeable.sol";
 import "@eigenlayer/contracts/permissions/Pausable.sol";
 import "@eigenlayer/contracts/mixins/SemVerMixin.sol";
+import {AdminMixin} from "../mixins/AdminMixin.sol";
 
 import {
     IBN254CertificateVerifier
@@ -38,7 +38,7 @@ import {LeafCalculatorMixin} from "@eigenlayer/contracts/mixins/LeafCalculatorMi
  */
 contract ECDSAOperatorTableUpdater is
     Initializable,
-    OwnableUpgradeable,
+    AdminMixin,
     Pausable,
     OperatorTableUpdaterStorage,
     SemVerMixin,
@@ -80,6 +80,12 @@ contract ECDSAOperatorTableUpdater is
         _latestReferenceTimestamp = uint32(block.timestamp);
     }
 
+    function initializeV2(
+        address admin
+    ) external onlyOwner reinitializer(2) {
+        _initializeAdmin(admin);
+    }
+
     // operator table
     struct OperatorTableData {
         OperatorSet operatorSet;
@@ -98,7 +104,7 @@ contract ECDSAOperatorTableUpdater is
         bytes32 globalTableRoot,
         uint32 referenceTimestamp,
         uint32 referenceBlockNumber
-    ) external onlyOwner onlyWhenNotPaused(PAUSED_GLOBAL_ROOT_UPDATE) nonReentrant {
+    ) external onlyAdmin onlyWhenNotPaused(PAUSED_GLOBAL_ROOT_UPDATE) nonReentrant {
         // validate timestamp
         require(referenceTimestamp <= block.timestamp, GlobalTableRootInFuture());
         require(referenceTimestamp > _latestReferenceTimestamp, GlobalTableRootStale());

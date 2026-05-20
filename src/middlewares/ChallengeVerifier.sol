@@ -13,7 +13,6 @@ import {
 } from "@eigenlayer-middleware/src/interfaces/IBLSSignatureChecker.sol";
 import "@eigenlayer-middleware/src/libraries/BN254.sol";
 import "@openzeppelin-upgrades/contracts/proxy/utils/Initializable.sol";
-import "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
 import "@openzeppelin-upgrades/contracts/security/ReentrancyGuardUpgradeable.sol";
 import {RegoVerifier} from "./RegoVerifier.sol";
 import {IRegoVerifier} from "../interfaces/IRegoVerifier.sol";
@@ -26,10 +25,11 @@ import {INewtonAddressesProvider} from "../interfaces/INewtonAddressesProvider.s
 import {EnclaveVersionRegistry} from "../core/EnclaveVersionRegistry.sol";
 import {IEnclaveVersionRegistry} from "../interfaces/IEnclaveVersionRegistry.sol";
 import {AddressesProviderConsumer} from "../mixins/AddressesProviderConsumer.sol";
+import {AdminMixin} from "../mixins/AdminMixin.sol";
 
 contract ChallengeVerifier is
     Initializable,
-    OwnableUpgradeable,
+    AdminMixin,
     ReentrancyGuardUpgradeable,
     AddressesProviderConsumer
 {
@@ -132,6 +132,12 @@ contract ChallengeVerifier is
         isChallengeEnabled = _isChallengeEnabled;
         taskChallengeWindowBlock = _taskChallengeWindowBlock;
         taskResponseWindowBlock = _taskResponseWindowBlock;
+    }
+
+    function initializeV2(
+        address admin
+    ) external onlyOwner reinitializer(2) {
+        _initializeAdmin(admin);
     }
 
     /* EXTERNAL FUNCTIONS */
@@ -377,7 +383,7 @@ contract ChallengeVerifier is
         return taskSuccesfullyChallenged[taskId];
     }
 
-    /* OWNER FUNCTIONS */
+    /* ADMIN FUNCTIONS */
     function setIsChallengeEnabled(
         bool _isChallengeEnabled
     ) external onlyOwner {
@@ -403,7 +409,7 @@ contract ChallengeVerifier is
     function setRegisteredDestinationChain(
         uint256 chainId,
         bool registered
-    ) external onlyOwner {
+    ) external onlyAdmin {
         registeredDestinationChains[chainId] = registered;
         emit DestinationChainRegistered(chainId, registered);
     }
@@ -730,7 +736,7 @@ contract ChallengeVerifier is
     /// @notice Set the IdentityRegistry address for privacy task detection
     function setIdentityRegistry(
         address _identityRegistry
-    ) external onlyOwner {
+    ) external onlyAdmin {
         identityRegistry = _identityRegistry;
         emit IdentityRegistrySet(_identityRegistry);
     }
@@ -738,14 +744,14 @@ contract ChallengeVerifier is
     /// @notice Set the ConfidentialDataRegistry address for privacy task detection
     function setConfidentialDataRegistry(
         address _confidentialDataRegistry
-    ) external onlyOwner {
+    ) external onlyAdmin {
         confidentialDataRegistry = _confidentialDataRegistry;
         emit ConfidentialDataRegistrySet(_confidentialDataRegistry);
     }
 
     function setAttestationProofVerifier(
         address _attestationProofVerifier
-    ) external onlyOwner {
+    ) external onlyAdmin {
         attestationProofVerifier = _attestationProofVerifier;
         emit AttestationProofVerifierSet(_attestationProofVerifier);
     }

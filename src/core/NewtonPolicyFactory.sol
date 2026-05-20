@@ -2,7 +2,6 @@
 pragma solidity ^0.8.27;
 
 import "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
-import "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
 import "@openzeppelin/contracts/utils/Create2.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
@@ -11,8 +10,9 @@ import {INewtonPolicy} from "../interfaces/INewtonPolicy.sol";
 import {NewtonPolicy} from "./NewtonPolicy.sol";
 import {ChainLib} from "../libraries/ChainLib.sol";
 import {SemVerMixin} from "../mixins/SemVerMixin.sol";
+import {AdminMixin} from "../mixins/AdminMixin.sol";
 
-contract NewtonPolicyFactory is OwnableUpgradeable, SemVerMixin {
+contract NewtonPolicyFactory is AdminMixin, SemVerMixin {
     using EnumerableSet for EnumerableSet.AddressSet;
 
     error Create2Failed();
@@ -60,15 +60,14 @@ contract NewtonPolicyFactory is OwnableUpgradeable, SemVerMixin {
         _verifiers.add(owner);
     }
 
-    /* ERRORS */
-    error OnlyVerifiers();
-    error InvalidImplementationAddress();
-
-    /* Modifiers */
-    modifier onlyVerifiers() {
-        require(msg.sender == owner() || _verifiers.contains(msg.sender), OnlyVerifiers());
-        _;
+    function initializeV2(
+        address admin
+    ) external onlyOwner reinitializer(2) {
+        _initializeAdmin(admin);
     }
+
+    /* ERRORS */
+    error InvalidImplementationAddress();
 
     function deployPolicy(
         string memory _entrypoint,
@@ -203,7 +202,7 @@ contract NewtonPolicyFactory is OwnableUpgradeable, SemVerMixin {
     function setPolicyVerification(
         address policyAddr,
         bool verified
-    ) external onlyVerifiers {
+    ) external onlyAdmin {
         policyVerifications[policyAddr] =
             NewtonMessage.VerificationInfo(msg.sender, verified, block.timestamp);
         emit PolicyVerificationUpdated(policyAddr, policyVerifications[policyAddr]);
@@ -217,7 +216,7 @@ contract NewtonPolicyFactory is OwnableUpgradeable, SemVerMixin {
 
     function addVerifier(
         address verifier
-    ) external onlyOwner {
+    ) external onlyAdmin {
         if (_verifiers.add(verifier)) {
             emit VerifierAdded(verifier);
         }
@@ -225,7 +224,7 @@ contract NewtonPolicyFactory is OwnableUpgradeable, SemVerMixin {
 
     function removeVerifier(
         address verifier
-    ) external onlyOwner {
+    ) external onlyAdmin {
         if (_verifiers.remove(verifier)) {
             emit VerifierRemoved(verifier);
         }
