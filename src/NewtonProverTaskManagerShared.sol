@@ -47,7 +47,7 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
 
     function createNewTask(
         Task calldata task
-    ) external onlyTaskGenerator whenNotPaused {
+    ) external onlyTaskGenerator onlyWhenNotPaused(PAUSED_CREATE_TASK) {
         require(
             allTaskHashes[task.taskId] == bytes32(0),
             TaskLib.TaskAlreadyExists(allTaskHashes[task.taskId])
@@ -77,7 +77,12 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
         TaskResponse calldata taskResponse,
         bytes calldata signatureData,
         bytes calldata attestationData
-    ) external onlyTaskGenerator onlyValidTaskResponse(task, taskResponse) whenNotPaused {
+    )
+        external
+        onlyTaskGenerator
+        onlyValidTaskResponse(task, taskResponse)
+        onlyWhenNotPaused(PAUSED_RESPOND_TASK)
+    {
         bytes32 taskId = taskResponse.taskId;
         require(
             TaskLib.taskHash(task) == allTaskHashes[taskId],
@@ -150,7 +155,7 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
         ResponseCertificate calldata responseCertificate,
         ChallengeData calldata challenge,
         BN254.G1Point[] memory pubkeysOfNonSigningOperators
-    ) external whenNotPaused {
+    ) external onlyWhenNotPaused(PAUSED_CHALLENGE) {
         bool isChallengeResolved = ChallengeVerifier(challengeVerifier)
             .raiseAndResolveChallenge(
                 task, taskResponse, responseCertificate, challenge, pubkeysOfNonSigningOperators
@@ -179,7 +184,7 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
         ChallengeData calldata challenge,
         bytes calldata signatureData,
         BN254.G1Point[] memory pubkeysOfNonSigningOperators
-    ) external whenNotPaused {
+    ) external onlyWhenNotPaused(PAUSED_SLASHING) {
         bool isChallengeResolved = ChallengeVerifier(challengeVerifier)
             .slashForCrossChainChallenge(
                 destChainId,
@@ -199,7 +204,7 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
 
     function updateTaskResponseWindowBlock(
         uint32 _taskResponseWindowBlock
-    ) external onlyAdmin {
+    ) external onlyOwner {
         taskResponseWindowBlock = _taskResponseWindowBlock;
     }
 
@@ -227,7 +232,7 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
     /// @dev This is needed when SourceTaskResponseHandler code changes since it's not upgradeable
     function updateTaskResponseHandler(
         address _taskResponseHandler
-    ) external onlyAdmin {
+    ) external onlyOwner {
         require(_taskResponseHandler != address(0), TaskManagerErrors.InvalidTaskResponseHandler());
         taskResponseHandler = _taskResponseHandler;
         emit TaskResponseHandlerUpdated(_taskResponseHandler);
@@ -235,7 +240,7 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
 
     function validateAttestation(
         NewtonMessage.Attestation calldata attestation
-    ) external whenNotPaused returns (bool) {
+    ) external onlyWhenNotPaused(PAUSED_ATTESTATION) returns (bool) {
         if (ChallengeVerifier(challengeVerifier).isTaskChallenged(attestation.taskId)) {
             return false;
         }
@@ -251,7 +256,7 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
         Task calldata task,
         TaskResponse calldata taskResponse,
         bytes calldata signatureData
-    ) external whenNotPaused returns (bool) {
+    ) external onlyWhenNotPaused(PAUSED_ATTESTATION) returns (bool) {
         // Delegate to AttestationValidator with taskResponseHandler for verification:
         // - Source chains: SourceTaskResponseHandler decodes NonSignerStakesAndSignature
         // - Destination chains: DestinationTaskResponseHandler decodes BN254Certificate
@@ -263,7 +268,7 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
         Task calldata task,
         TaskResponse calldata taskResponse,
         bytes calldata signatureData
-    ) external whenNotPaused {
+    ) external onlyWhenNotPaused(PAUSED_CHALLENGE) {
         ChallengeVerifier(challengeVerifier)
             .challengeDirectlyVerifiedAttestation(
                 task, taskResponse, signatureData, taskResponseHandler
@@ -274,7 +279,7 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
     function challengeDirectlyVerifiedMismatch(
         Task calldata task,
         TaskResponse calldata taskResponse
-    ) external whenNotPaused {
+    ) external onlyWhenNotPaused(PAUSED_CHALLENGE) {
         ChallengeVerifier(challengeVerifier).challengeDirectlyVerifiedMismatch(task, taskResponse);
         emit TaskChallengedSuccessfully(taskResponse.taskId, msg.sender);
     }

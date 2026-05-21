@@ -736,7 +736,7 @@ contract ChallengeVerifier is
     /// @notice Set the IdentityRegistry address for privacy task detection
     function setIdentityRegistry(
         address _identityRegistry
-    ) external onlyAdmin {
+    ) external onlyOwner {
         identityRegistry = _identityRegistry;
         emit IdentityRegistrySet(_identityRegistry);
     }
@@ -744,14 +744,14 @@ contract ChallengeVerifier is
     /// @notice Set the ConfidentialDataRegistry address for privacy task detection
     function setConfidentialDataRegistry(
         address _confidentialDataRegistry
-    ) external onlyAdmin {
+    ) external onlyOwner {
         confidentialDataRegistry = _confidentialDataRegistry;
         emit ConfidentialDataRegistrySet(_confidentialDataRegistry);
     }
 
     function setAttestationProofVerifier(
         address _attestationProofVerifier
-    ) external onlyAdmin {
+    ) external onlyOwner {
         attestationProofVerifier = _attestationProofVerifier;
         emit AttestationProofVerifierSet(_attestationProofVerifier);
     }

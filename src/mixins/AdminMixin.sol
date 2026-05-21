@@ -18,8 +18,6 @@ abstract contract AdminMixin is OwnableUpgradeable {
     /// @custom:storage-location erc7201:newton.storage.AdminMixin
     struct AdminStorage {
         mapping(bytes32 => mapping(address => bool)) roleMembers;
-        mapping(bytes32 => bytes32) roleAdmin;
-        address defaultAdmin;
     }
 
     // keccak256(abi.encode(uint256(keccak256("newton.storage.AdminMixin")) - 1)) & ~bytes32(uint256(0xff))
@@ -66,20 +64,12 @@ abstract contract AdminMixin is OwnableUpgradeable {
         address admin
     ) internal {
         if (admin == address(0)) revert AdminAddressZero();
-        AdminStorage storage s = _getAdminStorage();
-        s.defaultAdmin = owner();
-        s.roleMembers[ADMIN_ROLE][admin] = true;
+        _getAdminStorage().roleMembers[ADMIN_ROLE][admin] = true;
     }
 
-    /// @dev Override to migrate admin roles when ownership is transferred.
     function transferOwnership(
         address newOwner
     ) public virtual override onlyOwner {
-        AdminStorage storage s = _getAdminStorage();
-        address previousOwner = owner();
-        if (previousOwner != address(0)) {
-            s.defaultAdmin = newOwner;
-        }
         super.transferOwnership(newOwner);
     }
 }

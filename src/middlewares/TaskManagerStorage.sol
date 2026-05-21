@@ -30,6 +30,12 @@ abstract contract TaskManagerStorage is
      *
      */
 
+    uint8 public constant PAUSED_CREATE_TASK = 0;
+    uint8 public constant PAUSED_RESPOND_TASK = 1;
+    uint8 public constant PAUSED_CHALLENGE = 2;
+    uint8 public constant PAUSED_ATTESTATION = 3;
+    uint8 public constant PAUSED_SLASHING = 4;
+
     /// @notice The threshold denominator for quorum calculations
     uint256 internal constant _THRESHOLD_DENOMINATOR = 100;
 
