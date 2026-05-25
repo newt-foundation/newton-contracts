@@ -6,12 +6,22 @@ import {IERC165} from "@openzeppelin/contracts/interfaces/IERC165.sol";
 import {INewtonProverTaskManager} from "../interfaces/INewtonProverTaskManager.sol";
 import {INewtonPolicyClient} from "../interfaces/INewtonPolicyClient.sol";
 import {ISemVerMixin} from "../interfaces/ISemVerMixin.sol";
+import {SemVerMixin} from "./SemVerMixin.sol";
 import {NewtonPolicy} from "../core/NewtonPolicy.sol";
 import {NewtonMessage} from "../core/NewtonMessage.sol";
 import {INewtonPolicy} from "../interfaces/INewtonPolicy.sol";
 import {VersionLib} from "../libraries/VersionLib.sol";
+import {PROTOCOL_VERSION} from "../libraries/ProtocolVersion.sol";
 
-abstract contract NewtonPolicyClient is INewtonPolicyClient {
+abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
+    /// @notice Stamps the implementation with the protocol version it was compiled
+    ///         against so inheriting clients (e.g. vaults) expose `version()`. This
+    ///         lets off-chain tooling detect a client/protocol version drift; a
+    ///         client built before this change reverts on `version()`, which is
+    ///         itself the drift signal. No constructor argument, so existing
+    ///         inheritors require no change.
+    constructor() SemVerMixin(PROTOCOL_VERSION) {}
+
     /// @notice Function to check if a contract implements an interface
     /// @param interfaceId The interface identifier to check
     /// @return True if the contract implements the interface, false otherwise
