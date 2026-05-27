@@ -30,6 +30,12 @@ contract StateCommitRegistry is
     /// per-namespace operator sets via a different interface.
     uint32 public constant OPERATOR_SET_ID = 0;
 
+    uint16 public constant BPS_DENOMINATOR = 10000;
+
+    /// @notice Minimum signed-stake quorum (basis points) required per strategy for state commits.
+    /// Configurable via `setMinQuorumBps` to avoid requiring a contract upgrade for tuning.
+    uint16 public stateCommitMinQuorumBps;
+
     /// @notice Current StateCommit struct version the registry will accept. Bumped in
     /// lockstep with any change to the StateCommit layout; old versions become immediately
     /// invalid (no dual-read) unless a future phase adds migration machinery. Freezes the
@@ -43,6 +49,21 @@ contract StateCommitRegistry is
     /// `owner()` so snapshot-injection authority can rotate without touching proxy-upgrade
     /// authority. Grant via `grantRole` post-deploy.
     bytes32 public constant SNAPSHOT_INJECTOR_ROLE = keccak256("SNAPSHOT_INJECTOR_ROLE");
+
+    /// @notice Raised when the provided quorum BPS is out of the valid range (1–10000).
+    error InvalidQuorumBps(uint16 provided);
+
+    /// @notice Raised when the signed-stake array is empty (no strategies returned from cert verification).
+    error EmptySignedStakes();
+
+    /// @notice Raised when the signed-stake array length does not match the total weights array.
+    error ArrayLenMismatch();
+
+    /// @notice Raised when a strategy's signed stake does not meet the minimum quorum threshold.
+    error InsufficientQuorum(uint256 strategyIndex, uint256 signedStake, uint256 requiredStake);
+
+    /// @notice Raised when a strategy reports zero total weight, which would make quorum vacuous.
+    error ZeroTotalWeight(uint256 strategyIndex);
 
     /// @notice Raised when `injectSealedSnapshot` receives a malformed `snapshotRef` or
     /// empty `signature` payload (NEWT-1078). Distinct from `InvalidPcr0Commitment`.
@@ -82,41 +103,48 @@ contract StateCommitRegistry is
     /// (`latestSnapshotRoot()`, `latestSnapshotSeq()`, `latestSnapshotTimestamp()`).
     event SealedSnapshotInjected(bytes32 indexed snapshotRefDigest);
 
+    /// @dev Emitted when admin updates the minimum quorum threshold. Security-critical
+    /// parameter — off-chain monitoring tracks this to detect unauthorized weakening of
+    /// state-commit quorum enforcement.
+    event MinQuorumBpsUpdated(uint16 oldBps, uint16 newBps);
+
     /// @dev OpenZeppelin v4 (bundled by eigenlayer-middleware) `Ownable` has a zero-arg
     /// constructor that auto-transfers ownership to `msg.sender` — do NOT invoke it with
     /// an argument here or Solidity will raise "Wrong argument count for modifier invocation".
     constructor(
         address addressesProvider,
-        address initialSnapshotInjector
+        address initialSnapshotInjector,
+        uint16 initialMinQuorumBps
     ) AddressesProviderConsumer(INewtonAddressesProvider(addressesProvider)) {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         if (initialSnapshotInjector != address(0)) {
             _grantRole(SNAPSHOT_INJECTOR_ROLE, initialSnapshotInjector);
         }
+        if (initialMinQuorumBps == 0 || initialMinQuorumBps > BPS_DENOMINATOR) {
+            revert InvalidQuorumBps(initialMinQuorumBps);
+        }
+        stateCommitMinQuorumBps = initialMinQuorumBps;
     }
 
     function commitStateRoot(
         StateCommit calldata c,
         bytes calldata blsCertificate
     ) external override {
-        if (c.version != STATE_COMMIT_V1) {
-            revert UnsupportedStateCommitVersion(STATE_COMMIT_V1, c.version);
-        }
-        if (c.pcr0Commitment == bytes32(0)) {
-            revert InvalidPcr0Commitment();
-        }
-        if (c.newStateRoot == bytes32(0)) {
-            revert InvalidNewStateRoot();
-        }
-        if (c.sequenceNo != currentSequenceNo + 1) {
-            revert SequenceGap(currentSequenceNo + 1, c.sequenceNo);
-        }
-        if (c.prevStateRoot != currentStateRoot) {
-            revert StateRootMismatch(currentStateRoot, c.prevStateRoot);
-        }
-        if (c.timestamp <= lastCommitTimestamp) {
-            revert TimestampRegression(lastCommitTimestamp, c.timestamp);
-        }
+        require(
+            c.version == STATE_COMMIT_V1, UnsupportedStateCommitVersion(STATE_COMMIT_V1, c.version)
+        );
+        require(c.pcr0Commitment != bytes32(0), InvalidPcr0Commitment());
+        require(c.newStateRoot != bytes32(0), InvalidNewStateRoot());
+        require(
+            c.sequenceNo == currentSequenceNo + 1, SequenceGap(currentSequenceNo + 1, c.sequenceNo)
+        );
+        require(
+            c.prevStateRoot == currentStateRoot,
+            StateRootMismatch(currentStateRoot, c.prevStateRoot)
+        );
+        require(
+            c.timestamp > lastCommitTimestamp, TimestampRegression(lastCommitTimestamp, c.timestamp)
+        );
 
         bytes32 messageHash = keccak256(abi.encode(c));
 
@@ -126,20 +154,34 @@ contract StateCommitRegistry is
         IBN254CertificateVerifierTypes.BN254Certificate memory cert =
             abi.decode(blsCertificate, (IBN254CertificateVerifierTypes.BN254Certificate));
 
-        if (cert.messageHash != messageHash) {
-            revert CertificateMessageHashMismatch(messageHash, cert.messageHash);
-        }
+        require(
+            cert.messageHash == messageHash,
+            CertificateMessageHashMismatch(messageHash, cert.messageHash)
+        );
 
         // Compose the operator set for verification. `serviceManager` comes from the
         // `AddressesProviderConsumer` mixin and is the AVS address for this chain.
         OperatorSet memory operatorSet = OperatorSet({avs: serviceManager, id: OPERATOR_SET_ID});
 
-        // The view verifier returns per-strategy signed stake weights; we discard
-        // them and rely on call success as proof that aggregate BLS verification
-        // passed against the cached operator-set snapshot at `cert.referenceTimestamp`.
-        // A failed signature or insufficient quorum reverts inside the verifier.
-        // `viewBN254CertificateVerifier` is already typed as the interface by the mixin.
-        viewBN254CertificateVerifier.verifyCertificate(operatorSet, cert);
+        uint256[] memory signedStakes =
+            viewBN254CertificateVerifier.verifyCertificate(operatorSet, cert);
+        IBN254CertificateVerifierTypes.BN254OperatorSetInfo memory info =
+            viewBN254CertificateVerifier.getOperatorSetInfo(operatorSet, cert.referenceTimestamp);
+
+        uint256 signedStakeLen = signedStakes.length;
+        uint256 totalWeightsLen = info.totalWeights.length;
+        require(signedStakeLen > 0, EmptySignedStakes());
+        require(signedStakeLen == totalWeightsLen, ArrayLenMismatch());
+
+        for (uint256 i = 0; i < signedStakeLen; ++i) {
+            uint256 totalWeight = info.totalWeights[i];
+            require(totalWeight > 0, ZeroTotalWeight(i));
+            uint256 requiredStake = totalWeight * uint256(stateCommitMinQuorumBps);
+            require(
+                signedStakes[i] * uint256(BPS_DENOMINATOR) >= requiredStake,
+                InsufficientQuorum(i, signedStakes[i] * BPS_DENOMINATOR, requiredStake)
+            );
+        }
 
         currentStateRoot = c.newStateRoot;
         currentSequenceNo = c.sequenceNo;
@@ -171,6 +213,18 @@ contract StateCommitRegistry is
         address /* operator */
     ) external pure returns (uint64) {
         return type(uint64).max;
+    }
+
+    /// @notice Update the minimum quorum threshold (basis points) for state commits.
+    function setMinQuorumBps(
+        uint16 newMinQuorumBps
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (newMinQuorumBps == 0 || newMinQuorumBps > BPS_DENOMINATOR) {
+            revert InvalidQuorumBps(newMinQuorumBps);
+        }
+        uint16 oldMinQuorumBps = stateCommitMinQuorumBps;
+        stateCommitMinQuorumBps = newMinQuorumBps;
+        emit MinQuorumBpsUpdated(oldMinQuorumBps, newMinQuorumBps);
     }
 
     /// @notice Admin escape hatch for disaster recovery (spec §S.19, §7.1, NEWT-1078). Injects a

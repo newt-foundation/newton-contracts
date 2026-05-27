@@ -97,6 +97,15 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
         // Operators generate policyTaskData independently; this validates the aggregated result
         TaskLib.validateTaskResponsePolicyData(taskResponse);
 
+        // Bind policy address and code hash to prevent first-responder policy injection
+        address clientPolicyAddr = INewtonPolicyClient(task.policyClient).getPolicyAddress();
+        require(taskResponse.policyAddress == clientPolicyAddr, TaskLib.InvalidPolicyAddress());
+        require(
+            keccak256(taskResponse.policyTaskData.policy)
+                == INewtonPolicy(clientPolicyAddr).getPolicyCodeHash(),
+            TaskLib.TaskResponseMismatch()
+        );
+
         // Enforce minimum policy data factory version if configured
         if (bytes(minCompatiblePolicyVersion).length > 0) {
             NewtonMessage.PolicyData[] calldata policyData = taskResponse.policyTaskData.policyData;
@@ -257,9 +266,28 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
         TaskResponse calldata taskResponse,
         bytes calldata signatureData
     ) external onlyWhenNotPaused(PAUSED_ATTESTATION) returns (bool) {
-        // Delegate to AttestationValidator with taskResponseHandler for verification:
-        // - Source chains: SourceTaskResponseHandler decodes NonSignerStakesAndSignature
-        // - Destination chains: DestinationTaskResponseHandler decodes BN254Certificate
+        if (ChallengeVerifier(challengeVerifier).isTaskChallenged(taskResponse.taskId)) {
+            return false;
+        }
+
+        if (bytes(minCompatiblePolicyVersion).length > 0) {
+            address policyFactory = INewtonPolicy(taskResponse.policyAddress).factory();
+            string memory factoryVersion = ISemVerMixin(policyFactory).version();
+            require(
+                VersionLib.isCompatible(factoryVersion, minCompatiblePolicyVersion),
+                TaskLib.InvalidPolicyVersion(factoryVersion, minCompatiblePolicyVersion)
+            );
+            NewtonMessage.PolicyData[] calldata policyData = taskResponse.policyTaskData.policyData;
+            for (uint256 i; i < policyData.length; ++i) {
+                address pdFactory = INewtonPolicyData(policyData[i].policyDataAddress).factory();
+                string memory pdVersion = ISemVerMixin(pdFactory).version();
+                require(
+                    VersionLib.isCompatible(pdVersion, minCompatiblePolicyVersion),
+                    TaskLib.InvalidPolicyVersion(pdVersion, minCompatiblePolicyVersion)
+                );
+            }
+        }
+
         return AttestationValidator(attestationValidator)
             .validateAttestationDirect(msg.sender, task, taskResponse, signatureData);
     }

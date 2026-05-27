@@ -160,6 +160,24 @@ contract AttestationValidator is Initializable, OwnableUpgradeable, AddressesPro
         return directlyVerifiedAttestations[taskId];
     }
 
+    /// @dev Thin external wrappers around revert-based TaskLib helpers so the
+    /// `isAttestationDirectValid` view sibling can convert reverts to `false` via
+    /// staticcall + try/catch without duplicating validation logic.
+    function _checkTaskResponsePolicyData(
+        INewtonProverTaskManager.TaskResponse calldata taskResponse
+    ) external view {
+        TaskLib.validateTaskResponsePolicyData(taskResponse);
+    }
+
+    function _checkSanityTaskResponse(
+        INewtonProverTaskManager.Task calldata task,
+        INewtonProverTaskManager.TaskResponse calldata taskResponse,
+        uint32 blockNumber,
+        uint32 responseWindowBlock
+    ) external pure {
+        TaskLib.sanityCheckTaskResponse(task, taskResponse, blockNumber, responseWindowBlock);
+    }
+
     // solhint-disable-next-line function-max-lines
     // IMPORTANT: must be kept in sync with isAttestationDirectValid
     function validateAttestationDirect(
@@ -183,6 +201,11 @@ contract AttestationValidator is Initializable, OwnableUpgradeable, AddressesPro
         require(
             INewtonPolicy(taskResponse.policyAddress).isPolicyVerified(),
             TaskLib.PolicyNotVerified()
+        );
+        require(
+            keccak256(taskResponse.policyTaskData.policy)
+                == INewtonPolicy(taskResponse.policyAddress).getPolicyCodeHash(),
+            TaskLib.TaskResponseMismatch()
         );
 
         bytes32 taskId = taskResponse.taskId;
@@ -260,6 +283,16 @@ contract AttestationValidator is Initializable, OwnableUpgradeable, AddressesPro
             TaskLib.TaskResponseMismatch()
         );
 
+        TaskLib.validateTaskResponsePolicyData(taskResponse);
+        if (!INewtonProverTaskManager(taskManager).isDestinationChain()) {
+            TaskLib.sanityCheckTaskResponse(
+                task,
+                taskResponse,
+                uint32(block.number),
+                INewtonProverTaskManager(taskManager).taskResponseWindowBlock()
+            );
+        }
+
         ITaskResponseHandler(taskResponseHandler)
             .verifyTaskResponse(task, taskResponse, signatureData);
 
@@ -308,6 +341,12 @@ contract AttestationValidator is Initializable, OwnableUpgradeable, AddressesPro
         // The respondToTask path checks this via validateTaskResponsePolicyData;
         // the direct path must check independently since respondToTask may not have run yet.
         if (!INewtonPolicy(taskResponse.policyAddress).isPolicyVerified()) return false;
+        if (
+            keccak256(taskResponse.policyTaskData.policy)
+                != INewtonPolicy(taskResponse.policyAddress).getPolicyCodeHash()
+        ) {
+            return false;
+        }
 
         bytes32 taskId = taskResponse.taskId;
         address taskResponseHandler = INewtonProverTaskManager(taskManager).taskResponseHandler();
@@ -359,9 +398,31 @@ contract AttestationValidator is Initializable, OwnableUpgradeable, AddressesPro
         }
         if (task.initializationTimestamp != taskResponse.initializationTimestamp) return false;
 
-        // can't stop this from reverting, but will pass if sigs are good
-        ITaskResponseHandler(taskResponseHandler)
-            .verifyTaskResponse(task, taskResponse, signatureData);
+        // Convert reverts in the validation helpers to `false` to preserve the
+        // non-reverting contract of the view sibling.
+        try this._checkTaskResponsePolicyData(taskResponse) {}
+        catch {
+            return false;
+        }
+        if (!INewtonProverTaskManager(taskManager).isDestinationChain()) {
+            try this._checkSanityTaskResponse(
+                task,
+                taskResponse,
+                uint32(block.number),
+                INewtonProverTaskManager(taskManager).taskResponseWindowBlock()
+            ) {}
+            catch {
+                return false;
+            }
+        }
+
+        try ITaskResponseHandler(taskResponseHandler)
+            .verifyTaskResponse(task, taskResponse, signatureData) returns (
+            bytes32
+        ) {}
+        catch {
+            return false;
+        }
 
         uint32 referenceBlock = uint32(block.number);
         uint32 expiration = referenceBlock + taskResponse.policyConfig.expireAfter;

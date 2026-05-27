@@ -25,6 +25,10 @@ import {INewtonAddressesProvider} from "../interfaces/INewtonAddressesProvider.s
 import {EnclaveVersionRegistry} from "../core/EnclaveVersionRegistry.sol";
 import {IEnclaveVersionRegistry} from "../interfaces/IEnclaveVersionRegistry.sol";
 import {AddressesProviderConsumer} from "../mixins/AddressesProviderConsumer.sol";
+import {OperatorVerifierLib} from "../libraries/OperatorVerifierLib.sol";
+import {
+    IBN254CertificateVerifierTypes
+} from "@eigenlayer/contracts/interfaces/IBN254CertificateVerifier.sol";
 import {AdminMixin} from "../mixins/AdminMixin.sol";
 
 contract ChallengeVerifier is
@@ -52,6 +56,8 @@ contract ChallengeVerifier is
     error AttestationNotMissing(bytes32 taskId);
     /// @notice AttestationProofVerifier not configured or proof data empty
     error AttestationProofNotProvided(bytes32 taskId);
+    /// @notice BN254CertificateVerifier address has not been configured
+    error CertVerifierNotSet();
 
     /* EVENTS */
     event ChallengeEnabled(bool indexed isChallengeEnabled);
@@ -318,11 +324,33 @@ contract ChallengeVerifier is
             != keccak256(abi.encode(taskResponse.evaluationResult));
         require(challengeSuccess, ChallengeFailed());
 
-        // Verify BLS certificate on source chain — the task response handler validates
-        // operator signatures and returns the cryptographically-derived hashOfNonSigners.
-        // This ensures the non-signer list is authentic, not attacker-supplied.
-        bytes32 hashOfNonSigners = ITaskResponseHandler(_taskResponseHandler)
-            .verifyTaskResponse(task, taskResponse, signatureData);
+        // Source handler expects NSS, cross-chain relays forward BN254Certificate.
+        // Fall through only on format-mismatch; propagate real validation failures.
+        bytes32 hashOfNonSigners;
+        try ITaskResponseHandler(_taskResponseHandler)
+            .verifyTaskResponse(task, taskResponse, signatureData) returns (
+            bytes32 h
+        ) {
+            hashOfNonSigners = h;
+        } catch (bytes memory reason) {
+            bytes4 selector;
+            if (reason.length >= 4) {
+                assembly {
+                    selector := mload(add(reason, 0x20))
+                }
+            }
+            if (selector != ITaskResponseHandler.InvalidTaskResponse.selector) {
+                assembly {
+                    revert(add(reason, 0x20), mload(reason))
+                }
+            }
+            if (address(viewBN254CertificateVerifier) == address(0)) revert CertVerifierNotSet();
+            IBN254CertificateVerifierTypes.BN254Certificate memory cert =
+                abi.decode(signatureData, (IBN254CertificateVerifierTypes.BN254Certificate));
+            hashOfNonSigners = OperatorVerifierLib.verifyTaskResponseCertificate(
+                task, taskResponse, cert, viewBN254CertificateVerifier, serviceManager
+            );
+        }
 
         // Process non-signing operators and validate against the verified certificate
         (

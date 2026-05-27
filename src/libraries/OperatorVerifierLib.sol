@@ -25,6 +25,9 @@ library OperatorVerifierLib {
     error InvalidQuorumThresholdPercentage();
     error CertificateMessageHashMismatch();
     error InvalidOperatorSetQuorums();
+    error ArrayLengthMismatch();
+    error EmptySignedStakes();
+    error ZeroTotalWeight(uint256 strategyIndex);
 
     /**
      * @notice Verify that all signing operators are whitelisted
@@ -223,10 +226,15 @@ library OperatorVerifierLib {
             revert InvalidQuorumThresholdPercentage();
         }
 
+        uint256 signedStakeLen = signedStakes.length;
+        require(signedStakeLen > 0, EmptySignedStakes());
+        require(signedStakeLen == operatorSetInfo.totalWeights.length, ArrayLengthMismatch());
+
         // verify threshold for each stake type
         // typically only one stake type (index 0), but verify all to be safe
-        for (uint256 i = 0; i < signedStakes.length; ++i) {
+        for (uint256 i = 0; i < signedStakeLen; ++i) {
             uint256 totalStake = operatorSetInfo.totalWeights[i];
+            require(totalStake > 0, ZeroTotalWeight(i));
             uint256 signedStake = signedStakes[i];
             uint256 requiredStake = (totalStake * task.quorumThresholdPercentage) / 100;
 
