@@ -26,6 +26,13 @@ contract NewtonPolicyFactory is AdminMixin, SemVerMixin {
     EnumerableSet.AddressSet private _verifiers;
     EnumerableSet.AddressSet private _policyOwners;
 
+    /// @notice Verification status applied to newly deployed policies by default.
+    /// @dev Set in `initialize()` to `!isMainnet()` (testnet/local verified, mainnet unverified),
+    ///      matching the original chain-id behavior. On a proxy upgrade this slot reads `false`
+    ///      for pre-existing factories (uninitialized), which preserves the mainnet default and
+    ///      lets a mainnet "stagef" deployment opt into `true` via `setDefaultPolicyVerified`.
+    bool public defaultPolicyVerified;
+
     event PolicyDeployed(
         address policy, INewtonPolicy.PolicyInfo policyInfo, string implementationVersion
     );
@@ -37,6 +44,7 @@ contract NewtonPolicyFactory is AdminMixin, SemVerMixin {
     );
     event VerifierAdded(address indexed verifier);
     event VerifierRemoved(address indexed verifier);
+    event DefaultPolicyVerifiedUpdated(bool verified);
     event OwnershipTransferredWithVerifierUpdate(
         address indexed previousOwner, address indexed newOwner
     );
@@ -58,6 +66,9 @@ contract NewtonPolicyFactory is AdminMixin, SemVerMixin {
         implementation = address(new NewtonPolicy());
         proxyAdmin = new ProxyAdmin();
         _verifiers.add(owner);
+        // Preserve the original chain-id default: testnet/local verify policies on deploy,
+        // mainnet does not. Mainnet "stagef" can opt in afterwards via setDefaultPolicyVerified.
+        defaultPolicyVerified = !ChainLib.isMainnet();
     }
 
     function initializeV2(
@@ -117,12 +128,11 @@ contract NewtonPolicyFactory is AdminMixin, SemVerMixin {
         policyAddr = proxy;
 
         ChainLib.requireSupportedChain();
-        if (ChainLib.isMainnet()) {
-            policyVerifications[policyAddr] = NewtonMessage.VerificationInfo(address(0), false, 0);
-        } else {
-            // set policy verification to default true for testnet
+        if (defaultPolicyVerified) {
             policyVerifications[policyAddr] =
                 NewtonMessage.VerificationInfo(owner(), true, block.timestamp);
+        } else {
+            policyVerifications[policyAddr] = NewtonMessage.VerificationInfo(address(0), false, 0);
         }
 
         ownersToPolicies[_owner].push(policyAddr);
@@ -197,6 +207,15 @@ contract NewtonPolicyFactory is AdminMixin, SemVerMixin {
         );
 
         predicted = Create2.computeAddress(salt, keccak256(bytecode));
+    }
+
+    /// @notice Set the verification status assigned to newly deployed policies.
+    /// @dev Does not affect already-deployed policies; use `setPolicyVerification` for those.
+    function setDefaultPolicyVerified(
+        bool verified
+    ) external onlyAdmin {
+        defaultPolicyVerified = verified;
+        emit DefaultPolicyVerifiedUpdated(verified);
     }
 
     function setPolicyVerification(
