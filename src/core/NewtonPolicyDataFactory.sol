@@ -27,6 +27,13 @@ contract NewtonPolicyDataFactory is AdminMixin, SemVerMixin {
 
     EnumerableSet.AddressSet private _verifiers;
 
+    /// @notice Verification status applied to newly deployed policy data by default.
+    /// @dev Set in `initialize()` to `!isMainnet()` (testnet/local verified, mainnet unverified),
+    ///      matching the original chain-id behavior. On a proxy upgrade this slot reads `false`
+    ///      for pre-existing factories (uninitialized), which preserves the mainnet default and
+    ///      lets a mainnet "stagef" deployment opt into `true` via `setDefaultPolicyDataVerified`.
+    bool public defaultPolicyDataVerified;
+
     /// @notice Struct used for salt generation to ensure consistent encoding
     struct SaltData {
         address factory;
@@ -50,6 +57,7 @@ contract NewtonPolicyDataFactory is AdminMixin, SemVerMixin {
     );
     event VerifierAdded(address indexed verifier);
     event VerifierRemoved(address indexed verifier);
+    event DefaultPolicyDataVerifiedUpdated(bool verified);
 
     constructor(
         string memory _version
@@ -68,6 +76,9 @@ contract NewtonPolicyDataFactory is AdminMixin, SemVerMixin {
         implementation = address(new NewtonPolicyData());
         proxyAdmin = new ProxyAdmin();
         _verifiers.add(owner);
+        // Preserve the original chain-id default: testnet/local verify policy data on deploy,
+        // mainnet does not. Mainnet "stagef" can opt in afterwards via setDefaultPolicyDataVerified.
+        defaultPolicyDataVerified = !ChainLib.isMainnet();
     }
 
     function initializeV2(
@@ -148,13 +159,12 @@ contract NewtonPolicyDataFactory is AdminMixin, SemVerMixin {
         policyDataAddr = proxy;
 
         ChainLib.requireSupportedChain();
-        if (ChainLib.isMainnet()) {
-            policyDataVerifications[policyDataAddr] =
-                NewtonMessage.VerificationInfo(address(0), false, 0);
-        } else {
-            // set policy verification to default true for testnet
+        if (defaultPolicyDataVerified) {
             policyDataVerifications[policyDataAddr] =
                 NewtonMessage.VerificationInfo(owner(), true, block.timestamp);
+        } else {
+            policyDataVerifications[policyDataAddr] =
+                NewtonMessage.VerificationInfo(address(0), false, 0);
         }
 
         if (ownersToPolicyData[_owner].length == 0) {
@@ -227,6 +237,15 @@ contract NewtonPolicyDataFactory is AdminMixin, SemVerMixin {
         );
 
         predicted = Create2.computeAddress(salt, keccak256(bytecode));
+    }
+
+    /// @notice Set the verification status assigned to newly deployed policy data.
+    /// @dev Does not affect already-deployed policy data; use `setPolicyDataVerified` for those.
+    function setDefaultPolicyDataVerified(
+        bool verified
+    ) external onlyAdmin {
+        defaultPolicyDataVerified = verified;
+        emit DefaultPolicyDataVerifiedUpdated(verified);
     }
 
     function setPolicyDataVerified(
