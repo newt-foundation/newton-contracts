@@ -262,6 +262,9 @@ contract AttestationValidator is Initializable, OwnableUpgradeable, AddressesPro
             attestationExpirations[taskId] != ATTESTATION_SPENT_SENTINEL, AttestationAlreadySpent()
         );
 
+        // Sanity check the task parameters
+        require(task.taskCreatedBlock < uint32(block.number), TaskLib.TaskCreatedBlockInFuture());
+
         // Bind every Task field that overlaps with TaskResponse to prevent a malicious
         // policy client from committing a crafted task hash that diverges from the signed
         // response. BLS consensus digest covers only `taskResponse` (see TaskLib.
@@ -284,14 +287,12 @@ contract AttestationValidator is Initializable, OwnableUpgradeable, AddressesPro
         );
 
         TaskLib.validateTaskResponsePolicyData(taskResponse);
-        if (!INewtonProverTaskManager(taskManager).isDestinationChain()) {
-            TaskLib.sanityCheckTaskResponse(
-                task,
-                taskResponse,
-                uint32(block.number),
-                INewtonProverTaskManager(taskManager).taskResponseWindowBlock()
-            );
-        }
+        TaskLib.sanityCheckTaskResponse(
+            task,
+            taskResponse,
+            uint32(block.number),
+            INewtonProverTaskManager(taskManager).taskResponseWindowBlock()
+        );
 
         ITaskResponseHandler(taskResponseHandler)
             .verifyTaskResponse(task, taskResponse, signatureData);
@@ -387,6 +388,9 @@ contract AttestationValidator is Initializable, OwnableUpgradeable, AddressesPro
         // This prevents double spending across both regular and direct flows
         if (attestationExpirations[taskId] == ATTESTATION_SPENT_SENTINEL) return false;
 
+        // Sanity check the task parameters
+        if (task.taskCreatedBlock >= uint32(block.number)) return false;
+
         // Bind every Task field that overlaps with TaskResponse (synced with validateAttestationDirect)
         if (task.taskId != taskResponse.taskId) return false;
         if (task.policyClient != taskResponse.policyClient) return false;
@@ -404,16 +408,14 @@ contract AttestationValidator is Initializable, OwnableUpgradeable, AddressesPro
         catch {
             return false;
         }
-        if (!INewtonProverTaskManager(taskManager).isDestinationChain()) {
-            try this._checkSanityTaskResponse(
-                task,
-                taskResponse,
-                uint32(block.number),
-                INewtonProverTaskManager(taskManager).taskResponseWindowBlock()
-            ) {}
-            catch {
-                return false;
-            }
+        try this._checkSanityTaskResponse(
+            task,
+            taskResponse,
+            uint32(block.number),
+            INewtonProverTaskManager(taskManager).taskResponseWindowBlock()
+        ) {}
+        catch {
+            return false;
         }
 
         try ITaskResponseHandler(taskResponseHandler)

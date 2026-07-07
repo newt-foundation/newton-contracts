@@ -172,6 +172,14 @@ contract ChallengeVerifier is
         INewtonPolicy policy = INewtonPolicy(taskResponse.policyTaskData.policyAddress);
         require(policy.isPolicyVerified(), TaskLib.PolicyNotVerified());
 
+        // Privacy tasks must NOT be slashed via the rego path. The SP1 rego circuit
+        // evaluates with EMPTY privacy/domain data (it has no decryption keys), so for a
+        // genuine privacy task the in-circuit result is privacy-blind and can differ from
+        // the operator's correct, privacy-aware result. A malicious challenger could
+        // otherwise submit a valid rego proof of this spurious mismatch and slash honest
+        // operators. Privacy tasks are challengeable only via challengeInvalidTeeAttestation.
+        require(!isPrivacyTask(taskResponse.policyClient), NotPrivacyTask(taskResponse.taskId));
+
         // Verify the rego proof. Reverts if the proof is invalid.
         IRegoVerifier.RegoContext memory context =
             RegoVerifier(regoVerifier).verifyRegoProof(challenge.data, challenge.proof);
@@ -289,6 +297,12 @@ contract ChallengeVerifier is
         // Verify the policy is valid
         INewtonPolicy policy = INewtonPolicy(taskResponse.policyTaskData.policyAddress);
         require(policy.isPolicyVerified(), TaskLib.PolicyNotVerified());
+
+        // Privacy tasks must NOT be slashed via the rego path (see raiseAndResolveChallenge).
+        // The SP1 rego circuit evaluates privacy tasks with empty domain data, so its result
+        // is privacy-blind and unreliable for slashing. Reject here so a degraded/malicious
+        // dest-chain challenger cannot relay a privacy-blind rego proof to slash on source.
+        require(!isPrivacyTask(taskResponse.policyClient), NotPrivacyTask(taskResponse.taskId));
 
         // Re-verify the ZK proof on source chain (trust-minimized: no bridge dependency)
         IRegoVerifier.RegoContext memory context =
@@ -448,6 +462,8 @@ contract ChallengeVerifier is
         bytes calldata signatureData,
         address _taskResponseHandler
     ) external onlyTaskManager nonReentrant {
+        require(isChallengeEnabled, ChallengeNotEnabled());
+
         bytes32 taskId = taskResponse.taskId;
 
         require(!taskSuccesfullyChallenged[taskId], NotChallengable());

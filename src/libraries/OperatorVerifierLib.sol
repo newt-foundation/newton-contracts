@@ -236,11 +236,11 @@ library OperatorVerifierLib {
             uint256 totalStake = operatorSetInfo.totalWeights[i];
             require(totalStake > 0, ZeroTotalWeight(i));
             uint256 signedStake = signedStakes[i];
-            uint256 requiredStake = (totalStake * task.quorumThresholdPercentage) / 100;
 
-            if (signedStake < requiredStake) {
-                revert InsufficientQuorumStake();
-            }
+            require(
+                totalStake * task.quorumThresholdPercentage <= 100 * signedStake,
+                InsufficientQuorumStake()
+            );
         }
 
         // calculate hashOfNonSigners from certificate
