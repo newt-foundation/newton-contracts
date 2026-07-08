@@ -76,21 +76,22 @@ library ChallengeLib {
     }
 
     /**
-     * @dev Slashes operators who signed incorrectly
+     * @dev Slashes operators who signed incorrectly.
+     * @param snapshotBlock Source-chain registry block at which to enumerate the operator set.
+     *        Same-chain callers pass the task's own created block; the cross-chain caller passes
+     *        the certificate-authenticated reference block (see ChallengeVerifier NEWT-1708).
      */
     function slashSigningOperators(
         ChallengeContext memory ctx,
         bytes calldata quorumNumbers,
-        uint32 taskCreatedBlock,
+        uint32 snapshotBlock,
         address[] memory addressOfNonSigningOperators
     ) external {
         OperatorStateRetriever.Operator[][] memory allOperatorInfo = OperatorStateRetriever(
                 ctx.operatorStateRetriever
             )
             .getOperatorState(
-                ISlashingRegistryCoordinator(ctx.registryCoordinator),
-                quorumNumbers,
-                taskCreatedBlock
+                ISlashingRegistryCoordinator(ctx.registryCoordinator), quorumNumbers, snapshotBlock
             );
 
         uint256 nonSignerLength = addressOfNonSigningOperators.length;

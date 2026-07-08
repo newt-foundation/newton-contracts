@@ -29,7 +29,18 @@ import {OperatorVerifierLib} from "../libraries/OperatorVerifierLib.sol";
 import {
     IBN254CertificateVerifierTypes
 } from "@eigenlayer/contracts/interfaces/IBN254CertificateVerifier.sol";
+import {IOperatorTableUpdater} from "@eigenlayer/contracts/interfaces/IOperatorTableUpdater.sol";
 import {AdminMixin} from "../mixins/AdminMixin.sol";
+
+/// @notice Minimal view of the certificate verifier's operator-table-updater accessor.
+/// @dev `ViewBN254CertificateVerifier` inherits this getter as a public immutable from
+///      EigenLayer's `BN254CertificateVerifierStorage`. Declaring it in a standalone
+///      interface (rather than extending `IViewBN254CertificateVerifier`) avoids a
+///      multiple-inheritance clash between that public state variable and the interface
+///      function in derived contracts.
+interface ICertVerifierUpdater {
+    function operatorTableUpdater() external view returns (IOperatorTableUpdater);
+}
 
 contract ChallengeVerifier is
     Initializable,
@@ -45,6 +56,8 @@ contract ChallengeVerifier is
     error ChallengeFailed();
     error OnlySourceChain();
     error UnregisteredDestinationChain(uint256 chainId);
+    /// @notice The caller-supplied destChainId does not match the proof-authenticated intent.chainId.
+    error DestChainIdIntentMismatch(uint256 destChainId, uint256 intentChainId);
     error CrossChainChallengeAlreadyProcessed(uint256 destChainId, bytes32 taskId);
     /// @notice Proof-supplied `policyCodeHash` does not match the on-chain policy deployment
     /// @dev Without this check an attacker could supply divergent policy bytes in the zkVM
@@ -58,8 +71,26 @@ contract ChallengeVerifier is
     error AttestationProofNotProvided(bytes32 taskId);
     /// @notice BN254CertificateVerifier address has not been configured
     error CertVerifierNotSet();
+    /// @notice Cross-chain slashing accepts exactly one quorum — the one the BN254
+    ///         certificate is verified against (operatorSet id = quorumNumbers[0]).
+    /// @dev Without this, `slashSigningOperators` would iterate every caller-supplied
+    ///      quorum while the certificate only authenticates the first, enabling
+    ///      cross-quorum mass slashing of operators who never signed the response.
+    error MultiQuorumNotAllowed();
+    /// @notice The certificate's referenceTimestamp has no source-chain block mapping.
+    /// @dev The slashing snapshot block is derived from this mapping rather than the
+    ///      caller-supplied `taskCreatedBlock` (which, for a relayed dest-chain task, is a
+    ///      destination block and cannot index the source registry). A zero value means the
+    ///      certificate's operator table was never confirmed on this chain — fail closed.
+    error SnapshotBlockNotSet(uint32 referenceTimestamp);
+    /// @notice The cross-chain quorum threshold is zero or above 100.
+    /// @dev A 0 threshold would make the stake check vacuous (any response, even one with zero
+    ///      signed stake, would clear the bar); > 100 is nonsensical. The NEWT-1708 fix is that the
+    ///      slash path reads this configured value at all, not the unauthenticated task field.
+    error InvalidCrossChainQuorumThreshold(uint256 threshold);
 
     /* EVENTS */
+    event CrossChainQuorumThresholdUpdated(uint256 indexed threshold);
     event ChallengeEnabled(bool indexed isChallengeEnabled);
     event DestinationChainRegistered(uint256 indexed chainId, bool indexed registered);
     event CrossChainChallengeRelayed(
@@ -86,8 +117,10 @@ contract ChallengeVerifier is
     mapping(bytes32 => bytes32) public allTaskResponses;
 
     /// @notice Tracks cross-chain challenges to prevent double-slashing
-    /// @dev Key: keccak256(abi.encode(taskHash, responseHash)) — content-addressed
-    ///      to prevent replay with different destChainId values
+    /// @dev Key: responseHash (the cert-signed consensus digest) alone — SECURITY (NEWT-1708)
+    ///      keying on the authenticated response, not taskHash(task), prevents an attacker from
+    ///      varying unauthenticated task fields (taskCreatedBlock, wasmArgs,
+    ///      quorumThresholdPercentage) to mint fresh keys and re-slash the same offense.
     mapping(bytes32 => bool) public crossChainChallenged;
 
     /// @notice Whitelisted destination chain IDs for cross-chain challenge relay
@@ -100,7 +133,16 @@ contract ChallengeVerifier is
     /// @notice AttestationProofVerifier for Type 2b challenges (invalid attestation with ZK proof)
     address public attestationProofVerifier;
 
-    uint256[42] private __gap;
+    /// @notice Configured cross-chain quorum threshold percentage used by the slashing path.
+    /// @dev SECURITY (NEWT-1708): on the slash path the cross-chain Task is caller-supplied and its
+    ///      `quorumThresholdPercentage` is unauthenticated, so slashing MUST NOT read it. This
+    ///      admin-configured value governs the slash bar instead. A stored 0 means "unset" —
+    ///      `crossChainQuorumThresholdPercentage()` returns the v1 default (40%) in that case, so
+    ///      already-deployed proxies (whose slot is 0) keep the protocol default without migration.
+    ///      See `setCrossChainQuorumThresholdPercentage` for the accepted range.
+    uint256 private _crossChainQuorumThresholdPercentage;
+
+    uint256[41] private __gap;
 
     /* MODIFIERS */
     modifier onlyTaskManager() {
@@ -283,12 +325,37 @@ contract ChallengeVerifier is
         require(serviceManager != address(0), OnlySourceChain());
         require(registeredDestinationChains[destChainId], UnregisteredDestinationChain(destChainId));
 
+        // SECURITY (NEWT-1708 related): bind the caller-supplied destChainId to the task's own
+        // intent.chainId. `task.intent` is authenticated below (taskHash(context.task) ==
+        // taskHash(task), and the SP1 circuit enforces task.intent == taskResponse.intent), so
+        // this ties the registered-chain gate above to the chain the proof actually attests to.
+        // Without it, a shared multichain AVS lets an attacker relay evidence from an
+        // unregistered/not-yet-onboarded chain while passing any registered destChainId.
+        require(
+            destChainId == task.intent.chainId,
+            DestChainIdIntentMismatch(destChainId, task.intent.chainId)
+        );
+
+        // SECURITY (NEWT-1708): the Task is caller-supplied and NOT stored on the source chain,
+        // so its slashing-relevant header fields must be pinned to certificate-authenticated data.
+        // Restrict to a single quorum: the BN254 certificate is only verified against the
+        // operator set derived from quorumNumbers[0], while slashSigningOperators would otherwise
+        // iterate EVERY caller-supplied quorum — letting an attacker append unrelated quorums and
+        // mass-slash operators who never signed this response.
+        require(task.quorumNumbers.length == 1, MultiQuorumNotAllowed());
+
         // Prevent double-slashing for the same cross-chain challenge.
-        // Key is content-addressed (task + response hash) rather than using caller-supplied
-        // destChainId, which would allow replay by passing different registered chain IDs.
+        // SECURITY (NEWT-1708): key ONLY on the response hash — the cert-signed consensus digest.
+        // The previous key mixed in taskHash(task), which includes task-only fields
+        // (taskCreatedBlock, wasmArgs, quorumThresholdPercentage) that neither the SP1 proof nor
+        // the certificate authenticate and that no longer affect the slash target. An attacker
+        // could vary those fields to mint fresh keys and re-slash the same operators repeatedly.
+        // TaskResponse contains none of them, so responseHash is invariant to that malleability:
+        // one signed response = one slash. (destChainId is intentionally excluded too — including
+        // it would let replay by passing different registered chain IDs.)
         bytes32 taskHashVal = TaskLib.taskHash(task);
         bytes32 responseHash = keccak256(abi.encode(taskResponse));
-        bytes32 crossChainKey = keccak256(abi.encode(taskHashVal, responseHash));
+        bytes32 crossChainKey = responseHash;
         require(
             !crossChainChallenged[crossChainKey],
             CrossChainChallengeAlreadyProcessed(destChainId, challenge.taskId)
@@ -340,7 +407,13 @@ contract ChallengeVerifier is
 
         // Source handler expects NSS, cross-chain relays forward BN254Certificate.
         // Fall through only on format-mismatch; propagate real validation failures.
+        //
+        // `snapshotBlock` is the source-chain registry block used to enumerate operators for
+        // slashing. On the BLS/source branch it is the task's own block (checkSignatures binds
+        // it via aggregate pairing). On the certificate/cross-chain branch we OVERRIDE it with
+        // the certificate-authenticated source block — see SECURITY note below.
         bytes32 hashOfNonSigners;
+        uint32 snapshotBlock = task.taskCreatedBlock;
         try ITaskResponseHandler(_taskResponseHandler)
             .verifyTaskResponse(task, taskResponse, signatureData) returns (
             bytes32 h
@@ -362,11 +435,33 @@ contract ChallengeVerifier is
             IBN254CertificateVerifierTypes.BN254Certificate memory cert =
                 abi.decode(signatureData, (IBN254CertificateVerifierTypes.BN254Certificate));
             hashOfNonSigners = OperatorVerifierLib.verifyTaskResponseCertificate(
-                task, taskResponse, cert, viewBN254CertificateVerifier, serviceManager
+                task,
+                taskResponse,
+                cert,
+                viewBN254CertificateVerifier,
+                serviceManager,
+                crossChainQuorumThresholdPercentage()
             );
+            // SECURITY (NEWT-1708): derive the slashing snapshot block from the certificate's
+            // BLS-authenticated referenceTimestamp instead of the caller-supplied
+            // `task.taskCreatedBlock`. For a relayed dest-chain task, taskCreatedBlock is a
+            // DESTINATION block and cannot index the source registry at all; leaving it
+            // caller-controlled also let an attacker pick an earlier block (shielding real
+            // signers) or a later block (mis-slashing operators who joined after signing).
+            // The certificate signature covers referenceTimestamp (calculateCertificateDigest),
+            // and the source OperatorTableUpdater maps it to the canonical source block that the
+            // signed operator table was computed at — so this block cannot be forged.
+            snapshotBlock = _authenticatedSnapshotBlock(cert.referenceTimestamp);
         }
 
-        // Process non-signing operators and validate against the verified certificate
+        // Process non-signing operators and validate against the verified certificate.
+        // The non-signer set is authenticated: validateSignatoryRecord requires the caller's
+        // pubkey hashes to reproduce `hashOfNonSigners`, so the caller cannot omit real
+        // non-signers (which would slash them) or invent fake ones (shielding real signers).
+        // The block prefix here must match the one used to build `hashOfNonSigners`
+        // (task.taskCreatedBlock, in both the source-handler and certificate branches); it is a
+        // consistency salt and cancels out, so the check's security does NOT depend on it —
+        // the authenticated snapshot used for enumeration is `snapshotBlock` below.
         (
             bytes32[] memory hashesOfPubkeysOfNonSigningOperators,
             address[] memory addressOfNonSigningOperators
@@ -390,9 +485,26 @@ contract ChallengeVerifier is
         });
 
         ChallengeLib.slashSigningOperators(
-            ctx, task.quorumNumbers, task.taskCreatedBlock, addressOfNonSigningOperators
+            ctx, task.quorumNumbers, snapshotBlock, addressOfNonSigningOperators
         );
         return true;
+    }
+
+    /// @notice Resolve the source-chain registry block bound to a certificate's authenticated
+    ///         `referenceTimestamp`, for use as the slashing enumeration snapshot.
+    /// @dev The certificate signature covers `referenceTimestamp`, and the source-chain
+    ///      OperatorTableUpdater records `referenceTimestamp -> referenceBlockNumber` in the
+    ///      same `confirmGlobalTableRoot` call that makes certificate verification possible.
+    ///      So whenever the certificate verified above, this mapping is populated; a zero value
+    ///      indicates a misconfigured/absent table and we fail closed rather than enumerate
+    ///      operators at block 0.
+    function _authenticatedSnapshotBlock(
+        uint32 referenceTimestamp
+    ) private view returns (uint32 referenceBlock) {
+        IOperatorTableUpdater updater =
+            ICertVerifierUpdater(address(viewBN254CertificateVerifier)).operatorTableUpdater();
+        referenceBlock = updater.getReferenceBlockNumberByTimestamp(referenceTimestamp);
+        require(referenceBlock != 0, SnapshotBlockNotSet(referenceTimestamp));
     }
 
     function _isChallengable(
@@ -454,6 +566,33 @@ contract ChallengeVerifier is
     ) external onlyAdmin {
         registeredDestinationChains[chainId] = registered;
         emit DestinationChainRegistered(chainId, registered);
+    }
+
+    /// @notice The effective cross-chain quorum threshold percentage for the slashing path.
+    /// @dev Returns the v1 default (40%) when unset (stored 0), so proxies deployed before this
+    ///      field existed keep the protocol default without a migration write.
+    function crossChainQuorumThresholdPercentage() public view returns (uint256) {
+        uint256 configured = _crossChainQuorumThresholdPercentage;
+        return configured == 0
+            ? OperatorVerifierLib.DEFAULT_CROSS_CHAIN_QUORUM_THRESHOLD_PERCENTAGE
+            : configured;
+    }
+
+    /// @notice Set the cross-chain quorum threshold percentage used to gate cross-chain slashing.
+    /// @param threshold Percentage in (0, 100].
+    /// @dev SECURITY (NEWT-1708): the slash path reads THIS contract value, never the
+    ///      caller-supplied (unauthenticated) `task.quorumThresholdPercentage`, which is the fix's
+    ///      core. The value is the operator's configured bar for cross-chain slashing; it defaults
+    ///      to the v1 protocol threshold (40%) and admins may raise it to require more signed stake
+    ///      before slashing. Only 0 (would make the stake check vacuous) and > 100 are rejected.
+    function setCrossChainQuorumThresholdPercentage(
+        uint256 threshold
+    ) external onlyOwner {
+        if (threshold == 0 || threshold > 100) {
+            revert InvalidCrossChainQuorumThreshold(threshold);
+        }
+        _crossChainQuorumThresholdPercentage = threshold;
+        emit CrossChainQuorumThresholdUpdated(threshold);
     }
 
     function challengeDirectlyVerifiedAttestation(

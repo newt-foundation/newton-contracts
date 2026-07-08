@@ -59,12 +59,18 @@ contract DestinationTaskResponseHandler is ITaskResponseHandler {
             revert InvalidTaskResponse(signatureData, errorData);
         }
 
+        // SECURITY (NEWT-1708): on the ACCEPT path the Task is authenticated — `respondToTask`
+        // pins `taskHash(task) == allTaskHashes[taskId]` before delegating here — so the
+        // task-carried threshold is trustworthy and preserves the per-task threshold semantics
+        // (v1 defaults to 40%). The unauthenticated slash path uses a contract-configured value
+        // instead; see ChallengeVerifier.crossChainQuorumThresholdPercentage().
         hashOfNonSigners = OperatorVerifierLib.verifyTaskResponseCertificate(
             task,
             taskResponse,
             certificate,
             IViewBN254CertificateVerifier(address(certificateVerifier)),
-            sourceChainAvsAddress
+            sourceChainAvsAddress,
+            task.quorumThresholdPercentage
         );
 
         return hashOfNonSigners;

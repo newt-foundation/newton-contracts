@@ -20,8 +20,18 @@ import {IViewBN254CertificateVerifier} from "../interfaces/IViewBN254Certificate
 import {OperatorSet} from "@eigenlayer/contracts/libraries/OperatorSetLib.sol";
 
 library OperatorVerifierLib {
+    /// @notice Default cross-chain quorum threshold percentage for the slashing path.
+    /// @dev The v1 protocol default (gateway-defaulted to 40% across all environments). Used by
+    ///      `ChallengeVerifier.crossChainQuorumThresholdPercentage()` as the effective value for
+    ///      deployments that have not explicitly configured one. See the threshold-verification
+    ///      note in `verifyTaskResponseCertificate` for why the slash path uses a contract value
+    ///      rather than the caller-supplied `task.quorumThresholdPercentage`.
+    uint256 internal constant DEFAULT_CROSS_CHAIN_QUORUM_THRESHOLD_PERCENTAGE = 40;
+
     error OperatorNotWhitelisted();
     error InsufficientQuorumStake();
+    /// @notice The cross-chain quorum threshold is zero or above 100.
+    error InvalidCrossChainQuorumThreshold(uint256 threshold);
     error InvalidQuorumThresholdPercentage();
     error CertificateMessageHashMismatch();
     error InvalidOperatorSetQuorums();
@@ -184,6 +194,13 @@ library OperatorVerifierLib {
      * @param certificate The BN254 certificate from source chain
      * @param certificateVerifier The certificate verifier contract
      * @param sourceChainAvsAddress The AVS address on the source chain
+     * @param quorumThresholdPercentage The effective quorum threshold percentage to enforce.
+     *        SECURITY (NEWT-1708): the caller decides what to pass here based on whether the Task
+     *        is authenticated on its path. On the SLASH path (ChallengeVerifier, unauthenticated
+     *        Task) it MUST be a contract-configured value, NOT `task.quorumThresholdPercentage`.
+     *        On the ACCEPT path (DestinationTaskResponseHandler via respondToTask) the Task is
+     *        pinned by `taskHash(task) == allTaskHashes[taskId]`, so passing the authenticated
+     *        `task.quorumThresholdPercentage` is safe. Must be in (0, 100].
      * @return hashOfNonSigners The hash of non-signers
      * @dev This function verifies:
      *      1. Certificate messageHash matches taskResponse hash
@@ -195,9 +212,23 @@ library OperatorVerifierLib {
         INewtonProverTaskManager.TaskResponse calldata taskResponse,
         IBN254CertificateVerifierTypes.BN254Certificate memory certificate,
         IViewBN254CertificateVerifier certificateVerifier,
-        address sourceChainAvsAddress
+        address sourceChainAvsAddress,
+        uint256 quorumThresholdPercentage
     ) external view returns (bytes32 hashOfNonSigners) {
         // Verify that certificate messageHash matches the consensus digest of the taskResponse
+        //
+        // SECURITY (NEWT-1708): this certificate only authenticates (a) the TaskResponse
+        // consensus digest and (b) the operator set derived from `quorumNumbers[0]` at the
+        // signature-covered `referenceTimestamp`. It does NOT authenticate `taskCreatedBlock`,
+        // any additional entries in `quorumNumbers`, or `quorumThresholdPercentage`. Callers on
+        // the cross-chain slashing path (ChallengeVerifier.slashForCrossChainChallenge) MUST
+        // therefore (1) restrict slashing to a single quorum equal to `quorumNumbers[0]` and
+        // (2) pin the slashing snapshot block to the block bound to `referenceTimestamp`.
+        // On the SLASH path the caller passes a contract-configured `quorumThresholdPercentage`
+        // (see the threshold-verification note) rather than `task.quorumThresholdPercentage`,
+        // which is neither cert-authenticated nor proof-constrained on that path. On the ACCEPT
+        // path the Task is pinned to `allTaskHashes[taskId]`, so the caller passes the
+        // authenticated `task.quorumThresholdPercentage`.
         // Uses consensus digest (attestations zeroed) to match what operators signed
         bytes32 taskResponseHash = TaskLib.computeConsensusDigest(taskResponse);
         if (certificate.messageHash != taskResponseHash) {
@@ -221,9 +252,23 @@ library OperatorVerifierLib {
         IBN254CertificateVerifierTypes.BN254OperatorSetInfo memory operatorSetInfo =
             certificateVerifier.getOperatorSetInfo(operatorSet, certificate.referenceTimestamp);
 
-        // verify quorum threshold percentage
-        if (task.quorumThresholdPercentage > 100) {
-            revert InvalidQuorumThresholdPercentage();
+        // Verify the quorum threshold.
+        //
+        // SECURITY (NEWT-1708): on the SLASH path (ChallengeVerifier.slashForCrossChainChallenge)
+        // the Task is caller-supplied and `task.quorumThresholdPercentage` is neither
+        // BLS-cert-authenticated nor SP1-proof-constrained (the circuit commits `task` verbatim,
+        // so the `taskHash(context.task) == taskHash(task)` bind is circular — the caller controls
+        // both sides). Deriving `requiredStake` from it would let an attacker relay
+        // `quorumThresholdPercentage = 1`, collapse the bar to ~1%, and slash operators whose
+        // response was valid under the real rule. That path therefore passes a contract-configured
+        // threshold instead. On the ACCEPT path the Task is pinned to `allTaskHashes[taskId]`, so
+        // the authenticated `task.quorumThresholdPercentage` is passed through unchanged.
+        //
+        // Either way the effective threshold must be in (0, 100]: a 0 threshold makes the
+        // `totalStake * threshold <= 100 * signedStake` check below vacuously true (any response,
+        // including one with zero signed stake, would pass), and > 100 is nonsensical.
+        if (quorumThresholdPercentage == 0 || quorumThresholdPercentage > 100) {
+            revert InvalidCrossChainQuorumThreshold(quorumThresholdPercentage);
         }
 
         uint256 signedStakeLen = signedStakes.length;
@@ -238,7 +283,7 @@ library OperatorVerifierLib {
             uint256 signedStake = signedStakes[i];
 
             require(
-                totalStake * task.quorumThresholdPercentage <= 100 * signedStake,
+                totalStake * quorumThresholdPercentage <= 100 * signedStake,
                 InsufficientQuorumStake()
             );
         }
