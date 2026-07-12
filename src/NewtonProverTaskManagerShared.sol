@@ -154,6 +154,14 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
                     taskResponse.intentSignature,
                     responseExpireBlock
                 );
+        } else {
+            emit PolicyDenied(
+                taskResponse.policyClient,
+                taskId,
+                taskResponse.policyId,
+                keccak256(abi.encode(taskResponse.intent)),
+                referenceBlock
+            );
         }
         emit TaskResponded(taskResponse, responseCertificate);
     }

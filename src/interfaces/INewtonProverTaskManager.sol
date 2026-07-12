@@ -23,6 +23,47 @@ interface INewtonProverTaskManager {
 
     event TaskResponseHandlerUpdated(address indexed newHandler);
 
+    /// @notice Emitted on the standard-mode deny branch of respondToTask: a
+    ///         quorum-signed denial for this policy client, keyed by policyClient
+    ///         so a clone-scoped indexer gets it as a topic filter. It names a
+    ///         quorum-signed denial, NOT the client's attempted execution (the
+    ///         client-level intent.from and chainId checks live in the mixin and
+    ///         are not run on this path).
+    /// @dev    SCOPE - two things this event does NOT cover, so a consumer does not
+    ///         read it as a complete denial ledger:
+    ///         1. STANDARD MODE ONLY. A direct-mode denial (validateAttestationDirect,
+    ///            the executeDirect path) is NOT emitted here. It is returned as a
+    ///            bool to the caller; the accompanying DirectTaskResponded emit lives
+    ///            inside that sub-call, so under the usual revert-on-deny caller it
+    ///            rolls back and leaves no on-chain footprint at all. Direct-mode
+    ///            denial recording is a client-side concern (a non-reverting recorder
+    ///            on the client), not this event.
+    ///         2. WITHHELD RESPONSES. A deny response the aggregator/gateway never
+    ///            submits emits nothing. Absence is not proof of non-denial.
+    ///         3. NON-CANONICAL RESULTS ARE DENIALS. This fires on the complement of
+    ///            a canonical allow (evaluateResult true is ABI-bool true or the
+    ///            string "true"; anything else - including a malformed evaluationResult
+    ///            - is treated as not-allowed and emits PolicyDenied). So a consumer
+    ///            reads this as "not allowed", not strictly "the policy evaluated to a
+    ///            clean false". A malformed result is separately challengeable.
+    ///         To recover WHAT was denied, join taskId to the NewTaskCreated event
+    ///         (taskId is indexed there and it carries the full Task.intent); do NOT
+    ///         use TaskResponded for this - it has no indexed fields and is not
+    ///         topic-filterable by taskId.
+    /// @param policyClient The Shield clone the denial is for.
+    /// @param taskId The task the denial responds to.
+    /// @param policyId The policy that denied.
+    /// @param intentHash keccak256(abi.encode(intent)) - ties the denial to the exact intent.
+    /// @param referenceBlock The block at which the response was recorded on-chain
+    ///        (uint32(block.number) in respondToTask; matches ResponseCertificate.referenceBlock).
+    event PolicyDenied(
+        address indexed policyClient,
+        bytes32 indexed taskId,
+        bytes32 policyId,
+        bytes32 intentHash,
+        uint32 referenceBlock
+    );
+
     // STRUCTS
     // Task struct represents the minimal on-chain task data.
     // policyTaskData and policyConfig are moved to TaskResponse - operators generate these independently.

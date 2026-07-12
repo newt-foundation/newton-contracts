@@ -41,6 +41,20 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
     // error for when the policy factory version is incompatible
     error IncompatiblePolicyVersion(string actual, string minimum);
 
+    /// @notice Emitted whenever the bound policy ADDRESS ($.policy) is written -
+    ///         the init/birth bind and any later rebind, including a re-set to the
+    ///         same value (emit-on-write, not emit-on-change) - so an indexer can
+    ///         reconstruct a client's full policy-address history from events alone.
+    /// @param previousPolicy The policy address before this write (address(0) at birth).
+    /// @param newPolicy The policy address after this write.
+    event PolicyAddressUpdated(address indexed previousPolicy, address indexed newPolicy);
+
+    /// @notice Emitted whenever the bound policy ID ($.policyId) is written via
+    ///         setPolicy, including a re-set to the same value (emit-on-write).
+    /// @param policy The policy contract the id was set on ($.policy at call time).
+    /// @param policyId The new policyId returned by NewtonPolicy.setPolicy.
+    event PolicyIdUpdated(address indexed policy, bytes32 indexed policyId);
+
     // modifier to restrict functions to only the owner
     modifier onlyPolicyClientOwner() {
         require(
@@ -95,13 +109,20 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
 
     /**
      * @notice Internal setter for the policy contract address.
+     * @dev Writes then emits, with NO version gate: the TaskManager version check
+     *      lives in the public `setPolicyAddress` wrapper, not here. Callers that bind
+     *      the policy directly (e.g. an initializer) therefore emit PolicyAddressUpdated
+     *      without a version check - the event is still truthful (the address was
+     *      bound); an incompatible initial policy simply fails later at task creation.
      * @param policy The address of the NewtonPolicy contract.
      */
     function _setPolicyAddress(
         address policy
     ) internal {
         NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
+        address previous = $.policy;
         $.policy = policy;
+        emit PolicyAddressUpdated(previous, policy);
     }
 
     /**
@@ -135,7 +156,7 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
             }
         }
 
-        $.policy = policy;
+        _setPolicyAddress(policy);
     }
 
     /**
@@ -152,6 +173,7 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
         require($.policy != address(0), PolicyNotSet());
         bytes32 policyId = NewtonPolicy($.policy).setPolicy(policyConfig);
         $.policyId = policyId;
+        emit PolicyIdUpdated($.policy, policyId);
         return policyId;
     }
 
