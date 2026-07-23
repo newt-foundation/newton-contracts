@@ -4,7 +4,6 @@ pragma solidity ^0.8.27;
 import "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 import "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
 import "@openzeppelin/contracts/utils/Create2.sol";
-import {IERC165} from "@openzeppelin/contracts/interfaces/IERC165.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {NewtonMessage} from "./NewtonMessage.sol";
 import {INewtonPolicyData} from "../interfaces/INewtonPolicyData.sol";
@@ -21,18 +20,18 @@ contract NewtonPolicyDataFactory is AdminMixin, SemVerMixin {
     address public implementation;
     ProxyAdmin public proxyAdmin;
 
-    mapping(address => NewtonMessage.VerificationInfo) public policyDataVerifications;
+    /// @dev DEPRECATED (policy-data verification removed). Retained (name and slot unchanged) to
+    ///      preserve the storage layout of already-deployed factory proxies. No longer read or
+    ///      written by the protocol.
+    mapping(address => NewtonMessage.VerificationInfo) private policyDataVerifications;
     mapping(address => address[]) public ownersToPolicyData;
     address[] public policyDataOwners;
 
+    /// @dev DEPRECATED (verifier management removed). Retained to preserve storage layout.
     EnumerableSet.AddressSet private _verifiers;
 
-    /// @notice Verification status applied to newly deployed policy data by default.
-    /// @dev Set in `initialize()` to `!isMainnet()` (testnet/local verified, mainnet unverified),
-    ///      matching the original chain-id behavior. On a proxy upgrade this slot reads `false`
-    ///      for pre-existing factories (uninitialized), which preserves the mainnet default and
-    ///      lets a mainnet "stagef" deployment opt into `true` via `setDefaultPolicyDataVerified`.
-    bool public defaultPolicyDataVerified;
+    /// @dev DEPRECATED (default policy-data verification removed). Retained to preserve layout.
+    bool private defaultPolicyDataVerified;
 
     /// @notice Struct used for salt generation to ensure consistent encoding
     struct SaltData {
@@ -44,9 +43,6 @@ contract NewtonPolicyDataFactory is AdminMixin, SemVerMixin {
         address owner;
     }
 
-    event PolicyDataVerificationUpdated(
-        address policyData, NewtonMessage.VerificationInfo verificationInfo
-    );
     event PolicyDataDeployed(
         address policyData,
         INewtonPolicyData.PolicyDataInfo policyDataInfo,
@@ -55,9 +51,6 @@ contract NewtonPolicyDataFactory is AdminMixin, SemVerMixin {
     event ImplementationUpdated(
         address indexed oldImplementation, address indexed newImplementation
     );
-    event VerifierAdded(address indexed verifier);
-    event VerifierRemoved(address indexed verifier);
-    event DefaultPolicyDataVerifiedUpdated(bool verified);
 
     constructor(
         string memory _version
@@ -75,10 +68,6 @@ contract NewtonPolicyDataFactory is AdminMixin, SemVerMixin {
         _transferOwnership(owner);
         implementation = address(new NewtonPolicyData());
         proxyAdmin = new ProxyAdmin();
-        _verifiers.add(owner);
-        // Preserve the original chain-id default: testnet/local verify policy data on deploy,
-        // mainnet does not. Mainnet "stagef" can opt in afterwards via setDefaultPolicyDataVerified.
-        defaultPolicyDataVerified = !ChainLib.isMainnet();
     }
 
     function initializeV2(
@@ -88,25 +77,7 @@ contract NewtonPolicyDataFactory is AdminMixin, SemVerMixin {
     }
 
     /* ERRORS */
-    error OnlyNewtonPolicyData();
-    error InterfaceNotSupported();
     error InvalidImplementationAddress();
-
-    /* Modifiers */
-    modifier onlyNewtonPolicyData() {
-        require(msg.sender.code.length > 0, OnlyNewtonPolicyData());
-
-        bytes4 interfaceId = type(INewtonPolicyData).interfaceId;
-
-        (bool success, bytes memory result) = msg.sender
-            .staticcall(abi.encodeWithSelector(IERC165.supportsInterface.selector, interfaceId));
-
-        require(
-            success && result.length == 32 && abi.decode(result, (bool)), InterfaceNotSupported()
-        );
-
-        _;
-    }
 
     function deployPolicyData(
         string memory _wasmCid,
@@ -159,13 +130,6 @@ contract NewtonPolicyDataFactory is AdminMixin, SemVerMixin {
         policyDataAddr = proxy;
 
         ChainLib.requireSupportedChain();
-        if (defaultPolicyDataVerified) {
-            policyDataVerifications[policyDataAddr] =
-                NewtonMessage.VerificationInfo(owner(), true, block.timestamp);
-        } else {
-            policyDataVerifications[policyDataAddr] =
-                NewtonMessage.VerificationInfo(address(0), false, 0);
-        }
 
         if (ownersToPolicyData[_owner].length == 0) {
             policyDataOwners.push(_owner);
@@ -239,46 +203,6 @@ contract NewtonPolicyDataFactory is AdminMixin, SemVerMixin {
         predicted = Create2.computeAddress(salt, keccak256(bytecode));
     }
 
-    /// @notice Set the verification status assigned to newly deployed policy data.
-    /// @dev Does not affect already-deployed policy data; use `setPolicyDataVerified` for those.
-    function setDefaultPolicyDataVerified(
-        bool verified
-    ) external onlyAdmin {
-        defaultPolicyDataVerified = verified;
-        emit DefaultPolicyDataVerifiedUpdated(verified);
-    }
-
-    function setPolicyDataVerified(
-        address policyDataAddr,
-        bool verified
-    ) external onlyAdmin {
-        policyDataVerifications[policyDataAddr] =
-            NewtonMessage.VerificationInfo(msg.sender, verified, block.timestamp);
-        emit PolicyDataVerificationUpdated(policyDataAddr, policyDataVerifications[policyDataAddr]);
-    }
-
-    function getPolicyDataVerificationInfo(
-        address policyDataAddr
-    ) external view returns (NewtonMessage.VerificationInfo memory) {
-        return policyDataVerifications[policyDataAddr];
-    }
-
-    function addVerifier(
-        address verifier
-    ) external onlyAdmin {
-        if (_verifiers.add(verifier)) {
-            emit VerifierAdded(verifier);
-        }
-    }
-
-    function removeVerifier(
-        address verifier
-    ) external onlyAdmin {
-        if (_verifiers.remove(verifier)) {
-            emit VerifierRemoved(verifier);
-        }
-    }
-
     function getAllPolicyDataByOwner(
         address owner
     ) external view returns (address[] memory) {
@@ -287,15 +211,5 @@ contract NewtonPolicyDataFactory is AdminMixin, SemVerMixin {
 
     function getAllPolicyDataOwners() external view returns (address[] memory) {
         return policyDataOwners;
-    }
-
-    function getAllVerifiers() external view returns (address[] memory) {
-        return _verifiers.values();
-    }
-
-    function isVerifier(
-        address verifier
-    ) external view returns (bool) {
-        return _verifiers.contains(verifier);
     }
 }

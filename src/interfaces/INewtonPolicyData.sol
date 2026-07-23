@@ -49,8 +49,10 @@ interface INewtonPolicyData is IERC165 {
     function getExpireAfter() external view returns (uint32);
 
     /**
-     * @notice Retrieves the policy data verified status.
-     * @return The policy data verified status.
+     * @notice Deprecated. Policy-data verification was removed from the protocol; the AVS serves
+     *         tasks for any deployed policy data. Retained for interface/ABI stability and always
+     *         returns true.
+     * @return Always true.
      */
     function isPolicyDataVerified() external view returns (bool);
 

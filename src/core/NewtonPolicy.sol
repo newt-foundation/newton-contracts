@@ -8,7 +8,6 @@ import "@openzeppelin-upgrades/contracts/utils/introspection/ERC165Upgradeable.s
 import "@openzeppelin/contracts/interfaces/IERC165.sol";
 import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import "@openzeppelin/contracts/utils/Create2.sol";
-import {NewtonPolicyFactory} from "./NewtonPolicyFactory.sol";
 import {INewtonPolicyClient} from "../interfaces/INewtonPolicyClient.sol";
 import {INewtonPolicy} from "../interfaces/INewtonPolicy.sol";
 import {SemVerMixin} from "../mixins/SemVerMixin.sol";
@@ -171,8 +170,11 @@ contract NewtonPolicy is
         return _policyIdToConfig[policyId];
     }
 
-    function isPolicyVerified() public view returns (bool) {
-        return NewtonPolicyFactory(factory).getPolicyVerificationInfo(address(this)).verified;
+    /// @notice Retained for interface/ABI stability. Policy verification was removed from the
+    ///         protocol; the AVS now serves tasks for any deployed policy, so this always
+    ///         returns true. See INewtonPolicy.isPolicyVerified.
+    function isPolicyVerified() public pure returns (bool) {
+        return true;
     }
 
     /// @inheritdoc SemVerMixin

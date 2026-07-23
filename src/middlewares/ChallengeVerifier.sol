@@ -212,7 +212,6 @@ contract ChallengeVerifier is
 
         // Use taskResponse.policyTaskData (operators now generate policyTaskData independently)
         INewtonPolicy policy = INewtonPolicy(taskResponse.policyTaskData.policyAddress);
-        require(policy.isPolicyVerified(), TaskLib.PolicyNotVerified());
 
         // Privacy tasks must NOT be slashed via the rego path. The SP1 rego circuit
         // evaluates with EMPTY privacy/domain data (it has no decryption keys), so for a
@@ -361,9 +360,8 @@ contract ChallengeVerifier is
             CrossChainChallengeAlreadyProcessed(destChainId, challenge.taskId)
         );
 
-        // Verify the policy is valid
+        // Bind the policy for downstream entrypoint + policyCodeHash checks
         INewtonPolicy policy = INewtonPolicy(taskResponse.policyTaskData.policyAddress);
-        require(policy.isPolicyVerified(), TaskLib.PolicyNotVerified());
 
         // Privacy tasks must NOT be slashed via the rego path (see raiseAndResolveChallenge).
         // The SP1 rego circuit evaluates privacy tasks with empty domain data, so its result

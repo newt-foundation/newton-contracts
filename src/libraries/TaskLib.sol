@@ -2,7 +2,6 @@
 pragma solidity ^0.8.27;
 
 import {INewtonProverTaskManager} from "../interfaces/INewtonProverTaskManager.sol";
-import {INewtonPolicy} from "../interfaces/INewtonPolicy.sol";
 import {NewtonMessage} from "../core/NewtonMessage.sol";
 import {INewtonPolicyClient} from "../interfaces/INewtonPolicyClient.sol";
 import {IERC165} from "@openzeppelin/contracts/interfaces/IERC165.sol";
@@ -14,7 +13,6 @@ import {PolicyValidationLib} from "./PolicyValidationLib.sol";
  */
 library TaskLib {
     /* CUSTOM ERRORS */
-    error PolicyNotVerified();
     error TaskResponseMismatch();
     error EntrypointMismatch();
     error TaskMismatch(bytes32 expected, bytes32 actual);
@@ -93,9 +91,6 @@ library TaskLib {
             taskResponse.policyTaskData.policyAddress == policyAddress,
             PolicyValidationLib.PolicyAddressMismatch()
         );
-
-        // Verify policy is verified
-        require(INewtonPolicy(policyAddress).isPolicyVerified(), PolicyNotVerified());
 
         uint32 currentBlock = uint32(block.number);
 

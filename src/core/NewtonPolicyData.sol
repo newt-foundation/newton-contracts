@@ -8,7 +8,6 @@ import "@openzeppelin-upgrades/contracts/utils/introspection/ERC165Upgradeable.s
 import "@openzeppelin/contracts/interfaces/IERC165.sol";
 import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import "@openzeppelin/contracts/utils/Create2.sol";
-import "./NewtonPolicyDataFactory.sol";
 import "../interfaces/INewtonPolicyData.sol";
 import "../interfaces/INewtonPolicy.sol";
 import {SemVerMixin} from "../mixins/SemVerMixin.sol";
@@ -109,9 +108,11 @@ contract NewtonPolicyData is
         return _expireAfter;
     }
 
-    function isPolicyDataVerified() external view returns (bool) {
-        return
-            NewtonPolicyDataFactory(factory).getPolicyDataVerificationInfo(address(this)).verified;
+    /// @notice Retained for interface/ABI stability. Policy-data verification was removed from
+    ///         the protocol; the AVS now serves tasks for any deployed policy data, so this
+    ///         always returns true. See INewtonPolicyData.isPolicyDataVerified.
+    function isPolicyDataVerified() external pure returns (bool) {
+        return true;
     }
 
     /// @inheritdoc SemVerMixin

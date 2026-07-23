@@ -2,8 +2,6 @@
 pragma solidity ^0.8.27;
 
 import {INewtonPolicy} from "../interfaces/INewtonPolicy.sol";
-import {INewtonPolicyData} from "../interfaces/INewtonPolicyData.sol";
-import {INewtonPolicyClient} from "../interfaces/INewtonPolicyClient.sol";
 import {NewtonMessage} from "../core/NewtonMessage.sol";
 
 /**
@@ -16,28 +14,9 @@ library PolicyValidationLib {
     error PolicyDataLengthMismatch();
     error PolicyDataAddressMismatch();
     error PolicyDataExpired();
-    error PolicyNotVerified();
-    error PolicyDataNotVerified();
 
     /**
-     * @dev Checks if the policy is a verified policy. Only used for mainnet.
-     * @notice Used during respondToTask to validate operator-generated policyTaskData
-     */
-    function checkVerifiedPolicy(
-        address policyClient,
-        NewtonMessage.PolicyTaskData calldata policyTaskData
-    ) external view returns (address policyAddress, bytes32 policyId) {
-        policyAddress = INewtonPolicyClient(policyClient).getPolicyAddress();
-        policyId = INewtonPolicyClient(policyClient).getPolicyId();
-
-        require(policyTaskData.policyId == policyId, PolicyIdMismatch());
-        require(policyTaskData.policyAddress == policyAddress, PolicyAddressMismatch());
-
-        require(INewtonPolicy(policyAddress).isPolicyVerified(), PolicyNotVerified());
-    }
-
-    /**
-     * @dev Validates policy data addresses, verification status, and expiry.
+     * @dev Validates policy data addresses and expiry.
      * @notice Called during respondToTask to validate operator-generated policyTaskData.
      */
     function validatePolicyData(
@@ -54,12 +33,6 @@ library PolicyValidationLib {
             require(
                 policyData[i].policyDataAddress == policyDataAddresses[i],
                 PolicyDataAddressMismatch()
-            );
-
-            require(
-                INewtonPolicyData(policyTaskData.policyData[i].policyDataAddress)
-                    .isPolicyDataVerified(),
-                PolicyDataNotVerified()
             );
 
             require(policyData[i].expireBlock >= currentBlock, PolicyDataExpired());

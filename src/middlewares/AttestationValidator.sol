@@ -195,12 +195,13 @@ contract AttestationValidator is Initializable, OwnableUpgradeable, AddressesPro
             INewtonPolicyClient(caller).getPolicyId() == taskResponse.policyId,
             TaskLib.InvalidPolicyId()
         );
-        // Verify the policy contract hasn't been revoked or deactivated.
-        // The respondToTask path checks this via validateTaskResponsePolicyData;
-        // the direct path must check independently since respondToTask may not have run yet.
+        // Bind policyAddress to the client's real policy. The respondToTask path enforces this
+        // via getPolicyAddress() (NewtonProverTaskManagerShared); the direct path must too, or a
+        // response could name an attacker-controlled contract whose getPolicyCodeHash() matches
+        // crafted policy bytes while keeping the real client's policyId.
         require(
-            INewtonPolicy(taskResponse.policyAddress).isPolicyVerified(),
-            TaskLib.PolicyNotVerified()
+            taskResponse.policyAddress == INewtonPolicyClient(caller).getPolicyAddress(),
+            TaskLib.InvalidPolicyAddress()
         );
         require(
             keccak256(taskResponse.policyTaskData.policy)
@@ -338,10 +339,11 @@ contract AttestationValidator is Initializable, OwnableUpgradeable, AddressesPro
         }
         if (INewtonPolicyClient(client).getPolicyId() != taskResponse.policyId) return false;
 
-        // Verify the policy contract hasn't been revoked or deactivated.
-        // The respondToTask path checks this via validateTaskResponsePolicyData;
-        // the direct path must check independently since respondToTask may not have run yet.
-        if (!INewtonPolicy(taskResponse.policyAddress).isPolicyVerified()) return false;
+        // Bind policyAddress to the client's real policy (synced with validateAttestationDirect).
+        if (taskResponse.policyAddress != INewtonPolicyClient(client).getPolicyAddress()) {
+            return false;
+        }
+
         if (
             keccak256(taskResponse.policyTaskData.policy)
                 != INewtonPolicy(taskResponse.policyAddress).getPolicyCodeHash()

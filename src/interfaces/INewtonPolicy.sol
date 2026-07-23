@@ -116,8 +116,10 @@ interface INewtonPolicy is IERC165 {
     function getPolicyData() external view returns (address[] memory);
 
     /**
-     * @notice Retrieves the policy verified status.
-     * @return The policy verified status.
+     * @notice Deprecated. Policy verification was removed from the protocol; the AVS serves
+     *         tasks for any deployed policy. Retained for interface/ABI stability and always
+     *         returns true.
+     * @return Always true.
      */
     function isPolicyVerified() external view returns (bool);
 
