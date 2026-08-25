@@ -261,12 +261,39 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
         if (ChallengeVerifier(challengeVerifier).isTaskChallenged(attestation.taskId)) {
             return false;
         }
-        bool isAttestationValid =
+        bool wasValidated =
             AttestationValidator(attestationValidator).validateAttestation(msg.sender, attestation);
-        if (isAttestationValid) {
+        if (wasValidated) {
             emit AttestationSpent(attestation.taskId, attestation);
         }
-        return isAttestationValid;
+        return wasValidated;
+    }
+
+    /// @inheritdoc INewtonProverTaskManager
+    function isAttestationValid(
+        address client,
+        NewtonMessage.Attestation calldata attestation
+    ) external view returns (bool) {
+        if (
+            paused(PAUSED_ATTESTATION)
+                || ChallengeVerifier(challengeVerifier).isTaskChallenged(attestation.taskId)
+        ) {
+            return false;
+        }
+        // Runs AFTER the delegated call below (not before): that call's own
+        // `TaskLib.onlyAttestationClient` is what proves `client` actually implements
+        // `INewtonPolicyClient` in the first place (a safe ERC165 staticcall, reverting
+        // with a specific, documented error for an EOA or non-implementing contract) --
+        // calling `getNewtonPolicyTaskManager()` on such a `client` first would instead
+        // revert with no data, masking those specific errors.
+        if (!AttestationValidator(attestationValidator).isAttestationValid(client, attestation)) {
+            return false;
+        }
+        require(
+            INewtonPolicyClient(client).getNewtonPolicyTaskManager() == address(this),
+            TaskManagerErrors.TaskManagerMismatch()
+        );
+        return true;
     }
 
     function validateAttestationDirect(
@@ -298,6 +325,30 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
 
         return AttestationValidator(attestationValidator)
             .validateAttestationDirect(msg.sender, task, taskResponse, signatureData);
+    }
+
+    /// @inheritdoc INewtonProverTaskManager
+    function isAttestationDirectValid(
+        address client,
+        bytes32 taskId,
+        NewtonMessage.Intent calldata intent
+    ) external view returns (bool) {
+        if (
+            paused(PAUSED_ATTESTATION)
+                || ChallengeVerifier(challengeVerifier).isTaskChallenged(taskId)
+        ) {
+            return false;
+        }
+
+        if (!AttestationValidator(attestationValidator)
+                .isAttestationDirectValid(client, taskId, intent)) {
+            return false;
+        }
+        require(
+            INewtonPolicyClient(client).getNewtonPolicyTaskManager() == address(this),
+            TaskManagerErrors.TaskManagerMismatch()
+        );
+        return true;
     }
 
     function challengeDirectlyVerifiedAttestation(

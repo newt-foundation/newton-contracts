@@ -49,10 +49,13 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
     /// @param newPolicy The policy address after this write.
     event PolicyAddressUpdated(address indexed previousPolicy, address indexed newPolicy);
 
-    /// @notice Emitted whenever the bound policy ID ($.policyId) is written via
-    ///         setPolicy, including a re-set to the same value (emit-on-write).
+    /// @notice Emitted whenever the bound policy ID ($.policyId) is written, via
+    ///         setPolicy (including a re-set to the same value, emit-on-write) or
+    ///         via a policy-address rotation clearing it back to zero (see
+    ///         `_setPolicyAddress`).
     /// @param policy The policy contract the id was set on ($.policy at call time).
-    /// @param policyId The new policyId returned by NewtonPolicy.setPolicy.
+    /// @param policyId The new policyId -- `NewtonPolicy.setPolicy`'s return value,
+    ///        or `bytes32(0)` when cleared by a policy-address rotation.
     event PolicyIdUpdated(address indexed policy, bytes32 indexed policyId);
 
     // modifier to restrict functions to only the owner
@@ -115,6 +118,15 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
      *      without a version check - the event is still truthful (the address was
      *      bound); an incompatible initial policy simply fails later at task creation.
      * @param policy The address of the NewtonPolicy contract.
+     * @dev Clears the cached `$.policyId` back to zero whenever `policy` actually changes.
+     *      `$.policyId` is only ever refreshed by `_setPolicy` (a separate call), so without
+     *      this, rotating `$.policy` alone would leave `$.policyId` pointing at the OLD
+     *      policy's id -- every attestation/task-response check that compares against
+     *      `getPolicyId()` (`TaskLib.sanityCheckAttestation`, `_validateAttestation`,
+     *      `_validateAttestationDirect`, `AttestationValidator.validateAttestationDirect`/
+     *      `isAttestationDirectValid`) would then keep accepting stale, already-evaluated
+     *      credentials issued under the old policy until they naturally expire, instead of
+     *      requiring a fresh `_setPolicy` under the new one first.
      */
     function _setPolicyAddress(
         address policy
@@ -122,6 +134,10 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
         NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
         address previous = $.policy;
         $.policy = policy;
+        if (previous != policy) {
+            $.policyId = bytes32(0);
+            emit PolicyIdUpdated(policy, bytes32(0));
+        }
         emit PolicyAddressUpdated(previous, policy);
     }
 

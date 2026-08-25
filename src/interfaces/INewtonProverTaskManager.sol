@@ -211,6 +211,19 @@ interface INewtonProverTaskManager {
         NewtonMessage.Attestation calldata attestation
     ) external returns (bool);
 
+    /// @notice View sibling of `validateAttestation`: checks whether `attestation`
+    /// is currently valid for `client` WITHOUT spending it.
+    /// @dev Returns `false` (never reverts) when paused/challenged/spent/expired/tampered.
+    /// REVERTS if `client` mismatches the attestation's policy client, if that
+    /// client's policy has rotated since the attestation was issued, or if `client`
+    /// is no longer bound to this TaskManager (its `getNewtonPolicyTaskManager()` has
+    /// rotated elsewhere). No replay protection of its own -- a liveness check, not a
+    /// spend substitute.
+    function isAttestationValid(
+        address client,
+        NewtonMessage.Attestation calldata attestation
+    ) external view returns (bool);
+
     // NOTE: this function validates attestation directly by verifying signatures
     // without waiting for respondToTask to be called.
     // signatureData is ABI-encoded NonSignerStakesAndSignature (source) or BN254Certificate (destination)
@@ -219,6 +232,26 @@ interface INewtonProverTaskManager {
         TaskResponse calldata taskResponse,
         bytes calldata signatureData
     ) external returns (bool);
+
+    /// @notice Liveness check for a direct-path attestation: checks whether `taskId` was
+    /// successfully verified by `validateAttestationDirect` for `client`/`intent`, and is still
+    /// live, WITHOUT re-verifying signatures or spending anything.
+    /// @dev Reads state `validateAttestationDirect` already recorded (verified flag, approved
+    /// decision, expiration, and a compact `(client, intent)` binding) rather than re-verifying an
+    /// arbitrary caller-supplied Task/TaskResponse/signatureData bundle -- mirrors how
+    /// `isAttestationValid` re-checks the regular path's committed state instead of re-validating
+    /// a fresh signature each call. Returns `false` (never reverts) for every failure mode on the
+    /// direct path itself (never verified, verified but denied, expired, wrong client/intent
+    /// binding). REVERTS only if `client` is no longer bound to this TaskManager (its
+    /// `getNewtonPolicyTaskManager()` has rotated elsewhere) -- same reasoning as
+    /// `isAttestationValid`: the normal consume path gets that binding for free from the caller
+    /// itself, but `client` is caller-supplied here. No replay protection of its own -- a liveness
+    /// check, not a spend substitute.
+    function isAttestationDirectValid(
+        address client,
+        bytes32 taskId,
+        NewtonMessage.Intent calldata intent
+    ) external view returns (bool);
 
     // NOTE: this function challenges directly verified attestations when respondToTask
     // was never called after the taskResponseWindow has passed.

@@ -15,4 +15,5 @@ library TaskManagerErrors {
     error InvalidAggregatorAddress();
     error NotDirectlyVerified();
     error InvalidTaskResponseHandler();
+    error TaskManagerMismatch();
 }

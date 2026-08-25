@@ -35,8 +35,32 @@ contract AttestationValidator is Initializable, OwnableUpgradeable, AddressesPro
     /// @dev New mappings appended after existing storage to preserve upgrade safety
     mapping(bytes32 => bytes32) public directTaskHashes;
     mapping(bytes32 => bytes32) public directTaskResponseHashes;
+    /// @notice Direct-path liveness state, populated once by `validateAttestationDirect` and read
+    /// repeatedly by `isAttestationDirectValid` -- so a liveness re-check never re-verifies BLS
+    /// signatures or accepts an arbitrary caller-supplied Task/TaskResponse bundle, mirroring how
+    /// `isAttestationValid` re-checks the regular path against `attestations`/`attestationExpirations`
+    /// rather than re-validating a fresh signature each call.
+    /// - directAttestationExpirations: preserved separately from `attestationExpirations`, which
+    ///   `validateAttestationDirect` always overwrites with `ATTESTATION_SPENT_SENTINEL` regardless
+    ///   of the underlying expiration -- that overwrite means `attestationExpirations` alone cannot
+    ///   answer "is this direct attestation still live" after the spending call.
+    mapping(bytes32 => uint32) public directAttestationExpirations;
+    /// - directAttestationApproved: the recorded policy decision (`evaluationResult`) at
+    ///   verification time. Without this, a liveness re-check of a directly-verified-but-DENIED
+    ///   response would have no decision to consult and could report the denial as live.
+    mapping(bytes32 => bool) public directAttestationApproved;
+    /// - directAttestationBindings: `keccak256(abi.encode(client, intent, policyAddress, policyId))`
+    ///   recorded at verification time, so a liveness check can bind a caller-supplied
+    ///   `(client, intent)` pair against the ORIGINAL verified binding without resupplying the full
+    ///   Task/TaskResponse/signatureData bundle. Including `policyAddress`/`policyId` means the
+    ///   binding itself goes stale the moment the client rotates its policy via `setPolicy` (new
+    ///   `policyId`, same address) or `setPolicyAddress` (new address, `policyId` cleared to zero) --
+    ///   `isAttestationDirectValid` re-derives the same tuple from the client's LIVE values on every
+    ///   read, so a rotation invalidates every direct-path record for that client immediately,
+    ///   instead of leaving them valid until their recorded expiration.
+    mapping(bytes32 => bytes32) public directAttestationBindings;
 
-    uint256[45] private __gap;
+    uint256[42] private __gap;
 
     /* MODIFIERS */
     modifier onlyTaskManager() {
@@ -123,22 +147,21 @@ contract AttestationValidator is Initializable, OwnableUpgradeable, AddressesPro
         return hash;
     }
 
-    // IMPORTANT: must be kept in sync with validateAttestation
+    // IMPORTANT: must be kept in sync with validateAttestation -- same check order as
+    // _validateAttestation, so a multi-invalid attestation fails for the same reason
+    // (revert vs `false`) on both paths.
     function isAttestationValid(
         address client,
         NewtonMessage.Attestation memory attestation
     ) public view returns (bool) {
         TaskLib.onlyAttestationClient(client, attestation);
-
-        bytes32 stored = attestations[attestation.taskId];
-        if (stored == bytes32(0)) return false;
-        bytes32 hash = keccak256(abi.encode(attestation));
-        if (stored != hash) return false;
-        uint32 exp = attestationExpirations[attestation.taskId];
-        if (exp == 0 || exp == ATTESTATION_SPENT_SENTINEL || uint32(block.number) >= exp) {
-            return false;
-        }
         TaskLib.sanityCheckAttestation(attestation);
+
+        if (attestationExpirations[attestation.taskId] == ATTESTATION_SPENT_SENTINEL) return false;
+        // Also covers a taskId that was never created (`stored` defaults to bytes32(0)).
+        if (attestations[attestation.taskId] != keccak256(abi.encode(attestation))) return false;
+        if (uint32(block.number) >= attestation.expiration) return false;
+
         return true;
     }
 
@@ -160,26 +183,7 @@ contract AttestationValidator is Initializable, OwnableUpgradeable, AddressesPro
         return directlyVerifiedAttestations[taskId];
     }
 
-    /// @dev Thin external wrappers around revert-based TaskLib helpers so the
-    /// `isAttestationDirectValid` view sibling can convert reverts to `false` via
-    /// staticcall + try/catch without duplicating validation logic.
-    function _checkTaskResponsePolicyData(
-        INewtonProverTaskManager.TaskResponse calldata taskResponse
-    ) external view {
-        TaskLib.validateTaskResponsePolicyData(taskResponse);
-    }
-
-    function _checkSanityTaskResponse(
-        INewtonProverTaskManager.Task calldata task,
-        INewtonProverTaskManager.TaskResponse calldata taskResponse,
-        uint32 blockNumber,
-        uint32 responseWindowBlock
-    ) external pure {
-        TaskLib.sanityCheckTaskResponse(task, taskResponse, blockNumber, responseWindowBlock);
-    }
-
     // solhint-disable-next-line function-max-lines
-    // IMPORTANT: must be kept in sync with isAttestationDirectValid
     function validateAttestationDirect(
         address caller,
         INewtonProverTaskManager.Task calldata task,
@@ -251,6 +255,19 @@ contract AttestationValidator is Initializable, OwnableUpgradeable, AddressesPro
             directlyVerifiedAttestations[taskId] = true;
             directTaskHashes[taskId] = expectedTaskHash;
             directTaskResponseHashes[taskId] = storedNormalizedResponseHash;
+            // Entering this branch requires `attestations[taskId]` to have been set by
+            // `createAttestationHash`, which the regular flow only calls for an APPROVE
+            // (see `NewtonProverTaskManagerShared.respondToTask`) -- a DENY never reaches here.
+            directAttestationExpirations[taskId] = storedExpiration;
+            directAttestationApproved[taskId] = true;
+            directAttestationBindings[taskId] = keccak256(
+                abi.encode(
+                    task.policyClient,
+                    task.intent,
+                    taskResponse.policyAddress,
+                    taskResponse.policyId
+                )
+            );
             emit INewtonProverTaskManager.DirectTaskResponded(taskId, task, taskResponse);
 
             return result;
@@ -320,129 +337,87 @@ contract AttestationValidator is Initializable, OwnableUpgradeable, AddressesPro
         // Store hashes for challenger to compare against regular path later
         directTaskHashes[taskId] = TaskLib.taskHash(task);
         directTaskResponseHashes[taskId] = keccak256(abi.encode(taskResponse));
-        emit INewtonProverTaskManager.DirectTaskResponded(taskId, task, taskResponse);
 
         // Revert = invalid attestation; return value = policy decision
-        return TaskLib.evaluateResult(taskResponse.evaluationResult);
+        bool decision = TaskLib.evaluateResult(taskResponse.evaluationResult);
+        // Preserved separately from `attestationExpirations` (already clobbered by the spent
+        // sentinel above) and recorded regardless of `decision`, so `isAttestationDirectValid`
+        // can distinguish "directly verified but denied" from "never verified" instead of only
+        // ever seeing an unconditional `true`.
+        directAttestationExpirations[taskId] = expiration;
+        directAttestationApproved[taskId] = decision;
+        directAttestationBindings[taskId] = keccak256(
+            abi.encode(
+                task.policyClient, task.intent, taskResponse.policyAddress, taskResponse.policyId
+            )
+        );
+        emit INewtonProverTaskManager.DirectTaskResponded(taskId, task, taskResponse);
+
+        return decision;
     }
 
-    // IMPORTANT: must be kept in sync with validateAttestationDirect
+    /// @notice Liveness check for a direct-path attestation, over state `validateAttestationDirect`
+    /// already recorded -- never re-verifies BLS signatures or accepts an arbitrary caller-supplied
+    /// Task/TaskResponse bundle. Mirrors `isAttestationValid`'s relationship to `validateAttestation`:
+    /// a cheap re-check against a prior verification's committed state, not a second verification.
+    /// @param client The policy client the attestation must have been verified for.
+    /// @param taskId The direct-path task to check liveness of.
+    /// @param intent The intent the attestation must have been verified against -- checked against
+    /// `directAttestationBindings`, the compact commitment recorded at verification time.
+    /// @dev The binding is re-derived from `client`'s LIVE `getPolicyAddress()`/`getPolicyId()` on
+    /// every call, not just the caller-supplied `(client, intent)` pair -- so a policy rotation via
+    /// `setPolicy` (fresh `policyId`) or `setPolicyAddress` (fresh address, `policyId` cleared to
+    /// zero) changes what this function re-derives and immediately invalidates every direct-path
+    /// record still committed to the pre-rotation policy, the same way `isAttestationValid`'s
+    /// `TaskLib.sanityCheckAttestation` catches a rotation on the regular path.
     function isAttestationDirectValid(
         address client,
-        INewtonProverTaskManager.Task calldata task,
-        INewtonProverTaskManager.TaskResponse calldata taskResponse,
-        bytes calldata signatureData
+        bytes32 taskId,
+        NewtonMessage.Intent calldata intent
     ) public view returns (bool) {
-        // Only the correct policy client may directly validate and spend the attestation
-        if (client != task.policyClient || client != taskResponse.policyClient) {
-            return false;
-        }
-        if (INewtonPolicyClient(client).getPolicyId() != taskResponse.policyId) return false;
+        if (!directlyVerifiedAttestations[taskId]) return false;
+        if (!directAttestationApproved[taskId]) return false;
+        if (uint32(block.number) >= directAttestationExpirations[taskId]) return false;
 
-        // Bind policyAddress to the client's real policy (synced with validateAttestationDirect).
-        if (taskResponse.policyAddress != INewtonPolicyClient(client).getPolicyAddress()) {
-            return false;
-        }
+        // `client` is caller-supplied, so it need not be a contract at all, let alone an
+        // `INewtonPolicyClient` -- reading its live policy must therefore degrade to `false`
+        // rather than bubbling a raw revert, preserving this view's non-reverting contract for
+        // every "this attestation isn't live for that client" case.
+        (address livePolicyAddress, bytes32 livePolicyId) = _tryGetLivePolicy(client);
+        if (livePolicyAddress == address(0) && livePolicyId == bytes32(0)) return false;
 
         if (
-            keccak256(taskResponse.policyTaskData.policy)
-                != INewtonPolicy(taskResponse.policyAddress).getPolicyCodeHash()
+            directAttestationBindings[taskId]
+                != keccak256(abi.encode(client, intent, livePolicyAddress, livePolicyId))
         ) {
             return false;
         }
-
-        bytes32 taskId = taskResponse.taskId;
-        address taskResponseHandler = INewtonProverTaskManager(taskManager).taskResponseHandler();
-
-        // If attestation already exists from regular flow, validate using it instead
-        bytes32 existingAttestationHash = attestations[taskId];
-        if (existingAttestationHash != bytes32(0)) {
-            bytes32 expectedTaskHash = INewtonProverTaskManager(taskManager).taskHash(taskId);
-            if (TaskLib.taskHash(task) != expectedTaskHash) return false;
-
-            // Bind taskResponse to stored normalized hash (synced with validateAttestationDirect)
-            bytes32 storedNormalizedResponseHash =
-                INewtonProverTaskManager(taskManager).normalizedTaskResponseHash(taskId);
-            if (
-                storedNormalizedResponseHash == bytes32(0)
-                    || keccak256(abi.encode(taskResponse)) != storedNormalizedResponseHash
-            ) return false;
-
-            uint32 storedExpiration = attestationExpirations[taskId];
-            if (storedExpiration == 0) return false;
-
-            // policyId comes from TaskResponse (generated by operators)
-            NewtonMessage.Attestation memory constructedAttestation = NewtonMessage.Attestation(
-                taskId,
-                taskResponse.policyId,
-                task.policyClient,
-                storedExpiration,
-                task.intent,
-                task.intentSignature
-            );
-            bool result = isAttestationValid(client, constructedAttestation);
-
-            return result;
-        }
-
-        // Optimistic fast path: validate via task response handler before on-chain task exists
-        // Delegates to SourceTaskResponseHandler (BLS) ONLY because the DestinationTaskResponseHandler (certificate) caches state and doesn't allow for view calling
-        // This prevents double spending across both regular and direct flows
-        if (attestationExpirations[taskId] == ATTESTATION_SPENT_SENTINEL) return false;
-
-        // Sanity check the task parameters
-        if (task.taskCreatedBlock >= uint32(block.number)) return false;
-
-        // Bind every Task field that overlaps with TaskResponse (synced with validateAttestationDirect)
-        if (task.taskId != taskResponse.taskId) return false;
-        if (task.policyClient != taskResponse.policyClient) return false;
-        if (keccak256(abi.encode(task.intent)) != keccak256(abi.encode(taskResponse.intent))) {
-            return false;
-        }
-        if (keccak256(task.intentSignature) != keccak256(taskResponse.intentSignature)) {
-            return false;
-        }
-        if (task.initializationTimestamp != taskResponse.initializationTimestamp) return false;
-
-        // Convert reverts in the validation helpers to `false` to preserve the
-        // non-reverting contract of the view sibling.
-        try this._checkTaskResponsePolicyData(taskResponse) {}
-        catch {
-            return false;
-        }
-        try this._checkSanityTaskResponse(
-            task,
-            taskResponse,
-            uint32(block.number),
-            INewtonProverTaskManager(taskManager).taskResponseWindowBlock()
-        ) {}
-        catch {
-            return false;
-        }
-
-        try ITaskResponseHandler(taskResponseHandler)
-            .verifyTaskResponse(task, taskResponse, signatureData) returns (
-            bytes32
-        ) {}
-        catch {
-            return false;
-        }
-
-        uint32 referenceBlock = uint32(block.number);
-        uint32 expiration = referenceBlock + taskResponse.policyConfig.expireAfter;
-
-        NewtonMessage.Attestation memory attestationForHash = NewtonMessage.Attestation(
-            taskId,
-            taskResponse.policyId,
-            task.policyClient,
-            expiration,
-            task.intent,
-            task.intentSignature
-        );
-
-        TaskLib.sanityCheckAttestation(attestationForHash);
-        if (uint32(block.number) >= expiration) return false;
-
         return true;
+    }
+
+    /// @dev Reads `client`'s live `(policyAddress, policyId)` pair, returning `(address(0),
+    /// bytes32(0))` if `client` is not a contract or does not implement `INewtonPolicyClient`.
+    /// A genuine client mid-setup can legitimately report `policyId == bytes32(0)` (e.g. right
+    /// after `setPolicyAddress` clears it), but never alongside `policyAddress == address(0)` --
+    /// and a binding recorded by `validateAttestationDirect` always committed to a nonzero
+    /// `policyAddress`, since that path requires `taskResponse.policyAddress ==
+    /// client.getPolicyAddress()` and then dereferences it. So the all-zero pair is unambiguously
+    /// the "could not read" signal, never a valid live state that should compare equal.
+    function _tryGetLivePolicy(
+        address client
+    ) private view returns (address, bytes32) {
+        // Must precede the calls below: for a target with no code, Solidity emits its
+        // `extcodesize` check in THIS frame, so the resulting revert happens before any call is
+        // made and `try/catch` (which only catches reverts from the callee) never sees it.
+        if (client.code.length == 0) return (address(0), bytes32(0));
+        try INewtonPolicyClient(client).getPolicyAddress() returns (address policyAddress) {
+            try INewtonPolicyClient(client).getPolicyId() returns (bytes32 policyId) {
+                return (policyAddress, policyId);
+            } catch {
+                return (address(0), bytes32(0));
+            }
+        } catch {
+            return (address(0), bytes32(0));
+        }
     }
 }
