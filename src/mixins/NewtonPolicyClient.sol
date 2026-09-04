@@ -59,14 +59,6 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
     // error for when an update is already queued
     error UpdateAlreadyPending(bytes32 pendingHash);
 
-    /// @notice Enum used for hashing queued updates
-    enum UpdateKind {
-        None,
-        Rebind,
-        SetDelay,
-        SetGracePeriod
-    }
-
     /// @notice Emitted when a policy rebind is queued.
     /// @param newPolicy The policy address that will be bound at execute.
     /// @param pendingHash Commitment to the queued update.
@@ -140,28 +132,24 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
 
     /// @notice Struct to contain stateful values for NewtonPolicyClient-type contracts
     /// @custom:storage-location erc7201:newton.storage.NewtonPolicyClient
-    /// @dev The trailing five fields are appended by the rebind timelock. Appending is
-    ///      safe: this struct lives in a dedicated ERC-7201 namespaced region, so no
-    ///      inheritor's layout shifts and no `__gap` is required. The four uint64s pack
-    ///      into a single slot; `pendingHash` takes the next.
     struct NewtonPolicyClientStorage {
         INewtonProverTaskManager policyTaskManager;
         address policy;
         bytes32 policyId;
         address policyClientOwner;
-        // seconds a queued update must wait; 0 is legal and means no delay, which
-        // reproduces the pre-timelock behaviour exactly
         uint64 rebindDelay;
-        // seconds a matured update stays executable; 0 means it never expires
         uint64 rebindGracePeriod;
-        // timestamp the queued update becomes executable; 0 means nothing is queued
         uint64 executableFrom;
-        // timestamp the queued update stops being executable; 0 means no expiry.
-        // captured at queue time from the grace period then in force, so a later
-        // grace-period update never retroactively moves an existing entry
         uint64 expiresAt;
-        // commitment to the queued update, its kind included; 0 means nothing is queued
         bytes32 pendingHash;
+    }
+
+    /// @notice Enum used for hashing queued updates
+    enum UpdateKind {
+        None,
+        Rebind,
+        SetDelay,
+        SetGracePeriod
     }
 
     /// @notice EIP-1967 proxy storage slot for the NewtonPolicyClientStorage struct
