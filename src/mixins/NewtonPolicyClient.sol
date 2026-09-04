@@ -139,6 +139,12 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
         address policyClientOwner;
         uint64 rebindDelay;
         uint64 rebindGracePeriod;
+        mapping(UpdateKind => PendingUpdate) pendingUpdates;
+    }
+
+    /// @notice A single queued update. One entry is held per UpdateKind, so a rebind, a
+    ///         delay update and a grace-period update can be in flight at the same time.
+    struct PendingUpdate {
         uint64 executableFrom;
         uint64 expiresAt;
         bytes32 pendingHash;
@@ -397,18 +403,17 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
     }
 
     /**
-     * @notice Returns the currently queued update, if any.
+     * @notice Returns the update queued for a given kind, if any.
+     * @param kind Which kind of update to read.
      * @return pendingHash Commitment to the queued update; zero when nothing is queued.
      * @return executableFrom Timestamp it becomes executable.
      * @return expiresAt Timestamp it stops being executable; zero when it never expires.
      */
-    function pendingUpdate()
-        external
-        view
-        returns (bytes32 pendingHash, uint64 executableFrom, uint64 expiresAt)
-    {
-        NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
-        return ($.pendingHash, $.executableFrom, $.expiresAt);
+    function pendingUpdate(
+        UpdateKind kind
+    ) external view returns (bytes32 pendingHash, uint64 executableFrom, uint64 expiresAt) {
+        PendingUpdate storage p = _getNewtonPolicyClientStorage().pendingUpdates[kind];
+        return (p.pendingHash, p.executableFrom, p.expiresAt);
     }
 
     /**
@@ -453,7 +458,7 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
         UpdateKind kind,
         bytes calldata payload
     ) external onlyPolicyClientOwner returns (bytes32 policyId) {
-        _consume(_updateHash(kind, payload));
+        _consume(kind, _updateHash(kind, payload));
 
         if (kind == UpdateKind.Rebind) {
             (address policy, INewtonPolicy.PolicyConfig memory config) =
@@ -488,26 +493,35 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
      * @param payload The ABI-encoded arguments for that kind.
      * @return executableFrom Timestamp the queued update becomes executable.
      * @dev The explicit form of what `queueUpdate` refuses to do implicitly. The
-     *      replacement serves a FULL delay computed from this proposal; it never inherits
-     *      the superseded entry's elapsed time. Queues normally when nothing is pending.
+     *      replacement acts only on the entry for `kind`, so replacing a queued delay
+     *      update never disturbs a pending rebind. It serves a FULL delay computed from
+     *      this proposal and never inherits the superseded entry's elapsed time. Queues
+     *      normally when nothing of that kind is pending.
      */
     function replaceUpdate(
         UpdateKind kind,
         bytes calldata payload
     ) external onlyPolicyClientOwner returns (uint64 executableFrom) {
-        _cancelIfPending();
+        PendingUpdate storage p = _getNewtonPolicyClientStorage().pendingUpdates[kind];
+        if (p.pendingHash != bytes32(0)) {
+            _cancelPending(p);
+        }
         return _queue(kind, payload);
     }
 
     /**
-     * @notice Only callable by the owner. Clears the queued update, whatever kind it is.
-     * @dev Works before maturity, after it, and after expiry. Reverts when nothing is
-     *      queued so a scripted cancel cannot silently no-op.
+     * @notice Only callable by the owner. Clears the update queued for a given kind.
+     * @param kind Which kind of update to cancel.
+     * @dev Works before maturity, after it, and after expiry. Reverts when nothing of that
+     *      kind is queued so a scripted cancel cannot silently no-op. Leaves the other
+     *      kinds' entries untouched.
      */
-    function cancelUpdate() external onlyPolicyClientOwner {
-        NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
-        require($.pendingHash != bytes32(0), NoPendingUpdate());
-        _cancelPending($);
+    function cancelUpdate(
+        UpdateKind kind
+    ) external onlyPolicyClientOwner {
+        PendingUpdate storage p = _getNewtonPolicyClientStorage().pendingUpdates[kind];
+        require(p.pendingHash != bytes32(0), NoPendingUpdate());
+        _cancelPending(p);
     }
 
     /**
@@ -539,26 +553,29 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
      * @param kind Which kind of update is being queued.
      * @param payload The ABI-encoded arguments for that kind.
      * @return executableFrom Timestamp the queued update becomes executable.
-     * @dev Only one update may be queued at a time. Both timestamps are computed from the
-     *      delay and grace period in force NOW, so a replacement always serves a full,
-     *      current window and never inherits or partially credits the superseded entry's
-     *      elapsed time. The payload is decoded here only to emit a typed event; the
-     *      commitment is over the raw `(kind, payload)`.
+     * @dev One entry per kind, so the three kinds can be in flight in parallel; a second
+     *      update of the SAME kind is refused. Both timestamps are computed from the delay
+     *      and grace period in force NOW, so a replacement always serves a full, current
+     *      window and never inherits or partially credits the superseded entry's elapsed
+     *      time -- and an already-queued entry keeps its own window even if the delay or
+     *      grace period is later updated. The payload is decoded here only to emit a typed
+     *      event; the commitment is over the raw `(kind, payload)`.
      */
     function _queue(
         UpdateKind kind,
         bytes calldata payload
     ) private returns (uint64 executableFrom) {
         NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
-        require($.pendingHash == bytes32(0), UpdateAlreadyPending($.pendingHash));
+        PendingUpdate storage p = $.pendingUpdates[kind];
+        require(p.pendingHash == bytes32(0), UpdateAlreadyPending(p.pendingHash));
 
         bytes32 updateHash = _updateHash(kind, payload);
         executableFrom = uint64(block.timestamp) + $.rebindDelay;
         uint64 expiresAt = $.rebindGracePeriod == 0 ? 0 : executableFrom + $.rebindGracePeriod;
 
-        $.pendingHash = updateHash;
-        $.executableFrom = executableFrom;
-        $.expiresAt = expiresAt;
+        p.pendingHash = updateHash;
+        p.executableFrom = executableFrom;
+        p.expiresAt = expiresAt;
 
         if (kind == UpdateKind.Rebind) {
             (address policy, INewtonPolicy.PolicyConfig memory config) =
@@ -580,7 +597,8 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
     }
 
     /**
-     * @notice Validates a matured, matching entry and clears it.
+     * @notice Validates a matured, matching entry for one kind and clears it.
+     * @param kind Which kind of update is being executed.
      * @param updateHash Commitment to the update being executed, its kind included.
      * @dev Cleared BEFORE the caller makes any external call, so a reentrant policy cannot
      *      replay a matured entry. Identity is checked before timing, deliberately:
@@ -589,55 +607,45 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
      *      an error about a different update than the caller asked for.
      */
     function _consume(
+        UpdateKind kind,
         bytes32 updateHash
     ) private {
-        NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
-        uint64 executableFrom = $.executableFrom;
+        PendingUpdate storage p = _getNewtonPolicyClientStorage().pendingUpdates[kind];
+        uint64 executableFrom = p.executableFrom;
         require(executableFrom != 0, NoPendingUpdate());
-        require($.pendingHash == updateHash, UpdateMismatch());
+        require(p.pendingHash == updateHash, UpdateMismatch());
         require(block.timestamp >= executableFrom, UpdateNotMatured(executableFrom));
-        uint64 expiresAt = $.expiresAt;
+        uint64 expiresAt = p.expiresAt;
         require(expiresAt == 0 || block.timestamp <= expiresAt, UpdateExpired(expiresAt));
-        _clearPending($);
+        _clearPending(p);
     }
 
     /**
      * @notice Clears the pending entry and announces the withdrawal.
-     * @param $ The client storage struct.
+     * @param p The queued entry.
      * @dev Announcing matters on a replace: a watcher tracking the superseded entry learns
      *      it was withdrawn in the same transaction it learns what replaced it.
      */
     function _cancelPending(
-        NewtonPolicyClientStorage storage $
+        PendingUpdate storage p
     ) private {
-        emit PendingUpdateCancelled($.pendingHash);
-        _clearPending($);
-    }
-
-    /**
-     * @notice Cancels a queued update if there is one, and does nothing if there is not.
-     * @dev Lets the `replace*` calls double as plain queues when nothing is pending.
-     */
-    function _cancelIfPending() private {
-        NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
-        if ($.pendingHash != bytes32(0)) {
-            _cancelPending($);
-        }
+        emit PendingUpdateCancelled(p.pendingHash);
+        _clearPending(p);
     }
 
     /**
      * @notice Clears the pending entry without emitting.
-     * @param $ The client storage struct.
+     * @param p The queued entry.
      * @dev Callers that need an event emit it themselves: `cancel()` announces a
      *      withdrawal, while an execute is already recorded by its own `PolicyIdUpdated`,
      *      `RebindDelaySet` or `RebindGracePeriodSet` event.
      */
     function _clearPending(
-        NewtonPolicyClientStorage storage $
+        PendingUpdate storage p
     ) private {
-        $.pendingHash = bytes32(0);
-        $.executableFrom = 0;
-        $.expiresAt = 0;
+        p.pendingHash = bytes32(0);
+        p.executableFrom = 0;
+        p.expiresAt = 0;
     }
 
     /**
