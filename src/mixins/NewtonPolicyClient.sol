@@ -41,25 +41,25 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
     // error for when the policy factory version is incompatible
     error IncompatiblePolicyVersion(string actual, string minimum);
 
-    /// @notice A bound client with a non-zero `rebindDelay` must route changes through
-    ///         queue/execute; the immediate setters are unavailable to it.
+    // error for when a bound client with a non-zero rebindDelay uses an immediate setter
     error RebindRequiresTimelock();
 
-    /// @notice No update is queued.
+    // error for when no update is queued
     error NoPendingUpdate();
 
-    /// @notice The queued update has not reached `executableFrom` yet.
+    // error for when the queued update has not reached executableFrom yet
     error UpdateNotMatured(uint64 executableFrom);
 
-    /// @notice The queued update passed `expiresAt` and must be re-queued.
+    // error for when the queued update passed expiresAt
     error UpdateExpired(uint64 expiresAt);
 
-    /// @notice The arguments supplied to execute do not match what was queued -- a
-    ///         different value, or the wrong kind of change entirely.
+    // error for when the execute arguments do not match what was queued
     error UpdateMismatch();
 
-    /// @notice The kind of change a queued entry represents. Encoded into `pendingHash`
-    ///         so an entry can only ever be executed by the call that queued it.
+    // error for when an update is already queued
+    error UpdateAlreadyPending(bytes32 pendingHash);
+
+    /// @notice Enum used for hashing queued updates
     enum UpdateKind {
         None,
         Rebind,
@@ -67,9 +67,12 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
         SetGracePeriod
     }
 
-    /// @notice Emitted when a policy rebind is queued. Carries the FULL `PolicyConfig`,
-    ///         not just its hash: advance notice is the point, so a watcher must be able
-    ///         to simulate exactly what will land from the event alone.
+    /// @notice Emitted when a policy rebind is queued.
+    /// @param newPolicy The policy address that will be bound at execute.
+    /// @param pendingHash Commitment to the queued update.
+    /// @param executableFrom Timestamp the queued rebind becomes executable.
+    /// @param expiresAt Timestamp it stops being executable; 0 when it never expires.
+    /// @param config The policy config that will be applied at execute.
     event PolicyRebindQueued(
         address indexed newPolicy,
         bytes32 indexed pendingHash,
@@ -78,24 +81,36 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
         INewtonPolicy.PolicyConfig config
     );
 
-    /// @notice Emitted when a change to `rebindDelay` is queued.
+    /// @notice Emitted when an update to `rebindDelay` is queued.
+    /// @param pendingHash Commitment to the queued update.
+    /// @param newDelay The delay that will be written at execute.
+    /// @param executableFrom Timestamp the queued update becomes executable.
+    /// @param expiresAt Timestamp it stops being executable; 0 when it never expires.
     event RebindDelayUpdateQueued(
         bytes32 indexed pendingHash, uint64 newDelay, uint64 executableFrom, uint64 expiresAt
     );
 
-    /// @notice Emitted when a change to `rebindGracePeriod` is queued.
+    /// @notice Emitted when an update to `rebindGracePeriod` is queued.
+    /// @param pendingHash Commitment to the queued update.
+    /// @param newGracePeriod The grace period that will be written at execute.
+    /// @param executableFrom Timestamp the queued update becomes executable.
+    /// @param expiresAt Timestamp it stops being executable; 0 when it never expires.
     event RebindGracePeriodUpdateQueued(
         bytes32 indexed pendingHash, uint64 newGracePeriod, uint64 executableFrom, uint64 expiresAt
     );
 
-    /// @notice Emitted when a queued update is cleared -- explicitly via `cancel()`, or
-    ///         implicitly because a new queue call replaced it.
+    /// @notice Emitted when a queued update is cancelled.
+    /// @param pendingHash The commitment that was cancelled.
     event PendingUpdateCancelled(bytes32 indexed pendingHash);
 
-    /// @notice Emitted when `rebindDelay` actually changes.
+    /// @notice Emitted when `rebindDelay` changes.
+    /// @param previousDelay The delay before this write.
+    /// @param newDelay The delay after this write.
     event RebindDelaySet(uint64 previousDelay, uint64 newDelay);
 
-    /// @notice Emitted when `rebindGracePeriod` actually changes.
+    /// @notice Emitted when `rebindGracePeriod` changes.
+    /// @param previousGracePeriod The grace period before this write.
+    /// @param newGracePeriod The grace period after this write.
     event RebindGracePeriodSet(uint64 previousGracePeriod, uint64 newGracePeriod);
 
     /// @notice Emitted whenever the bound policy ADDRESS ($.policy) is written -
@@ -127,26 +142,25 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
     /// @custom:storage-location erc7201:newton.storage.NewtonPolicyClient
     /// @dev The trailing five fields are appended by the rebind timelock. Appending is
     ///      safe: this struct lives in a dedicated ERC-7201 namespaced region, so no
-    ///      inheritor's layout shifts and no `__gap` is required. The four `uint64`s
-    ///      pack into a single slot; `pendingHash` takes the next.
+    ///      inheritor's layout shifts and no `__gap` is required. The four uint64s pack
+    ///      into a single slot; `pendingHash` takes the next.
     struct NewtonPolicyClientStorage {
         INewtonProverTaskManager policyTaskManager;
         address policy;
         bytes32 policyId;
         address policyClientOwner;
-        // ---- rebind timelock ----
-        /// @dev Seconds a queued update must wait. 0 is legal and means "no delay",
-        ///      reproducing the pre-timelock behaviour exactly.
+        // seconds a queued update must wait; 0 is legal and means no delay, which
+        // reproduces the pre-timelock behaviour exactly
         uint64 rebindDelay;
-        /// @dev Seconds a matured change stays executable. 0 means "never expires".
+        // seconds a matured update stays executable; 0 means it never expires
         uint64 rebindGracePeriod;
-        /// @dev Timestamp the queued update becomes executable. 0 => nothing queued.
+        // timestamp the queued update becomes executable; 0 means nothing is queued
         uint64 executableFrom;
-        /// @dev Timestamp the queued update stops being executable. 0 => no expiry.
-        ///      Captured at queue time from the grace period then in force, so a later
-        ///      grace-period change never retroactively moves an existing entry.
+        // timestamp the queued update stops being executable; 0 means no expiry.
+        // captured at queue time from the grace period then in force, so a later
+        // grace-period update never retroactively moves an existing entry
         uint64 expiresAt;
-        /// @dev Commitment to the queued update, its kind included. 0 => nothing queued.
+        // commitment to the queued update, its kind included; 0 means nothing is queued
         bytes32 pendingHash;
     }
 
@@ -210,8 +224,12 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
         _writePolicyAddress(policy);
     }
 
-    /// @dev The unguarded write. `private`, so an inheritor cannot reach it and the
-    ///      timelock cannot be routed around; `executeRebind` is the only other caller.
+    /**
+     * @notice The unguarded write behind `_setPolicyAddress`.
+     * @param policy The address of the NewtonPolicy contract.
+     * @dev `private`, so an inheritor cannot reach it and the timelock cannot be routed
+     *      around; `executeRebind` is the only other caller.
+     */
     function _writePolicyAddress(
         address policy
     ) private {
@@ -225,26 +243,29 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
         emit PolicyAddressUpdated(previous, policy);
     }
 
-    /// @notice Gate on the immediate (non-queued) policy writes.
-    /// @dev Permitted while the client is unbound -- `policyId == 0`, the birth window --
-    ///      or while `rebindDelay == 0`, meaning this client has not adopted the timelock.
-    ///      Keyed on `policyId` rather than `policy` because binding is a two-transaction
-    ///      operation downstream: an initializer sets the address, and the config arrives
-    ///      in a later transaction. Keying on `policy` would reject that second call.
-    ///
-    ///      This is safe only because `executeRebind` applies both writes in ONE
-    ///      transaction: `policyId == 0` is therefore never observable between
-    ///      transactions after birth, so a bare address change cannot be used to
-    ///      manufacture the birth window and then set arbitrary params for free.
+    /**
+     * @notice Gates the immediate, non-queued policy writes.
+     * @dev Permitted while the client is unbound -- `policyId == 0`, the birth window --
+     *      or while `rebindDelay == 0`, meaning this client has not adopted the timelock.
+     *      Keyed on `policyId` rather than `policy` because binding is a two-transaction
+     *      operation downstream: an initializer sets the address, and the config arrives
+     *      in a later transaction. Keying on `policy` would reject that second call.
+     *
+     *      This is safe only because `executeRebind` applies both writes in ONE
+     *      transaction, so `policyId == 0` is never observable between transactions after
+     *      birth. A bare address change therefore cannot be used to manufacture the birth
+     *      window and then set arbitrary params for free.
+     */
     function _requireImmediateChangeAllowed() private view {
         NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
-        require(
-            $.policyId == bytes32(0) || $.rebindDelay == 0, RebindRequiresTimelock()
-        );
+        require($.policyId == bytes32(0) || $.rebindDelay == 0, RebindRequiresTimelock());
     }
 
-    /// @dev Runtime version gate, shared by the immediate setter and by queue/execute.
-    ///      Read from the TaskManager, which is mutable and authoritative.
+    /**
+     * @notice Runtime version gate, shared by the immediate setter and by queue/execute.
+     * @param policy The address of the NewtonPolicy contract to check.
+     * @dev Reads the minimum from the TaskManager, which is mutable and authoritative.
+     */
     function _checkPolicyVersion(
         address policy
     ) private view {
@@ -297,7 +318,12 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
         return _writePolicy(policyConfig);
     }
 
-    /// @dev The unguarded write. `private` for the same reason as `_writePolicyAddress`.
+    /**
+     * @notice The unguarded write behind `_setPolicy`.
+     * @param policyConfig The policy configuration.
+     * @return policyId The policyID associated with the calling address.
+     * @dev `private` for the same reason as `_writePolicyAddress`.
+     */
     function _writePolicy(
         INewtonPolicy.PolicyConfig memory policyConfig
     ) private returns (bytes32) {
@@ -362,44 +388,32 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
         return _getNewtonPolicyClientStorage().policyClientOwner;
     }
 
-    /* ------------------------------------------------------------------ *
-     *                          REBIND TIMELOCK                            *
-     *                                                                     *
-     * Changing which policy governs a client is otherwise the fastest     *
-     * privileged path in the system. These functions put a queue -> delay *
-     * -> execute cycle in front of it, sealed at the internal writes so   *
-     * an inheritor cannot expose a faster path.                           *
-     *                                                                     *
-     * `rebindDelay` and `rebindGracePeriod` are themselves governed the   *
-     * same way: a change to either is queued and serves the delay and     *
-     * grace period in force at the time it was proposed. There is no      *
-     * immediate setter for either, in both directions -- an asymmetric    *
-     * rule would let a compromised owner raise the delay to years in one  *
-     * transaction and freeze the client, including the change needed to   *
-     * undo it.                                                            *
-     *                                                                     *
-     * Only one change may be queued at a time. Queueing while another is  *
-     * pending cancels it first, and the replacement serves a FULL delay   *
-     * computed from its own proposal -- it never inherits or partially    *
-     * credits the superseded entry's elapsed time.                        *
-     * ------------------------------------------------------------------ */
+    /* REBIND TIMELOCK */
 
-    /// @notice The seconds a queued update must wait before it may execute.
-    /// @dev Public and unauthenticated by design: the exit window a client actually
-    ///      offers must be readable on-chain, including when it is zero.
+    /**
+     * @notice Returns the seconds a queued update must wait before it may execute.
+     * @return The configured rebind delay. Zero is legal and means no delay.
+     * @dev Public and unauthenticated by design: the exit window a client actually
+     *      offers must be readable on chain, including when it is zero.
+     */
     function rebindDelay() external view returns (uint64) {
         return _getNewtonPolicyClientStorage().rebindDelay;
     }
 
-    /// @notice The seconds a matured change stays executable. 0 means it never expires.
+    /**
+     * @notice Returns the seconds a matured update stays executable.
+     * @return The configured grace period. Zero means a matured update never expires.
+     */
     function rebindGracePeriod() external view returns (uint64) {
         return _getNewtonPolicyClientStorage().rebindGracePeriod;
     }
 
-    /// @notice The currently queued update, if any.
-    /// @return pendingHash Commitment to the queued update; 0 when nothing is queued.
-    /// @return executableFrom Timestamp it becomes executable.
-    /// @return expiresAt Timestamp it stops being executable; 0 when it never expires.
+    /**
+     * @notice Returns the currently queued update, if any.
+     * @return pendingHash Commitment to the queued update; zero when nothing is queued.
+     * @return executableFrom Timestamp it becomes executable.
+     * @return expiresAt Timestamp it stops being executable; zero when it never expires.
+     */
     function pendingUpdate()
         external
         view
@@ -409,36 +423,57 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
         return ($.pendingHash, $.executableFrom, $.expiresAt);
     }
 
-    /// @notice Queue a rebind of the policy address and its config together.
-    /// @dev Address and config are committed as ONE hash and applied in ONE transaction
-    ///      at execute. Queueing them separately would let an owner serve the delay for
-    ///      the address, land it, and then set arbitrary params for free -- `policyParams`
-    ///      being precisely the permissive knob.
-    /// @return executableFrom Timestamp the queued rebind becomes executable.
+    /**
+     * @notice Only callable by the owner. Queues a rebind of the policy address and its
+     *         config together.
+     * @param policy The address of the NewtonPolicy contract to bind at execute.
+     * @param policyConfig The policy configuration to apply at execute.
+     * @return executableFrom Timestamp the queued rebind becomes executable.
+     * @dev Address and config are committed as ONE hash and applied in ONE transaction at
+     *      execute. Queueing them separately would let an owner serve the delay for the
+     *      address, land it, and then set an arbitrary config for free -- `policyParams`
+     *      being precisely the permissive knob. The resulting policyId cannot be committed
+     *      here: `NewtonPolicy.setPolicy` derives it from `block.timestamp` among other
+     *      inputs, so the queue commits the INPUTS.
+     */
     function queueRebind(
         address policy,
         INewtonPolicy.PolicyConfig calldata policyConfig
     ) external onlyPolicyClientOwner returns (uint64 executableFrom) {
-        // Fail fast for the operator; re-checked authoritatively at execute.
+        // Fails fast for the operator; re-checked authoritatively at execute.
         _checkPolicyVersion(policy);
         return _queue(_rebindHash(policy, policyConfig), UpdateKind.Rebind, policy, policyConfig, 0);
     }
 
-    /// @notice Execute a matured rebind. Applies address and config in one transaction.
-    /// @return policyId The fresh policyId minted under the newly bound policy.
+    /**
+     * @notice Only callable by the owner. Executes a matured rebind, applying the policy
+     *         address and config in a single transaction.
+     * @param policy The address of the NewtonPolicy contract, as queued.
+     * @param policyConfig The policy configuration, as queued.
+     * @return policyId The policyID minted under the newly bound policy.
+     * @dev The version gate runs again here because it is the authoritative check: a
+     *      policy compatible at queue time may have been made incompatible since by a
+     *      `minCompatiblePolicyVersion()` bump.
+     */
     function executeRebind(
         address policy,
         INewtonPolicy.PolicyConfig calldata policyConfig
     ) external onlyPolicyClientOwner returns (bytes32 policyId) {
         _consume(_rebindHash(policy, policyConfig));
-        // Authoritative version gate: a policy compatible at queue time may not be now.
         _checkPolicyVersion(policy);
         _writePolicyAddress(policy);
         return _writePolicy(policyConfig);
     }
 
-    /// @notice Queue a change to `rebindDelay`, in either direction.
-    /// @return executableFrom Timestamp the queued update becomes executable.
+    /**
+     * @notice Only callable by the owner. Queues an update to `rebindDelay`.
+     * @param newDelay The delay to apply at execute.
+     * @return executableFrom Timestamp the queued update becomes executable.
+     * @dev Both directions are queued, deliberately. If an increase applied immediately, a
+     *      compromised owner who cannot rebind maliciously could still set the delay to
+     *      years in one transaction, freezing the client for that long -- including the
+     *      update needed to undo it.
+     */
     function queueRebindDelay(
         uint64 newDelay
     ) external onlyPolicyClientOwner returns (uint64 executableFrom) {
@@ -451,7 +486,10 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
         );
     }
 
-    /// @notice Execute a matured change to `rebindDelay`.
+    /**
+     * @notice Only callable by the owner. Executes a matured update to `rebindDelay`.
+     * @param newDelay The delay to write, as queued.
+     */
     function executeRebindDelay(
         uint64 newDelay
     ) external onlyPolicyClientOwner {
@@ -464,8 +502,13 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
         }
     }
 
-    /// @notice Queue a change to `rebindGracePeriod`, in either direction.
-    /// @return executableFrom Timestamp the queued update becomes executable.
+    /**
+     * @notice Only callable by the owner. Queues an update to `rebindGracePeriod`.
+     * @param newGracePeriod The grace period to apply at execute.
+     * @return executableFrom Timestamp the queued update becomes executable.
+     * @dev Governed exactly like `rebindDelay`: the update serves the delay and grace
+     *      period in force when it was proposed, not the ones it installs.
+     */
     function queueRebindGracePeriod(
         uint64 newGracePeriod
     ) external onlyPolicyClientOwner returns (uint64 executableFrom) {
@@ -478,7 +521,10 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
         );
     }
 
-    /// @notice Execute a matured change to `rebindGracePeriod`.
+    /**
+     * @notice Only callable by the owner. Executes a matured update to `rebindGracePeriod`.
+     * @param newGracePeriod The grace period to write, as queued.
+     */
     function executeRebindGracePeriod(
         uint64 newGracePeriod
     ) external onlyPolicyClientOwner {
@@ -491,22 +537,89 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
         }
     }
 
-    /// @notice Clear the queued update, whatever kind it is.
-    /// @dev Works before maturity, after it, and after expiry. Reverts when nothing is
-    ///      queued, so a scripted cancel cannot silently no-op.
+    /**
+     * @notice Only callable by the owner. Clears the queued update, whatever kind it is.
+     * @dev Works before maturity, after it, and after expiry. Reverts when nothing is
+     *      queued so a scripted cancel cannot silently no-op.
+     */
     function cancel() external onlyPolicyClientOwner {
         NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
-        bytes32 pendingHash = $.pendingHash;
-        require(pendingHash != bytes32(0), NoPendingUpdate());
-        emit PendingUpdateCancelled(pendingHash);
-        _clearPending($);
+        require($.pendingHash != bytes32(0), NoPendingUpdate());
+        _cancelPending($);
     }
 
-    /* ----------------------------- internals ---------------------------- */
+    /**
+     * @notice Only callable by the owner. Cancels any queued update and queues a rebind in
+     *         its place, in one transaction.
+     * @param policy The address of the NewtonPolicy contract to bind at execute.
+     * @param policyConfig The policy configuration to apply at execute.
+     * @return executableFrom Timestamp the queued rebind becomes executable.
+     * @dev The explicit form of what `queueRebind` refuses to do implicitly. The
+     *      replacement serves a FULL delay computed from this proposal; it never inherits
+     *      the superseded entry's elapsed time. Queues normally when nothing is pending.
+     */
+    function replaceRebind(
+        address policy,
+        INewtonPolicy.PolicyConfig calldata policyConfig
+    ) external onlyPolicyClientOwner returns (uint64 executableFrom) {
+        _cancelIfPending();
+        _checkPolicyVersion(policy);
+        return _queue(_rebindHash(policy, policyConfig), UpdateKind.Rebind, policy, policyConfig, 0);
+    }
 
-    /// @dev Writes the pending entry, cancelling and announcing any entry it replaces.
-    ///      `executableFrom` and `expiresAt` are both computed from the delay and grace
-    ///      period in force NOW, so a replacement always serves a full, current window.
+    /**
+     * @notice Only callable by the owner. Cancels any queued update and queues an update to
+     *         `rebindDelay` in its place, in one transaction.
+     * @param newDelay The delay to apply at execute.
+     * @return executableFrom Timestamp the queued update becomes executable.
+     */
+    function replaceRebindDelay(
+        uint64 newDelay
+    ) external onlyPolicyClientOwner returns (uint64 executableFrom) {
+        _cancelIfPending();
+        return _queue(
+            _valueHash(UpdateKind.SetDelay, newDelay),
+            UpdateKind.SetDelay,
+            address(0),
+            _emptyConfig(),
+            newDelay
+        );
+    }
+
+    /**
+     * @notice Only callable by the owner. Cancels any queued update and queues an update to
+     *         `rebindGracePeriod` in its place, in one transaction.
+     * @param newGracePeriod The grace period to apply at execute.
+     * @return executableFrom Timestamp the queued update becomes executable.
+     */
+    function replaceRebindGracePeriod(
+        uint64 newGracePeriod
+    ) external onlyPolicyClientOwner returns (uint64 executableFrom) {
+        _cancelIfPending();
+        return _queue(
+            _valueHash(UpdateKind.SetGracePeriod, newGracePeriod),
+            UpdateKind.SetGracePeriod,
+            address(0),
+            _emptyConfig(),
+            newGracePeriod
+        );
+    }
+
+    /**
+     * @notice Writes the pending entry, cancelling and announcing any entry it replaces.
+     * @param updateHash Commitment to the update being queued, its kind included.
+     * @param kind Which kind of update this is, selecting the event to emit.
+     * @param policy The policy address, for a rebind; ignored otherwise.
+     * @param policyConfig The policy config, for a rebind; ignored otherwise.
+     * @param value The new delay or grace period, for those kinds; ignored otherwise.
+     * @return executableFrom Timestamp the queued update becomes executable.
+     * @dev Only one update may be queued at a time. Reverts when one already is: silently
+     *      discarding it would let a caller who did not know about the existing entry
+     *      replace it by accident. Use `cancel()` or the matching `replace*` call.
+     *      Both timestamps are computed from the delay and grace period in force NOW, so a
+     *      replacement always serves a full, current window and never inherits or
+     *      partially credits the superseded entry's elapsed time.
+     */
     function _queue(
         bytes32 updateHash,
         UpdateKind kind,
@@ -515,16 +628,10 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
         uint64 value
     ) private returns (uint64 executableFrom) {
         NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
-
-        // Replace == cancel + queue, announced as both so a watcher tracking the
-        // superseded entry learns it was withdrawn in the same transaction.
-        if ($.pendingHash != bytes32(0)) {
-            emit PendingUpdateCancelled($.pendingHash);
-        }
+        require($.pendingHash == bytes32(0), UpdateAlreadyPending($.pendingHash));
 
         executableFrom = uint64(block.timestamp) + $.rebindDelay;
-        uint64 expiresAt =
-            $.rebindGracePeriod == 0 ? 0 : executableFrom + $.rebindGracePeriod;
+        uint64 expiresAt = $.rebindGracePeriod == 0 ? 0 : executableFrom + $.rebindGracePeriod;
 
         $.pendingHash = updateHash;
         $.executableFrom = executableFrom;
@@ -539,19 +646,21 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
         }
     }
 
-    /// @dev Validates a matured, matching entry and clears it. Cleared BEFORE any caller
-    ///      makes an external call, so a reentrant policy cannot replay the entry.
+    /**
+     * @notice Validates a matured, matching entry and clears it.
+     * @param updateHash Commitment to the update being executed, its kind included.
+     * @dev Cleared BEFORE the caller makes any external call, so a reentrant policy cannot
+     *      replay a matured entry. Identity is checked before timing, deliberately:
+     *      executing a superseded or wrong-kind entry would otherwise report
+     *      `UpdateNotMatured` against the timestamp of whatever else happens to be queued,
+     *      an error about a different update than the caller asked for.
+     */
     function _consume(
         bytes32 updateHash
     ) private {
         NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
         uint64 executableFrom = $.executableFrom;
         require(executableFrom != 0, NoPendingUpdate());
-        // Identity is checked BEFORE timing, deliberately. Executing a superseded or
-        // wrong-kind entry otherwise reports UpdateNotMatured against the timestamp of
-        // whatever else happens to be queued -- an error about a different change than
-        // the caller asked for. A hash mismatch also covers the wrong KIND, since the
-        // kind is part of every preimage.
         require($.pendingHash == updateHash, UpdateMismatch());
         require(block.timestamp >= executableFrom, UpdateNotMatured(executableFrom));
         uint64 expiresAt = $.expiresAt;
@@ -559,9 +668,37 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
         _clearPending($);
     }
 
-    /// @dev Silent clear. Callers that need an event emit it themselves -- `cancel()`
-    ///      announces a withdrawal, while an execute is already recorded by its own
-    ///      `PolicyIdUpdated` / `RebindDelaySet` / `RebindGracePeriodSet` event.
+    /**
+     * @notice Clears the pending entry and announces the withdrawal.
+     * @param $ The client storage struct.
+     * @dev Announcing matters on a replace: a watcher tracking the superseded entry learns
+     *      it was withdrawn in the same transaction it learns what replaced it.
+     */
+    function _cancelPending(
+        NewtonPolicyClientStorage storage $
+    ) private {
+        emit PendingUpdateCancelled($.pendingHash);
+        _clearPending($);
+    }
+
+    /**
+     * @notice Cancels a queued update if there is one, and does nothing if there is not.
+     * @dev Lets the `replace*` calls double as plain queues when nothing is pending.
+     */
+    function _cancelIfPending() private {
+        NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
+        if ($.pendingHash != bytes32(0)) {
+            _cancelPending($);
+        }
+    }
+
+    /**
+     * @notice Clears the pending entry without emitting.
+     * @param $ The client storage struct.
+     * @dev Callers that need an event emit it themselves: `cancel()` announces a
+     *      withdrawal, while an execute is already recorded by its own `PolicyIdUpdated`,
+     *      `RebindDelaySet` or `RebindGracePeriodSet` event.
+     */
     function _clearPending(
         NewtonPolicyClientStorage storage $
     ) private {
@@ -570,21 +707,36 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
         $.expiresAt = 0;
     }
 
-    /// @dev The resulting policyId cannot be committed: `NewtonPolicy.setPolicy` derives
-    ///      it from `block.timestamp` among other inputs. The queue commits the INPUTS.
+    /**
+     * @notice Computes the commitment for a queued rebind.
+     * @param policy The address of the NewtonPolicy contract.
+     * @param policyConfig The policy configuration.
+     * @return The commitment, with the update kind bound into the preimage.
+     */
     function _rebindHash(
         address policy,
         INewtonPolicy.PolicyConfig memory policyConfig
     ) private pure returns (bytes32) {
-        return keccak256(
-            abi.encode(UpdateKind.Rebind, policy, keccak256(abi.encode(policyConfig)))
-        );
+        return keccak256(abi.encode(UpdateKind.Rebind, policy, keccak256(abi.encode(policyConfig))));
     }
 
-    function _valueHash(UpdateKind kind, uint64 value) private pure returns (bytes32) {
+    /**
+     * @notice Computes the commitment for a queued delay or grace-period update.
+     * @param kind Which of the two value updates this is.
+     * @param value The new delay or grace period.
+     * @return The commitment, with the update kind bound into the preimage.
+     */
+    function _valueHash(
+        UpdateKind kind,
+        uint64 value
+    ) private pure returns (bytes32) {
         return keccak256(abi.encode(kind, value));
     }
 
+    /**
+     * @notice An empty policy config, for queue paths that do not carry one.
+     * @return The zero-valued PolicyConfig.
+     */
     function _emptyConfig() private pure returns (INewtonPolicy.PolicyConfig memory) {
         return INewtonPolicy.PolicyConfig({policyParams: "", expireAfter: 0});
     }
