@@ -412,117 +412,91 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
     }
 
     /**
-     * @notice Only callable by the owner. Queues a rebind of the policy address and its
-     *         config together.
-     * @param policy The address of the NewtonPolicy contract to bind at execute.
-     * @param policyConfig The policy configuration to apply at execute.
-     * @return executableFrom Timestamp the queued rebind becomes executable.
-     * @dev Address and config are committed as ONE hash and applied in ONE transaction at
-     *      execute. Queueing them separately would let an owner serve the delay for the
-     *      address, land it, and then set an arbitrary config for free -- `policyParams`
-     *      being precisely the permissive knob. The resulting policyId cannot be committed
-     *      here: `NewtonPolicy.setPolicy` derives it from `block.timestamp` among other
-     *      inputs, so the queue commits the INPUTS.
+     * @notice Only callable by the owner. Queues any kind of timelocked update.
+     * @param kind Which kind of update to queue.
+     * @param payload The ABI-encoded arguments for that kind: `(address policy,
+     *        INewtonPolicy.PolicyConfig config)` for a rebind, `(uint64)` for a delay or
+     *        grace-period update. `encodeRebind` and `encodeValue` build these.
+     * @return executableFrom Timestamp the queued update becomes executable.
+     * @dev One entry point rather than one per kind, so the commitment rule is written
+     *      once: the hash covers `(kind, payload)`, which is exactly what execute must
+     *      supply again. Reverts when an update is already queued -- use `cancelUpdate`
+     *      or `replaceUpdate`, so queueing can never silently discard an entry the caller
+     *      did not know about.
+     *
+     *      For a rebind the address and config are committed TOGETHER and applied in one
+     *      transaction. Queueing them separately would let an owner serve the delay for
+     *      the address, land it, and then set an arbitrary config for free -- `policyParams`
+     *      being precisely the permissive knob. The resulting policyId is not committed:
+     *      `NewtonPolicy.setPolicy` derives it from `block.timestamp` among other inputs,
+     *      so the queue commits the INPUTS.
      */
-    function queueRebind(
-        address policy,
-        INewtonPolicy.PolicyConfig calldata policyConfig
+    function queueUpdate(
+        UpdateKind kind,
+        bytes calldata payload
     ) external onlyPolicyClientOwner returns (uint64 executableFrom) {
-        // Fails fast for the operator; re-checked authoritatively at execute.
-        _checkPolicyVersion(policy);
-        return _queue(_rebindHash(policy, policyConfig), UpdateKind.Rebind, policy, policyConfig, 0);
+        return _queue(kind, payload);
     }
 
     /**
-     * @notice Only callable by the owner. Executes a matured rebind, applying the policy
-     *         address and config in a single transaction.
-     * @param policy The address of the NewtonPolicy contract, as queued.
-     * @param policyConfig The policy configuration, as queued.
-     * @return policyId The policyID minted under the newly bound policy.
-     * @dev The version gate runs again here because it is the authoritative check: a
-     *      policy compatible at queue time may have been made incompatible since by a
+     * @notice Only callable by the owner. Executes a matured update of any kind.
+     * @param kind Which kind of update to execute; must match what was queued.
+     * @param payload The ABI-encoded arguments, byte-identical to what was queued.
+     * @return policyId The policyID minted under the newly bound policy for a rebind, and
+     *         `bytes32(0)` for a delay or grace-period update.
+     * @dev A rebind applies the policy address and config in a single transaction. Its
+     *      version gate runs again here because this is the authoritative check: a policy
+     *      compatible at queue time may have been made incompatible since by a
      *      `minCompatiblePolicyVersion()` bump.
      */
-    function executeRebind(
-        address policy,
-        INewtonPolicy.PolicyConfig calldata policyConfig
+    function executeUpdate(
+        UpdateKind kind,
+        bytes calldata payload
     ) external onlyPolicyClientOwner returns (bytes32 policyId) {
-        _consume(_rebindHash(policy, policyConfig));
-        _checkPolicyVersion(policy);
-        _writePolicyAddress(policy);
-        return _writePolicy(policyConfig);
-    }
+        _consume(_updateHash(kind, payload));
 
-    /**
-     * @notice Only callable by the owner. Queues an update to `rebindDelay`.
-     * @param newDelay The delay to apply at execute.
-     * @return executableFrom Timestamp the queued update becomes executable.
-     * @dev Both directions are queued, deliberately. If an increase applied immediately, a
-     *      compromised owner who cannot rebind maliciously could still set the delay to
-     *      years in one transaction, freezing the client for that long -- including the
-     *      update needed to undo it.
-     */
-    function queueRebindDelay(
-        uint64 newDelay
-    ) external onlyPolicyClientOwner returns (uint64 executableFrom) {
-        return _queue(
-            _valueHash(UpdateKind.SetDelay, newDelay),
-            UpdateKind.SetDelay,
-            address(0),
-            _emptyConfig(),
-            newDelay
-        );
-    }
-
-    /**
-     * @notice Only callable by the owner. Executes a matured update to `rebindDelay`.
-     * @param newDelay The delay to write, as queued.
-     */
-    function executeRebindDelay(
-        uint64 newDelay
-    ) external onlyPolicyClientOwner {
-        _consume(_valueHash(UpdateKind.SetDelay, newDelay));
-        NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
-        uint64 previous = $.rebindDelay;
-        if (previous != newDelay) {
-            $.rebindDelay = newDelay;
-            emit RebindDelaySet(previous, newDelay);
+        if (kind == UpdateKind.Rebind) {
+            (address policy, INewtonPolicy.PolicyConfig memory config) =
+                abi.decode(payload, (address, INewtonPolicy.PolicyConfig));
+            _checkPolicyVersion(policy);
+            _writePolicyAddress(policy);
+            return _writePolicy(config);
         }
-    }
 
-    /**
-     * @notice Only callable by the owner. Queues an update to `rebindGracePeriod`.
-     * @param newGracePeriod The grace period to apply at execute.
-     * @return executableFrom Timestamp the queued update becomes executable.
-     * @dev Governed exactly like `rebindDelay`: the update serves the delay and grace
-     *      period in force when it was proposed, not the ones it installs.
-     */
-    function queueRebindGracePeriod(
-        uint64 newGracePeriod
-    ) external onlyPolicyClientOwner returns (uint64 executableFrom) {
-        return _queue(
-            _valueHash(UpdateKind.SetGracePeriod, newGracePeriod),
-            UpdateKind.SetGracePeriod,
-            address(0),
-            _emptyConfig(),
-            newGracePeriod
-        );
-    }
-
-    /**
-     * @notice Only callable by the owner. Executes a matured update to `rebindGracePeriod`.
-     * @param newGracePeriod The grace period to write, as queued.
-     */
-    function executeRebindGracePeriod(
-        uint64 newGracePeriod
-    ) external onlyPolicyClientOwner {
-        _consume(_valueHash(UpdateKind.SetGracePeriod, newGracePeriod));
         NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
-        uint64 previous = $.rebindGracePeriod;
-        if (previous != newGracePeriod) {
-            $.rebindGracePeriod = newGracePeriod;
-            emit RebindGracePeriodSet(previous, newGracePeriod);
+        uint64 value = abi.decode(payload, (uint64));
+        if (kind == UpdateKind.SetDelay) {
+            uint64 previous = $.rebindDelay;
+            if (previous != value) {
+                $.rebindDelay = value;
+                emit RebindDelaySet(previous, value);
+            }
+        } else {
+            uint64 previous = $.rebindGracePeriod;
+            if (previous != value) {
+                $.rebindGracePeriod = value;
+                emit RebindGracePeriodSet(previous, value);
+            }
         }
+        return bytes32(0);
+    }
+
+    /**
+     * @notice Only callable by the owner. Cancels any queued update and queues a new one in
+     *         its place, in one transaction.
+     * @param kind Which kind of update to queue.
+     * @param payload The ABI-encoded arguments for that kind.
+     * @return executableFrom Timestamp the queued update becomes executable.
+     * @dev The explicit form of what `queueUpdate` refuses to do implicitly. The
+     *      replacement serves a FULL delay computed from this proposal; it never inherits
+     *      the superseded entry's elapsed time. Queues normally when nothing is pending.
+     */
+    function replaceUpdate(
+        UpdateKind kind,
+        bytes calldata payload
+    ) external onlyPolicyClientOwner returns (uint64 executableFrom) {
+        _cancelIfPending();
+        return _queue(kind, payload);
     }
 
     /**
@@ -530,94 +504,55 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
      * @dev Works before maturity, after it, and after expiry. Reverts when nothing is
      *      queued so a scripted cancel cannot silently no-op.
      */
-    function cancel() external onlyPolicyClientOwner {
+    function cancelUpdate() external onlyPolicyClientOwner {
         NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
         require($.pendingHash != bytes32(0), NoPendingUpdate());
         _cancelPending($);
     }
 
     /**
-     * @notice Only callable by the owner. Cancels any queued update and queues a rebind in
-     *         its place, in one transaction.
+     * @notice Builds the payload for a rebind update.
      * @param policy The address of the NewtonPolicy contract to bind at execute.
      * @param policyConfig The policy configuration to apply at execute.
-     * @return executableFrom Timestamp the queued rebind becomes executable.
-     * @dev The explicit form of what `queueRebind` refuses to do implicitly. The
-     *      replacement serves a FULL delay computed from this proposal; it never inherits
-     *      the superseded entry's elapsed time. Queues normally when nothing is pending.
+     * @return The ABI-encoded payload for `UpdateKind.Rebind`.
      */
-    function replaceRebind(
+    function encodeRebind(
         address policy,
         INewtonPolicy.PolicyConfig calldata policyConfig
-    ) external onlyPolicyClientOwner returns (uint64 executableFrom) {
-        _cancelIfPending();
-        _checkPolicyVersion(policy);
-        return _queue(_rebindHash(policy, policyConfig), UpdateKind.Rebind, policy, policyConfig, 0);
+    ) external pure returns (bytes memory) {
+        return abi.encode(policy, policyConfig);
     }
 
     /**
-     * @notice Only callable by the owner. Cancels any queued update and queues an update to
-     *         `rebindDelay` in its place, in one transaction.
-     * @param newDelay The delay to apply at execute.
-     * @return executableFrom Timestamp the queued update becomes executable.
+     * @notice Builds the payload for a delay or grace-period update.
+     * @param value The new delay or grace period, in seconds.
+     * @return The ABI-encoded payload for `UpdateKind.SetDelay` or `UpdateKind.SetGracePeriod`.
      */
-    function replaceRebindDelay(
-        uint64 newDelay
-    ) external onlyPolicyClientOwner returns (uint64 executableFrom) {
-        _cancelIfPending();
-        return _queue(
-            _valueHash(UpdateKind.SetDelay, newDelay),
-            UpdateKind.SetDelay,
-            address(0),
-            _emptyConfig(),
-            newDelay
-        );
+    function encodeValue(
+        uint64 value
+    ) external pure returns (bytes memory) {
+        return abi.encode(value);
     }
 
     /**
-     * @notice Only callable by the owner. Cancels any queued update and queues an update to
-     *         `rebindGracePeriod` in its place, in one transaction.
-     * @param newGracePeriod The grace period to apply at execute.
+     * @notice Writes the pending entry and announces it.
+     * @param kind Which kind of update is being queued.
+     * @param payload The ABI-encoded arguments for that kind.
      * @return executableFrom Timestamp the queued update becomes executable.
-     */
-    function replaceRebindGracePeriod(
-        uint64 newGracePeriod
-    ) external onlyPolicyClientOwner returns (uint64 executableFrom) {
-        _cancelIfPending();
-        return _queue(
-            _valueHash(UpdateKind.SetGracePeriod, newGracePeriod),
-            UpdateKind.SetGracePeriod,
-            address(0),
-            _emptyConfig(),
-            newGracePeriod
-        );
-    }
-
-    /**
-     * @notice Writes the pending entry, cancelling and announcing any entry it replaces.
-     * @param updateHash Commitment to the update being queued, its kind included.
-     * @param kind Which kind of update this is, selecting the event to emit.
-     * @param policy The policy address, for a rebind; ignored otherwise.
-     * @param policyConfig The policy config, for a rebind; ignored otherwise.
-     * @param value The new delay or grace period, for those kinds; ignored otherwise.
-     * @return executableFrom Timestamp the queued update becomes executable.
-     * @dev Only one update may be queued at a time. Reverts when one already is: silently
-     *      discarding it would let a caller who did not know about the existing entry
-     *      replace it by accident. Use `cancel()` or the matching `replace*` call.
-     *      Both timestamps are computed from the delay and grace period in force NOW, so a
-     *      replacement always serves a full, current window and never inherits or
-     *      partially credits the superseded entry's elapsed time.
+     * @dev Only one update may be queued at a time. Both timestamps are computed from the
+     *      delay and grace period in force NOW, so a replacement always serves a full,
+     *      current window and never inherits or partially credits the superseded entry's
+     *      elapsed time. The payload is decoded here only to emit a typed event; the
+     *      commitment is over the raw `(kind, payload)`.
      */
     function _queue(
-        bytes32 updateHash,
         UpdateKind kind,
-        address policy,
-        INewtonPolicy.PolicyConfig memory policyConfig,
-        uint64 value
+        bytes calldata payload
     ) private returns (uint64 executableFrom) {
         NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
         require($.pendingHash == bytes32(0), UpdateAlreadyPending($.pendingHash));
 
+        bytes32 updateHash = _updateHash(kind, payload);
         executableFrom = uint64(block.timestamp) + $.rebindDelay;
         uint64 expiresAt = $.rebindGracePeriod == 0 ? 0 : executableFrom + $.rebindGracePeriod;
 
@@ -626,11 +561,21 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
         $.expiresAt = expiresAt;
 
         if (kind == UpdateKind.Rebind) {
-            emit PolicyRebindQueued(policy, updateHash, executableFrom, expiresAt, policyConfig);
+            (address policy, INewtonPolicy.PolicyConfig memory config) =
+                abi.decode(payload, (address, INewtonPolicy.PolicyConfig));
+            // Fails fast for the operator; re-checked authoritatively at execute.
+            _checkPolicyVersion(policy);
+            emit PolicyRebindQueued(policy, updateHash, executableFrom, expiresAt, config);
         } else if (kind == UpdateKind.SetDelay) {
-            emit RebindDelayUpdateQueued(updateHash, value, executableFrom, expiresAt);
+            emit RebindDelayUpdateQueued(
+                updateHash, abi.decode(payload, (uint64)), executableFrom, expiresAt
+            );
+        } else if (kind == UpdateKind.SetGracePeriod) {
+            emit RebindGracePeriodUpdateQueued(
+                updateHash, abi.decode(payload, (uint64)), executableFrom, expiresAt
+            );
         } else {
-            emit RebindGracePeriodUpdateQueued(updateHash, value, executableFrom, expiresAt);
+            revert UpdateMismatch();
         }
     }
 
@@ -696,37 +641,17 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
     }
 
     /**
-     * @notice Computes the commitment for a queued rebind.
-     * @param policy The address of the NewtonPolicy contract.
-     * @param policyConfig The policy configuration.
-     * @return The commitment, with the update kind bound into the preimage.
+     * @notice Computes the commitment for a queued update.
+     * @param kind Which kind of update this is.
+     * @param payload The ABI-encoded arguments for that kind.
+     * @return The commitment, with the update kind bound into the preimage so an entry can
+     *         only ever be executed by the kind that queued it.
      */
-    function _rebindHash(
-        address policy,
-        INewtonPolicy.PolicyConfig memory policyConfig
-    ) private pure returns (bytes32) {
-        return keccak256(abi.encode(UpdateKind.Rebind, policy, keccak256(abi.encode(policyConfig))));
-    }
-
-    /**
-     * @notice Computes the commitment for a queued delay or grace-period update.
-     * @param kind Which of the two value updates this is.
-     * @param value The new delay or grace period.
-     * @return The commitment, with the update kind bound into the preimage.
-     */
-    function _valueHash(
+    function _updateHash(
         UpdateKind kind,
-        uint64 value
+        bytes calldata payload
     ) private pure returns (bytes32) {
-        return keccak256(abi.encode(kind, value));
-    }
-
-    /**
-     * @notice An empty policy config, for queue paths that do not carry one.
-     * @return The zero-valued PolicyConfig.
-     */
-    function _emptyConfig() private pure returns (INewtonPolicy.PolicyConfig memory) {
-        return INewtonPolicy.PolicyConfig({policyParams: "", expireAfter: 0});
+        return keccak256(abi.encode(kind, payload));
     }
 
     /**
