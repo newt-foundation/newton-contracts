@@ -1,7 +1,7 @@
 {
   "lastUpdate": {
-    "timestamp": "1785796306",
-    "block_number": "45014009"
+    "timestamp": "1779671612",
+    "block_number": "41951662"
   },
   "type": "destination",
   "sourceChainId": "11155111",
@@ -15,13 +15,13 @@
     "ecdsaCertificateVerifier": "0x9a1ca1daadee3c7f2f81a25f7684d5b731c61055",
     "ecdsaCertificateVerifierImpl": "0xde6d53d21df95e151c6e7b2f47eb6f6c3346ca55",
     "newtonProverTaskManager": "0xa5e104ad7f09df5d9036d1e9ad60fada11140071",
-    "newtonProverTaskManagerImpl": "0xd78f626ba185ecae774fcc766a6e0649bb163a15",
+    "newtonProverTaskManagerImpl": "0xF7E702c45Cf095A1989e9A2BCd88AbC848fA8286",
     "challengeVerifier": "0x768a80650fbffc9c30466a782737e1e61b08e807",
-    "challengeVerifierImpl": "0x467d87d2e435c5cede8ced908e69db5f5e864abe",
+    "challengeVerifierImpl": "0x7713a0b0ff1018db62090927c406487b9f963c4d",
     "regoVerifier": "0x3c126d83c2683a1c377a8c1c6ec2e2e28798c9fa",
     "regoVerifierImpl": "0x97b37dfb5590f8c3aaffd97378686dfd55394342",
     "attestationValidator": "0xf345c77e111a5731f88571c7c69919e8460154e5",
-    "attestationValidatorImpl": "0x409f7474f108b0acc959c4a0adc3e5604baa9139",
+    "attestationValidatorImpl": "0xF1D95F661adA328F01ab83d5150725030f476928",
     "attestationProofVerifier": "0x423d026fb38ecfe5c179f8d18dbd99ea959795be",
     "attestationProofVerifierImpl": "0xd126c7fcdaeb1fc594efe48cf05811cb583b2493",
     "socketRegistry": "0xf0423f3a95accb079595a3cee9f2fff4701520d7",
