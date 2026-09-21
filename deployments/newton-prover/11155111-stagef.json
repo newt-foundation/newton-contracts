@@ -1,20 +1,20 @@
 {
   "lastUpdate": {
-    "timestamp": "1779660024",
-    "block_number": "10914702"
+    "timestamp": "1785789132",
+    "block_number": "11412708"
   },
   "addresses": {
     "proxyAdmin": "0x78be3e5613f78d7fb00e718dacc68f91d68b519f",
     "newtonProverServiceManager": "0x6f6c362725d2809edfdcfd960ea8e2899529b8be",
     "newtonProverServiceManagerImpl": "0xadbd3b648d632d4fc650f42cd2ed1f13eb695281",
     "newtonProverTaskManager": "0xcbc425b73e01c9b8f40c62b638f9750486127b75",
-    "newtonProverTaskManagerImpl": "0x346e9bdfedf1a3998af1964dad174a4bad6224e9",
+    "newtonProverTaskManagerImpl": "0x85790f38e70013554c5f360c50d69e602202805c",
     "challengeVerifier": "0x1613d12dbd6e6f677082e76674517c00daaabf5d",
-    "challengeVerifierImpl": "0x6dda2843769eaa12d6706ee136d05d19bb6f9d48",
+    "challengeVerifierImpl": "0x6f26843e370f0e849db3e75ff922f02e8c5adf40",
     "regoVerifier": "0x2b512a4d92e875c0060c80369ae3a1d8ec07fdc5",
     "regoVerifierImpl": "0xbbabd408e989cbc8111ecf3a82ee678af8472bc1",
     "attestationValidator": "0xcd1fd81557225efcb9fb6927e981cbc86c4697ff",
-    "attestationValidatorImpl": "0xb6f04345b8a2b536fca33639e663ed4dfaa593a1",
+    "attestationValidatorImpl": "0x5fcc057be8cc48706a5b3e382671559a043f8378",
     "attestationProofVerifier": "0x231a35ad0e6935e3251ec14e319da79cbd0c4c63",
     "attestationProofVerifierImpl": "0x7cae09d9868b8d99f7139f0a8425452cda9b2fd5",
     "operatorRegistry": "0xd5f3ea324ec537ecac269d4795b2d54f907ec305",

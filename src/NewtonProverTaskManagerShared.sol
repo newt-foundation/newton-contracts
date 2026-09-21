@@ -328,7 +328,7 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
     }
 
     /// @inheritdoc INewtonProverTaskManager
-    function isAttestationDirectValid(
+    function isAttestationDirectLive(
         address client,
         bytes32 taskId,
         NewtonMessage.Intent calldata intent
@@ -341,7 +341,7 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
         }
 
         if (!AttestationValidator(attestationValidator)
-                .isAttestationDirectValid(client, taskId, intent)) {
+                .isAttestationDirectLive(client, taskId, intent)) {
             return false;
         }
         require(

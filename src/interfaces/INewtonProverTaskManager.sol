@@ -247,7 +247,7 @@ interface INewtonProverTaskManager {
     /// `isAttestationValid`: the normal consume path gets that binding for free from the caller
     /// itself, but `client` is caller-supplied here. No replay protection of its own -- a liveness
     /// check, not a spend substitute.
-    function isAttestationDirectValid(
+    function isAttestationDirectLive(
         address client,
         bytes32 taskId,
         NewtonMessage.Intent calldata intent
