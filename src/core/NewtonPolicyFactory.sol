@@ -33,6 +33,9 @@ contract NewtonPolicyFactory is AdminMixin, SemVerMixin {
     /// @dev DEPRECATED (default policy verification removed). Retained to preserve storage layout.
     bool private defaultPolicyVerified;
 
+    // --- storage appended below this line; never insert above it ---
+    mapping(address policy => bool) public isPolicy;
+
     event PolicyDeployed(
         address policy, INewtonPolicy.PolicyInfo policyInfo, string implementationVersion
     );
@@ -117,6 +120,7 @@ contract NewtonPolicyFactory is AdminMixin, SemVerMixin {
         ChainLib.requireSupportedChain();
 
         ownersToPolicies[_owner].push(policyAddr);
+        isPolicy[policyAddr] = true;
         _policyOwners.add(_owner);
 
         emit PolicyDeployed(

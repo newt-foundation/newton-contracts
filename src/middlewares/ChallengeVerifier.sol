@@ -6,6 +6,9 @@ import {TaskLib} from "../libraries/TaskLib.sol";
 import {TaskManagerErrors} from "../libraries/TaskManagerErrors.sol";
 import {ChallengeLib} from "../libraries/ChallengeLib.sol";
 import {AttestationValidator} from "./AttestationValidator.sol";
+import {NewtonMessage} from "../core/NewtonMessage.sol";
+import {MAX_POLICIES} from "../libraries/PolicyConstants.sol";
+import {PolicyValidationLib} from "../libraries/PolicyValidationLib.sol";
 import {ITaskResponseHandler} from "../interfaces/ITaskResponseHandler.sol";
 import {
     IBLSSignatureChecker,
@@ -119,7 +122,7 @@ contract ChallengeVerifier is
     /// @notice Tracks cross-chain challenges to prevent double-slashing
     /// @dev Key: responseHash (the cert-signed consensus digest) alone — SECURITY (NEWT-1708)
     ///      keying on the authenticated response, not taskHash(task), prevents an attacker from
-    ///      varying unauthenticated task fields (taskCreatedBlock, wasmArgs,
+    ///      varying unauthenticated task fields (taskCreatedBlock, policyInputs,
     ///      quorumThresholdPercentage) to mint fresh keys and re-slash the same offense.
     mapping(bytes32 => bool) public crossChainChallenged;
 
@@ -210,9 +213,6 @@ contract ChallengeVerifier is
             ChallengePeriodExpired()
         );
 
-        // Use taskResponse.policyTaskData (operators now generate policyTaskData independently)
-        INewtonPolicy policy = INewtonPolicy(taskResponse.policyTaskData.policyAddress);
-
         // Privacy tasks must NOT be slashed via the rego path. The SP1 rego circuit
         // evaluates with EMPTY privacy/domain data (it has no decryption keys), so for a
         // genuine privacy task the in-circuit result is privacy-blind and can differ from
@@ -224,40 +224,24 @@ contract ChallengeVerifier is
         // Verify the rego proof. Reverts if the proof is invalid.
         IRegoVerifier.RegoContext memory context =
             RegoVerifier(regoVerifier).verifyRegoProof(challenge.data, challenge.proof);
-        // make sure that proof public values match the task and task response.
-        // Circuit also checks if task and task response are correct.
+
+        // Bind journal to task and taskResponse hashes
         require(
             TaskLib.taskHash(context.task) == allTaskHashes[taskResponse.taskId],
             TaskLib.TaskMismatch(allTaskHashes[taskResponse.taskId], TaskLib.taskHash(context.task))
         );
-        // Compare proof's taskResponse against the caller-supplied taskResponse
-        // (not against allTaskResponses, which includes the certificate).
-        // The _isChallengable precondition already validated the caller-supplied
-        // (taskResponse, responseCertificate) against the stored response+certificate hash.
         require(
             keccak256(abi.encode(context.taskResponse)) == keccak256(abi.encode(taskResponse)),
             TaskLib.TaskResponseMismatch()
         );
-        require(
-            keccak256(abi.encode(policy.getEntrypoint()))
-                == keccak256(abi.encode(context.entrypoint)),
-            TaskLib.EntrypointMismatch()
-        );
 
-        // Bind proof's policyCodeHash to the on-chain policy deployment.
-        // The SP1 circuit commits keccak256 of the raw policy bytes it actually
-        // executed. Without this check, a challenger could supply divergent policy
-        // bytes in the zkVM and slash for a "violation" the real policy never could
-        // have produced.
-        bytes32 onchainPolicyCodeHash = policy.getPolicyCodeHash();
-        require(
-            context.policyCodeHash == onchainPolicyCodeHash,
-            PolicyCodeHashMismatch(onchainPolicyCodeHash, context.policyCodeHash)
-        );
+        // Validate the journal binds to the entire policy set. Same-chain path: the local
+        // chain id, since `task` here is authenticated against `allTaskHashes` (set once, at
+        // admission, when its policy-set commitment was already validated).
+        bool circuitAllowed = _validateJournalBinding(context, task, taskResponse, block.chainid);
 
-        bool challengeSuccess = keccak256(abi.encode(context.evaluation))
-            != keccak256(abi.encode(taskResponse.evaluationResult));
-
+        // Detect slashable discrepancy: aggregate allowed divergence
+        bool challengeSuccess = _detectResponseDiscrepancy(circuitAllowed, taskResponse);
         require(challengeSuccess, ChallengeFailed());
 
         // Record challenge success before external calls (CEI: reentrancy safety).
@@ -335,6 +319,11 @@ contract ChallengeVerifier is
             DestChainIdIntentMismatch(destChainId, task.intent.chainId)
         );
 
+        // SECURITY: the Task is caller-supplied; only `taskResponse.policyId` is certificate-signed.
+        // The destination-domain policy-set commitment is recomputed from the supplied snapshot
+        // and checked against that signed ID inside `_validateJournalBinding`, before any policy
+        // address from `task.policies` is dereferenced — see its docstring.
+
         // SECURITY (NEWT-1708): the Task is caller-supplied and NOT stored on the source chain,
         // so its slashing-relevant header fields must be pinned to certificate-authenticated data.
         // Restrict to a single quorum: the BN254 certificate is only verified against the
@@ -346,7 +335,7 @@ contract ChallengeVerifier is
         // Prevent double-slashing for the same cross-chain challenge.
         // SECURITY (NEWT-1708): key ONLY on the response hash — the cert-signed consensus digest.
         // The previous key mixed in taskHash(task), which includes task-only fields
-        // (taskCreatedBlock, wasmArgs, quorumThresholdPercentage) that neither the SP1 proof nor
+        // (taskCreatedBlock, policyInputs, quorumThresholdPercentage) that neither the SP1 proof nor
         // the certificate authenticate and that no longer affect the slash target. An attacker
         // could vary those fields to mint fresh keys and re-slash the same operators repeatedly.
         // TaskResponse contains none of them, so responseHash is invariant to that malleability:
@@ -360,9 +349,6 @@ contract ChallengeVerifier is
             CrossChainChallengeAlreadyProcessed(destChainId, challenge.taskId)
         );
 
-        // Bind the policy for downstream entrypoint + policyCodeHash checks
-        INewtonPolicy policy = INewtonPolicy(taskResponse.policyTaskData.policyAddress);
-
         // Privacy tasks must NOT be slashed via the rego path (see raiseAndResolveChallenge).
         // The SP1 rego circuit evaluates privacy tasks with empty domain data, so its result
         // is privacy-blind and unreliable for slashing. Reject here so a degraded/malicious
@@ -373,8 +359,7 @@ contract ChallengeVerifier is
         IRegoVerifier.RegoContext memory context =
             RegoVerifier(regoVerifier).verifyRegoProof(challenge.data, challenge.proof);
 
-        // Bind proof public values to caller-supplied inputs — prevents using
-        // a valid proof from an unrelated task/response pair for targeted slashing
+        // Bind proof public values to caller-supplied inputs
         require(
             TaskLib.taskHash(context.task) == taskHashVal,
             TaskLib.TaskMismatch(taskHashVal, TaskLib.taskHash(context.task))
@@ -383,24 +368,14 @@ contract ChallengeVerifier is
             keccak256(abi.encode(context.taskResponse)) == responseHash,
             TaskLib.TaskResponseMismatch()
         );
-        require(
-            keccak256(abi.encode(policy.getEntrypoint()))
-                == keccak256(abi.encode(context.entrypoint)),
-            TaskLib.EntrypointMismatch()
-        );
 
-        // Bind proof's policyCodeHash to the on-chain policy deployment (same
-        // defense as raiseAndResolveChallenge). Particularly important on
-        // cross-chain paths where the dest-chain caller supplies all inputs.
-        bytes32 onchainPolicyCodeHash = policy.getPolicyCodeHash();
-        require(
-            context.policyCodeHash == onchainPolicyCodeHash,
-            PolicyCodeHashMismatch(onchainPolicyCodeHash, context.policyCodeHash)
-        );
+        // Validate the journal binds to the entire policy set. Cross-chain path: the
+        // destination chain id — see the SECURITY note above `slashForCrossChainChallenge`'s
+        // quorum-count check for why `block.chainid` is wrong here.
+        bool circuitAllowed = _validateJournalBinding(context, task, taskResponse, destChainId);
 
-        // Verify proof output mismatches the task response (challenge is valid)
-        bool challengeSuccess = keccak256(abi.encode(context.evaluation))
-            != keccak256(abi.encode(taskResponse.evaluationResult));
+        // Detect slashable discrepancy: aggregate allowed divergence
+        bool challengeSuccess = _detectResponseDiscrepancy(circuitAllowed, taskResponse);
         require(challengeSuccess, ChallengeFailed());
 
         // Source handler expects NSS, cross-chain relays forward BN254Certificate.
@@ -519,7 +494,7 @@ contract ChallengeVerifier is
             && challenge.taskId == taskId;
     }
 
-    /* SETTER FUNCTIONS FOR COMPOSITION */
+    /* SETTER FUNCTIONS */
     function setTaskHashesAndResponses(
         bytes32 taskId,
         bytes32 taskHash,
@@ -709,7 +684,7 @@ contract ChallengeVerifier is
         );
 
         // 3. Bind caller-supplied task to on-chain task hash — prevents crafted
-        // tasks with modified fields (e.g., wasmArgs) from forcing a mismatch
+        // tasks with modified fields (e.g., policyInputs) from forcing a mismatch
         bytes32 regularTaskHash = INewtonProverTaskManager(taskManager).taskHash(taskId);
         require(
             regularTaskHash != bytes32(0) && TaskLib.taskHash(task) == regularTaskHash,
@@ -804,20 +779,33 @@ contract ChallengeVerifier is
         // 6. Circuit must prove this is a privacy policy (from Rego source scan)
         require(ctx.isPrivacyPolicy, NotPrivacyTask(taskId));
 
-        // 7. Verify policyCodeHash matches on-chain policy.
-        //    try/catch guards against malformed policyClient (EOA, non-standard) —
-        //    challenger pre-screens off-chain via isPrivacyTask() before proving.
+        // 7. Verify policyCodeHash matches at least one policy in the task.
+        //    Set membership is sufficient: a task requires TEE attestation when ANY policy is
+        //    a privacy policy, so identifying which policy is unnecessary. The response side
+        //    is authenticated by the response certificate; the task side is authenticated by
+        //    recomputing the policy-set id below, binding the matched policy to this task.
+        require(
+            PolicyValidationLib.computePolicySetId(block.chainid, task) == taskResponse.policyId,
+            TaskManagerErrors.PolicySnapshotMismatch()
+        );
         {
-            try INewtonPolicyClient(taskResponse.policyClient).getPolicyAddress() returns (
-                address policyAddr
-            ) {
-                require(
-                    ctx.policyCodeHash == INewtonPolicy(policyAddr).getPolicyCodeHash(),
-                    ChallengeFailed()
-                );
-            } catch {
-                revert ChallengeFailed();
+            bool matched = false;
+            uint256 len = task.policies.length;
+            require(taskResponse.policyTaskData.length == len, ChallengeFailed());
+            for (uint256 i = 0; i < len;) {
+                if (
+                    keccak256(taskResponse.policyTaskData[i].policy) == ctx.policyCodeHash
+                        && INewtonPolicy(task.policies[i].policy).getPolicyCodeHash()
+                            == ctx.policyCodeHash
+                ) {
+                    matched = true;
+                    break;
+                }
+                unchecked {
+                    ++i;
+                }
             }
+            require(matched, ChallengeFailed());
         }
 
         // 8. Determine challenge type: missing vs invalid attestation
@@ -862,7 +850,7 @@ contract ChallengeVerifier is
                 responseCertificate.hashOfNonSigners
             );
 
-            ChallengeLib.ChallengeContext memory ctx = ChallengeLib.ChallengeContext({
+            ChallengeLib.ChallengeContext memory challengeCtx = ChallengeLib.ChallengeContext({
                 blsApkRegistry: blsApkRegistry,
                 operatorStateRetriever: operatorStateRetriever,
                 registryCoordinator: registryCoordinator,
@@ -872,7 +860,10 @@ contract ChallengeVerifier is
             });
 
             ChallengeLib.slashSigningOperators(
-                ctx, task.quorumNumbers, task.taskCreatedBlock, addressOfNonSigningOperators
+                challengeCtx,
+                task.quorumNumbers,
+                task.taskCreatedBlock,
+                addressOfNonSigningOperators
             );
         }
     }
@@ -908,7 +899,7 @@ contract ChallengeVerifier is
         // verifies Prepare-phase TEE attestation off-chain for secrets; on-chain
         // challengeInvalidTeeAttestation only covers identity/confidential/ephemeral.
 
-        // Inline ephemeral privacy (wasmArgs._newton.privacy[]) cannot be checked
+        // Inline ephemeral privacy (executionContext._newton.privacy[]) cannot be checked
         // on-chain cheaply — it requires parsing calldata. Deferred to the challenger
         // off-chain, which submits the challenge only when it detects inline privacy.
         return false;
@@ -935,5 +926,98 @@ contract ChallengeVerifier is
     ) external onlyOwner {
         attestationProofVerifier = _attestationProofVerifier;
         emit AttestationProofVerifierSet(_attestationProofVerifier);
+    }
+
+    /* INTERNAL VALIDATION HELPERS */
+
+    /// @notice Validate that the journal binds to the full policy set via positional checks,
+    /// and return the circuit's independently-derived aggregate verdict.
+    /// @dev Fail-closed: every length mismatch, substitution, or field divergence reverts.
+    ///
+    /// SECURITY: `task` is caller-supplied on the cross-chain path (never stored locally) and
+    /// its fields are otherwise unauthenticated on the same-chain path too — only
+    /// `taskResponse.policyId` is certificate-signed. Recomputing the policy-set commitment
+    /// from `task` and requiring it match that signed id, BEFORE dereferencing any address out
+    /// of `task.policies` below, is what stops a caller substituting a source-local policy —
+    /// matching Rego hash, different entrypoint — proving a fail-closed deny against it, and
+    /// slashing honest signers for the real (allowing) policy.
+    /// @param chainId `block.chainid` for the same-chain caller, the caller-supplied
+    /// destination chain id for the cross-chain caller.
+    function _validateJournalBinding(
+        IRegoVerifier.RegoContext memory context,
+        INewtonProverTaskManager.Task calldata task,
+        INewtonProverTaskManager.TaskResponse calldata taskResponse,
+        uint256 chainId
+    ) private view returns (bool aggregateAllowed) {
+        uint256 len = task.policies.length;
+        require(len != 0 && len <= MAX_POLICIES, ChallengeFailed());
+        require(
+            context.entrypoints.length == len && context.evaluations.length == len
+                && context.policyCodeHashes.length == len
+                && taskResponse.policyTaskData.length == len,
+            ChallengeFailed()
+        );
+
+        require(
+            PolicyValidationLib.computePolicySetId(chainId, task) == taskResponse.policyId,
+            TaskManagerErrors.PolicySnapshotMismatch()
+        );
+
+        aggregateAllowed = true;
+
+        for (uint256 i = 0; i < len;) {
+            // The Rego module is a signed response field, and `PolicyValidationLib.validateResponse`
+            // already required it to hash to the real policy's `getPolicyCodeHash()` on the chain
+            // that produced the certificate. Comparing against it here rather than re-reading the
+            // policy keeps the code-hash check authenticated on the cross-chain path, where
+            // `task.policies[i].policy` is a destination address that this chain cannot resolve.
+            bytes32 responseCodeHash = keccak256(taskResponse.policyTaskData[i].policy);
+            require(
+                context.policyCodeHashes[i] == responseCodeHash,
+                PolicyCodeHashMismatch(responseCodeHash, context.policyCodeHashes[i])
+            );
+
+            // KNOWN GAP: the entrypoint has no signed counterpart, so it must still be read from
+            // the policy contract. On the cross-chain path that read resolves a destination
+            // address against source-chain state, which a caller can control. Closing it requires
+            // an entrypoint commitment in the certificate-signed response; until then the
+            // cross-chain slashing path stays gated behind an unwired `viewBN254CertificateVerifier`.
+            require(
+                keccak256(bytes(context.entrypoints[i]))
+                    == keccak256(bytes(INewtonPolicy(task.policies[i].policy).getEntrypoint())),
+                ChallengeFailed()
+            );
+
+            aggregateAllowed = aggregateAllowed && _evaluationAllowed(context.evaluations[i]);
+
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
+    /// @notice Interpret one policy's raw journal evaluation as a Rego boolean verdict.
+    /// @dev The circuit commits the entrypoint rule's JSON-serialized value; a Rego boolean
+    /// rule serializes to the literal `true` / `false`. Anything else — a non-boolean result,
+    /// an undefined rule, a malformed value — is treated as deny: fail-closed, matching the
+    /// codebase's existing default rather than fail-open.
+    function _evaluationAllowed(
+        bytes memory evaluation
+    ) private pure returns (bool) {
+        return keccak256(evaluation) == keccak256(bytes("true"));
+    }
+
+    /// @notice Detect slashable discrepancy between the circuit's independently-derived
+    /// aggregate verdict and the one the operators signed.
+    /// @dev `circuitAggregateAllowed` is the AND over every policy's proven evaluation
+    /// (`_validateJournalBinding`, which also validates the per-policy evaluations bind to
+    /// this exact policy set before this is computed). A single denying policy makes it false,
+    /// so the composed set denies whenever any member does.
+    /// @return true if a discrepancy exists (challenge succeeds)
+    function _detectResponseDiscrepancy(
+        bool circuitAggregateAllowed,
+        INewtonProverTaskManager.TaskResponse calldata taskResponse
+    ) private pure returns (bool) {
+        return circuitAggregateAllowed != taskResponse.allowed;
     }
 }
