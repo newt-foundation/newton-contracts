@@ -5,11 +5,11 @@
   },
   "addresses": {
     "proxyAdmin": "0x5e5c80c7034df088d9f6bc1e5350ba01af4a3777",
-    "policyFactory": "0xcd2b28eed56b51f9aee4174a9301863a9dbde60e",
+    "policyFactory": "0xa6db65f2f0908ad949373fcc1e9232ab14e969d0",
     "policyFactoryImpl": "0xe9ef01f4c82454b22e2919511c825dde832767da",
     "policy": "0xc2f1dca4b6a7d29b954ecee61e5ade48752f2acc",
     "policyImplementation": "0xee78bfc85baf2af37115420706bc2cd55efdfe6c",
-    "policyDataFactory": "0x502d5d784548ce8b8c2ebb1542908d8a64fd64c4",
+    "policyDataFactory": "0xc5a62aa8e51203e0af28de6991d9c1154084ef98",
     "policyDataFactoryImpl": "0x66f4ab25ce428e6da3d274497cfaa44920afc997",
     "policyData": "0x11d5facb9153eb8c4e300553e4568763c4038f94",
     "policyDataImplementation": "0x0dfbf449fd8e19b055a4eab32c23bd473d26098b",

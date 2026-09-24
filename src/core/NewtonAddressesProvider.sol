@@ -39,7 +39,6 @@ contract NewtonAddressesProvider is
     bytes32 public constant BATCH_TASK_MANAGER = keccak256("BATCH_TASK_MANAGER");
     bytes32 public constant SERVICE_MANAGER = keccak256("SERVICE_MANAGER");
     bytes32 public constant POLICY_FACTORY = keccak256("POLICY_FACTORY");
-    bytes32 public constant POLICY_DATA_FACTORY = keccak256("POLICY_DATA_FACTORY");
     bytes32 public constant STATE_COMMIT_REGISTRY = keccak256("STATE_COMMIT_REGISTRY");
     bytes32 public constant IDENTITY_REGISTRY = keccak256("IDENTITY_REGISTRY");
     bytes32 public constant CONFIDENTIAL_DATA_REGISTRY = keccak256("CONFIDENTIAL_DATA_REGISTRY");
@@ -143,11 +142,6 @@ contract NewtonAddressesProvider is
     /// @inheritdoc INewtonAddressesProvider
     function getPolicyFactory() external view returns (address) {
         return _addresses[POLICY_FACTORY];
-    }
-
-    /// @inheritdoc INewtonAddressesProvider
-    function getPolicyDataFactory() external view returns (address) {
-        return _addresses[POLICY_DATA_FACTORY];
     }
 
     // -------------------------------------------------------------------------
@@ -279,13 +273,6 @@ contract NewtonAddressesProvider is
         address addr
     ) external onlyOwner {
         _setAddress(POLICY_FACTORY, addr);
-    }
-
-    /// @inheritdoc INewtonAddressesProvider
-    function setPolicyDataFactory(
-        address addr
-    ) external onlyOwner {
-        _setAddress(POLICY_DATA_FACTORY, addr);
     }
 
     /// @inheritdoc INewtonAddressesProvider

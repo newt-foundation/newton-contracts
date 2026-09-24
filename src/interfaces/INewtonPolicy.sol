@@ -12,6 +12,16 @@ interface INewtonPolicy is IERC165 {
         uint32 expireAfter;
     }
 
+    /// @notice The content-addressed artifacts a policy is deployed against.
+    struct PolicyArtifacts {
+        string entrypoint;
+        string policyCid;
+        string schemaCid;
+        string wasmCid;
+        string secretsSchemaCid;
+        string metadataCid;
+    }
+
     struct PolicyState {
         // the address of the policy
         address policyAddress;
@@ -29,7 +39,8 @@ interface INewtonPolicy is IERC165 {
         string schemaCid;
         string entrypoint;
         PolicyConfig policyConfig;
-        address[] policyData;
+        string wasmCid;
+        string secretsSchemaCid;
         bytes32 policyCodeHash;
         string version;
     }
@@ -41,13 +52,15 @@ interface INewtonPolicy is IERC165 {
         string policyCid;
         string schemaCid;
         string entrypoint;
-        address[] policyData;
+        string wasmCid;
+        string secretsSchemaCid;
         bytes32 policyCodeHash;
     }
 
     /* Events */
     event PolicySet(address indexed client, bytes32 indexed policyId, SetPolicyInfo policy);
     event policyMetadataCidUpdated(string metadataCid);
+    event SecretsSchemaCidUpdated(string secretsSchemaCid);
 
     /**
      * @notice Retrieves the metadata CID for the policy.
@@ -110,10 +123,24 @@ interface INewtonPolicy is IERC165 {
     ) external view returns (PolicyConfig memory);
 
     /**
-     * @notice Retrieves the policy data contract addresses.
-     * @return The policy data contract addresses.
+     * @notice Retrieves the CID of the policy's WASM oracle plugin.
+     * @return The WASM CID, empty for a pure-Rego policy.
      */
-    function getPolicyData() external view returns (address[] memory);
+    function getWasmCid() external view returns (string memory);
+
+    /**
+     * @notice Retrieves the CID of the schema for the oracle's secrets.
+     * @return The secrets schema CID, empty when the oracle needs no secrets.
+     */
+    function getSecretsSchemaCid() external view returns (string memory);
+
+    /**
+     * @notice Sets the CID of the schema for the oracle's secrets.
+     * @param secretsSchemaCid The secrets schema CID to set.
+     */
+    function setSecretsSchemaCid(
+        string calldata secretsSchemaCid
+    ) external;
 
     /**
      * @notice Deprecated. Policy verification was removed from the protocol; the AVS serves

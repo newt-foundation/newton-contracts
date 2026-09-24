@@ -38,7 +38,7 @@
     "confidentialDataRegistryImpl": "0x3dbabec96013aa43a5967d440d299ae88b0a9470",
     "enclaveVersionRegistry": "0x2c250a78b41e25f5fd2f9ad0506ea52cfb72dd45",
     "enclaveVersionRegistryImpl": "0x7d15ccad03c7d1fce8cb6c79215ed1a3bd4733ee",
-    "batchTaskManager": "0xbea50a40fb046f837f06bf181dd6976b2c73a05e",
+    "batchTaskManager": "0xb54a17c84a18d5105ca503d420ed3fee00c8f295",
     "addressesProvider": "0xc36e5a1cf8eb9a1c57334aaf4c57b063727532ac",
     "addressesProviderImpl": "0xe826bce315ce8ef397138d29b73bcc6593591794"
   }

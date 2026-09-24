@@ -48,7 +48,7 @@
     "instantSlasherImpl": "0x61a3ab6b8c1da63184eefab3aa2a228e122ec8d2",
     "operatorTableCalculator": "0x9054cb80d7f0e55ea3927a064c3f16ceb6ee6464",
     "taskResponseHandler": "0x44c9ac688b14542e89e1dc029b5e352f6efe4c6d",
-    "batchTaskManager": "0xb53167eb9adbbb35d6969825c13512385748426f",
+    "batchTaskManager": "0xbf50a0270fa3ab2973ea95f3109f3ecd65e1c1ae",
     "stateCommitRegistry": "0xb9b8b47a0f5331b714109f336cfde62083455169",
     "addressesProvider": "0x292c9dff60021cd66e7f8bdb7a4d6fadb6efa330",
     "addressesProviderImpl": "0x5ecdcb27ee39fefab88985b8aedcd645c8a4d42b"

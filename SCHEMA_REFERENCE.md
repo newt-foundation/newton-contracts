@@ -87,7 +87,8 @@ struct PolicyInfo {
     string policyCid;
     string schemaCid;
     string entrypoint;
-    address[] policyData;
+    string wasmCid;
+    string secretsSchemaCid;
     bytes32 policyCodeHash;
 }
 ```
@@ -95,12 +96,13 @@ struct PolicyInfo {
 **Fields:**
 
 - `policyAddress`: address of the deployed policy proxy
-- `owner`: policy owner, authorized for `setMetadataCid` only
+- `owner`: policy owner, authorized for `setMetadataCid` and `setSecretsSchemaCid`
 - `metadataCid`: IPFS CID of the human-facing metadata document
 - `policyCid`: IPFS CID of the Rego module source
 - `schemaCid`: IPFS CID of the JSON schema for this policy's params
 - `entrypoint`: Rego evaluation entrypoint, formatted `{package}.{rule}`
-- `policyData`: `NewtonPolicyData` children; empty for a pure-Rego policy. WASM and secrets metadata live on the child, reachable via `getWasmCid()` and `getSecretsSchemaCid()`
+- `wasmCid`: IPFS CID of the WASM oracle plugin; empty for a pure-Rego policy
+- `secretsSchemaCid`: IPFS CID of the oracle's secrets schema; empty when it needs no secrets
 - `policyCodeHash`: keccak256 of the raw Rego module bytes
 
 ### PolicyConfig Struct
@@ -303,8 +305,9 @@ Main interface for Newton Policy contracts.
 - `getPolicyCodeHash()`: keccak256 of the raw Rego module bytes
 - `getSchemaCid()`: IPFS CID of the JSON schema for this policy's params
 - `getEntrypoint()`: Rego evaluation entrypoint, formatted `{package}.{rule}`
-- `getPolicyData()`: The `NewtonPolicyData` oracle children; empty for a pure-Rego policy. The WASM CID and secrets schema are read from the child
-- `getMetadataCid()` / `setMetadataCid()`: IPFS CID of the human-facing metadata document, the one artifact field the policy owner may change
+- `getWasmCid()`: IPFS CID of the WASM oracle plugin; empty for a pure-Rego policy
+- `getSecretsSchemaCid()` / `setSecretsSchemaCid()`: IPFS CID of the oracle's secrets schema
+- `getMetadataCid()` / `setMetadataCid()`: IPFS CID of the human-facing metadata document
 - `getPolicyConfig(policyId)`: One client's `PolicyConfig` for this policy
 - `getPolicyId(client)`: The policyId registered for a client
 - `factory()`: The factory that deployed this policy
@@ -493,7 +496,7 @@ event PolicyDeployed(
 **Parameters:**
 
 - `policy`: Address of the newly deployed policy contract
-- `policyInfo`: The policy's artifact fields, including its owner and `policyData` children
+- `policyInfo`: The policy's artifact fields, including its owner and oracle CIDs
 - `implementationVersion`: Version of the policy implementation behind the proxy
 
 ### Task Management Events
@@ -579,7 +582,7 @@ event AttestationSpent(bytes32 indexed taskId, NewtonMessage.Attestation attesta
 
 ### Policy Deployment Flow
 
-1. Deploy any WASM oracle with `NewtonPolicyDataFactory.deployPolicyData`, then deploy the policy with `NewtonPolicyFactory.deployPolicy(entrypoint, policyCid, schemaCid, policyData[], metadataCid, owner, policyCodeHash)`
+1. Deploy the policy with `NewtonPolicyFactory.deployPolicy(entrypoint, policyCid, schemaCid, wasmCid, secretsSchemaCid, metadataCid, owner, policyCodeHash)`
 2. Policy client calls `setPolicies(PolicySpec[])` to configure its ordered policy set
 
 ### Task Execution Flow

@@ -52,14 +52,6 @@ interface INewtonPolicyClient is IERC165 {
     /// @notice error for when a policy's config has a zero expireAfter
     error ZeroExpireAfter(uint256 index);
 
-    /// @notice error for when a policy carries more than one oracle, which cannot be
-    ///         composed under the one-rego-to-one-oracle invariant
-    error MultiOracleNotComposable(address policy);
-
-    /// @notice error for when a policy's single oracle child has an empty wasmCid,
-    ///         which would make every response to that policy unconditionally revert
-    error OracleWithoutWasm(address policy);
-
     /// @notice error for when the task manager has no policy factory configured
     error PolicyFactoryNotSet();
 

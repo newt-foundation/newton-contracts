@@ -6,8 +6,6 @@ import {IERC165} from "@openzeppelin/contracts/interfaces/IERC165.sol";
 import {INewtonProverTaskManager} from "../interfaces/INewtonProverTaskManager.sol";
 import {INewtonPolicyClient} from "../interfaces/INewtonPolicyClient.sol";
 import {INewtonPolicyFactoryRegistry} from "../interfaces/INewtonPolicyFactory.sol";
-import {INewtonPolicy} from "../interfaces/INewtonPolicy.sol";
-import {INewtonPolicyData} from "../interfaces/INewtonPolicyData.sol";
 import {SemVerMixin} from "./SemVerMixin.sol";
 import {NewtonMessage} from "../core/NewtonMessage.sol";
 import {PROTOCOL_VERSION} from "../libraries/ProtocolVersion.sol";
@@ -124,11 +122,9 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
      * @return newPolicyId The identifier committing to this client, this exact ordered set, and
      *         the revision it was set at.
      * @dev Per-entry, requires: the policy was deployed by the task manager's configured factory
-     *      (provenance -- not an arbitrary contract shaped like a policy); a nonzero expiry; and
-     *      at most one oracle. The last is the one-rego-to-one-oracle invariant enforced at the
-     *      composition boundary rather than structurally on NewtonPolicy itself -- it keeps
-     *      NewtonPolicy able to host legacy multi-oracle policies (which simply cannot be
-     *      composed), instead of requiring a migration for them to keep existing.
+     *      (provenance -- not an arbitrary contract shaped like a policy) and a nonzero expiry.
+     *      The one-rego-to-one-oracle invariant needs no check here: a policy carries its own
+     *      single wasmCid, so it cannot declare more than one oracle.
      */
     function _setPolicies(
         PolicySpec[] memory policies
@@ -148,14 +144,6 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
                 PolicyNotRegistered(policies[i].policy)
             );
             require(policies[i].config.expireAfter != 0, ZeroExpireAfter(i));
-            address[] memory dataAddrs = INewtonPolicy(policies[i].policy).getPolicyData();
-            require(dataAddrs.length <= 1, MultiOracleNotComposable(policies[i].policy));
-            if (dataAddrs.length == 1) {
-                require(
-                    bytes(INewtonPolicyData(dataAddrs[0]).getWasmCid()).length != 0,
-                    OracleWithoutWasm(policies[i].policy)
-                );
-            }
             require(
                 policies[i].config.policyParams.length <= MAX_POLICY_FIELD_BYTES,
                 PolicyParamsTooLarge(i, policies[i].config.policyParams.length)

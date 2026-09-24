@@ -3,7 +3,6 @@ pragma solidity ^0.8.27;
 
 import {INewtonProverTaskManager} from "../interfaces/INewtonProverTaskManager.sol";
 import {INewtonPolicy} from "../interfaces/INewtonPolicy.sol";
-import {INewtonPolicyData} from "../interfaces/INewtonPolicyData.sol";
 import {INewtonPolicyFactoryRegistry} from "../interfaces/INewtonPolicyFactory.sol";
 import {ISemVerMixin} from "../interfaces/ISemVerMixin.sol";
 import {NewtonMessage} from "../core/NewtonMessage.sol";
@@ -25,8 +24,6 @@ library PolicyValidationLib {
     /* CUSTOM ERRORS */
     error PolicySetEmpty();
     error PolicySetTooLarge();
-    error PolicyDataLengthMismatch();
-    error PolicyDataAddressMismatch();
     error PolicyDataExpired();
     error ResponseLengthMismatch();
     error RegoCodeHashMismatch(uint256 index);
@@ -36,7 +33,6 @@ library PolicyValidationLib {
     error PureRegoOutputNotEmpty(uint256 index);
     error InvalidOracleOutput(uint256 index);
     error IncompatiblePolicyVersion(uint256 index, string actual, string minimum);
-    error IncompatiblePolicyDataVersion(uint256 index, string actual, string minimum);
     error PolicyParamsTooLarge(uint256 index, uint256 size);
     error PolicyInputTooLarge(uint256 index, uint256 size);
     error PolicyRegoTooLarge(uint256 index, uint256 size);
@@ -125,33 +121,6 @@ library PolicyValidationLib {
         require(total <= MAX_TASK_POLICY_BYTES, TaskPolicyDataTooLarge(total));
     }
 
-    /// @dev Validates one policy's operator-generated evidence: its policy-data addresses match
-    /// the policy's own (immutable) oracle list and none has expired.
-    /// @notice Called during respondToTask to validate operator-generated policyTaskData.
-    function validatePolicyData(
-        address policyAddress,
-        NewtonMessage.PolicyTaskData calldata policyTaskData,
-        uint32 currentBlock
-    ) internal view {
-        address[] memory policyDataAddresses = INewtonPolicy(policyAddress).getPolicyData();
-        NewtonMessage.PolicyData[] calldata policyData = policyTaskData.policyData;
-
-        require(policyData.length == policyDataAddresses.length, PolicyDataLengthMismatch());
-
-        for (uint256 i; i < policyDataAddresses.length;) {
-            require(
-                policyData[i].policyDataAddress == policyDataAddresses[i],
-                PolicyDataAddressMismatch()
-            );
-
-            require(policyData[i].expireBlock >= currentBlock, PolicyDataExpired());
-
-            unchecked {
-                ++i;
-            }
-        }
-    }
-
     /// @notice Validates a task response against the policy set its task is frozen to, and
     /// returns the certificate expiry: the minimum `expireAfter` across the set, so a
     /// certificate never outlives its shortest-lived entry.
@@ -194,17 +163,13 @@ library PolicyValidationLib {
 
             require(keccak256(ptd.policy) == policy.getPolicyCodeHash(), RegoCodeHashMismatch(i));
 
-            validatePolicyData(policyAddress, ptd, currentBlock);
-
-            // A policy has at most one oracle (the composition invariant); its CID lives on the
-            // NewtonPolicyData child, not on the policy itself.
-            address[] memory dataAddrs = policy.getPolicyData();
-            bool hasOracle = dataAddrs.length == 1;
+            bool hasOracle = bytes(policy.getWasmCid()).length != 0;
             if (!hasOracle) {
                 require(inputLen == 0, PureRegoInputNotEmpty(i));
                 require(ptd.policyData.length == 0, PureRegoOutputNotEmpty(i));
             } else {
                 require(ptd.policyData.length == 1, InvalidOracleOutput(i));
+                require(ptd.policyData[0].expireBlock >= currentBlock, PolicyDataExpired());
                 bytes calldata output = ptd.policyData[0].data;
                 uint256 outputLen = output.length;
                 require(outputLen <= MAX_POLICY_FIELD_BYTES, OracleOutputTooLarge(i, outputLen));
@@ -226,18 +191,6 @@ library PolicyValidationLib {
                     VersionLib.isCompatible(factoryVersion, minPolicyVersion),
                     IncompatiblePolicyVersion(i, factoryVersion, minPolicyVersion)
                 );
-
-                for (uint256 j; j < dataAddrs.length;) {
-                    string memory dataFactoryVersion =
-                        ISemVerMixin(INewtonPolicyData(dataAddrs[j]).factory()).version();
-                    require(
-                        VersionLib.isCompatible(dataFactoryVersion, minPolicyVersion),
-                        IncompatiblePolicyDataVersion(i, dataFactoryVersion, minPolicyVersion)
-                    );
-                    unchecked {
-                        ++j;
-                    }
-                }
             }
 
             uint32 e = task.policies[i].config.expireAfter;
