@@ -3,11 +3,14 @@ pragma solidity ^0.8.27;
 
 import {INewtonProverTaskManager} from "./interfaces/INewtonProverTaskManager.sol";
 import {INewtonPolicyClient} from "./interfaces/INewtonPolicyClient.sol";
+import {INewtonPolicy} from "./interfaces/INewtonPolicy.sol";
+import {INewtonPolicyData} from "./interfaces/INewtonPolicyData.sol";
+import {ISemVerMixin} from "./interfaces/ISemVerMixin.sol";
 import {TaskManagerStorage} from "./middlewares/TaskManagerStorage.sol";
 import {NewtonMessage} from "./core/NewtonMessage.sol";
 import {TaskLib} from "./libraries/TaskLib.sol";
-import {PolicyValidationLib} from "./libraries/PolicyValidationLib.sol";
 import {TaskManagerErrors} from "./libraries/TaskManagerErrors.sol";
+import {VersionLib} from "./libraries/VersionLib.sol";
 import {ITaskResponseHandler} from "./interfaces/ITaskResponseHandler.sol";
 import "@openzeppelin-upgrades/contracts/security/ReentrancyGuardUpgradeable.sol";
 import "@eigenlayer-middleware/src/libraries/BN254.sol";
@@ -51,20 +54,22 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
         );
         INewtonProverTaskManager.Task memory newTask =
             TaskLib.createTask(task, taskCreationBufferWindow);
-
-        // The frozen snapshot must be exactly the client's current set: the client validated
-        // non-zero expiry and the composition invariants when it accepted this set via
-        // `setPolicies`, and policyId commits every field of it. Provenance is rechecked
-        // below rather than trusted from then, because the factory can have rotated since.
-        require(
-            INewtonPolicyClient(task.policyClient).getPolicyId() == task.policyId,
-            TaskManagerErrors.PolicyIdMismatch()
-        );
-        PolicyValidationLib.requirePolicySnapshot(task);
-        PolicyValidationLib.requireActiveFactory(task, policyFactory);
-
         allTaskHashes[newTask.taskId] = TaskLib.taskHash(newTask);
-        emit NewTaskCreated(newTask.taskId, newTask);
+
+        INewtonPolicy.PolicyState memory state =
+            _getPolicyState(INewtonPolicyClient(task.policyClient));
+
+        // Enforce minimum policy factory version if configured
+        if (bytes(minCompatiblePolicyVersion).length > 0) {
+            address policyFactory = INewtonPolicy(state.policyAddress).factory();
+            string memory factoryVersion = ISemVerMixin(policyFactory).version();
+            require(
+                VersionLib.isCompatible(factoryVersion, minCompatiblePolicyVersion),
+                TaskLib.InvalidPolicyVersion(factoryVersion, minCompatiblePolicyVersion)
+            );
+        }
+
+        emit NewTaskCreated(newTask.taskId, newTask, state);
     }
 
     function respondToTask(
@@ -88,19 +93,39 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
             TaskLib.TaskAlreadyResponded(allTaskResponses[taskId])
         );
 
-        // Operators generate policyTaskData independently, one entry per policy in
-        // task.policies order; this validates the aggregated result and returns the
-        // certificate expiry: the minimum expireAfter across the set, so a certificate
-        // never outlives its shortest-lived entry.
-        uint32 minExpireAfterBlocks = AttestationValidator(attestationValidator)
-            .validateResponse(task, taskResponse, minCompatiblePolicyVersion);
+        // Validate policyTaskData from TaskResponse (moved from createTask)
+        // Operators generate policyTaskData independently; this validates the aggregated result
+        TaskLib.validateTaskResponsePolicyData(taskResponse);
+
+        // Bind policy address and code hash to prevent first-responder policy injection
+        address clientPolicyAddr = INewtonPolicyClient(task.policyClient).getPolicyAddress();
+        require(taskResponse.policyAddress == clientPolicyAddr, TaskLib.InvalidPolicyAddress());
+        require(
+            keccak256(taskResponse.policyTaskData.policy)
+                == INewtonPolicy(clientPolicyAddr).getPolicyCodeHash(),
+            TaskLib.TaskResponseMismatch()
+        );
+
+        // Enforce minimum policy data factory version if configured
+        if (bytes(minCompatiblePolicyVersion).length > 0) {
+            NewtonMessage.PolicyData[] calldata policyData = taskResponse.policyTaskData.policyData;
+            for (uint256 i; i < policyData.length; ++i) {
+                address pdFactory = INewtonPolicyData(policyData[i].policyDataAddress).factory();
+                string memory pdVersion = ISemVerMixin(pdFactory).version();
+                require(
+                    VersionLib.isCompatible(pdVersion, minCompatiblePolicyVersion),
+                    TaskLib.InvalidPolicyVersion(pdVersion, minCompatiblePolicyVersion)
+                );
+            }
+        }
 
         // Delegate verification to task response handler
         bytes32 hashOfNonSigners = ITaskResponseHandler(taskResponseHandler)
             .verifyTaskResponse(task, taskResponse, signatureData);
 
         uint32 referenceBlock = uint32(block.number);
-        uint32 responseExpireBlock = referenceBlock + minExpireAfterBlocks;
+        // Use taskResponse.policyConfig (from operator-generated data) instead of task.policyConfig
+        uint32 responseExpireBlock = referenceBlock + taskResponse.policyConfig.expireAfter;
         ResponseCertificate memory responseCertificate = ResponseCertificate(
             referenceBlock, responseExpireBlock, hashOfNonSigners, signatureData
         );
@@ -119,7 +144,7 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
         if (attestationData.length > 0) {
             allTaskAttestations[taskId] = keccak256(attestationData);
         }
-        if (taskResponse.allowed) {
+        if (TaskLib.evaluateResult(taskResponse.evaluationResult)) {
             AttestationValidator(attestationValidator)
                 .createAttestationHash(
                     taskId,
@@ -230,15 +255,6 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
         emit TaskResponseHandlerUpdated(_taskResponseHandler);
     }
 
-    /// @notice Set the policy factory whose registry membership is authoritative policy provenance.
-    function setPolicyFactory(
-        address _policyFactory
-    ) external onlyAdmin {
-        require(_policyFactory != address(0), TaskManagerErrors.InvalidPolicyFactory());
-        policyFactory = _policyFactory;
-        emit PolicyFactoryUpdated(_policyFactory);
-    }
-
     function validateAttestation(
         NewtonMessage.Attestation calldata attestation
     ) external onlyWhenNotPaused(PAUSED_ATTESTATION) returns (bool) {
@@ -289,9 +305,24 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
             return false;
         }
 
-        // Version gate and per-policy response validation are delegated to
-        // AttestationValidator, which runs the same PolicyValidationLib entry point
-        // respondToTask uses -- no duplicated bounds logic between the two paths.
+        if (bytes(minCompatiblePolicyVersion).length > 0) {
+            address policyFactory = INewtonPolicy(taskResponse.policyAddress).factory();
+            string memory factoryVersion = ISemVerMixin(policyFactory).version();
+            require(
+                VersionLib.isCompatible(factoryVersion, minCompatiblePolicyVersion),
+                TaskLib.InvalidPolicyVersion(factoryVersion, minCompatiblePolicyVersion)
+            );
+            NewtonMessage.PolicyData[] calldata policyData = taskResponse.policyTaskData.policyData;
+            for (uint256 i; i < policyData.length; ++i) {
+                address pdFactory = INewtonPolicyData(policyData[i].policyDataAddress).factory();
+                string memory pdVersion = ISemVerMixin(pdFactory).version();
+                require(
+                    VersionLib.isCompatible(pdVersion, minCompatiblePolicyVersion),
+                    TaskLib.InvalidPolicyVersion(pdVersion, minCompatiblePolicyVersion)
+                );
+            }
+        }
+
         return AttestationValidator(attestationValidator)
             .validateAttestationDirect(msg.sender, task, taskResponse, signatureData);
     }
@@ -367,5 +398,18 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
         bytes32 taskId
     ) external view returns (bytes32) {
         return allNormalizedTaskResponses[taskId];
+    }
+
+    function _getPolicyState(
+        INewtonPolicyClient client
+    ) internal view returns (INewtonPolicy.PolicyState memory state) {
+        address policyAddress = client.getPolicyAddress();
+        bytes32 policyId = client.getPolicyId();
+        INewtonPolicy.PolicyConfig memory policyConfig =
+            INewtonPolicy(policyAddress).getPolicyConfig(policyId);
+
+        state = INewtonPolicy.PolicyState({
+            policyAddress: policyAddress, policyId: policyId, policyConfig: policyConfig
+        });
     }
 }

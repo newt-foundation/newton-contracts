@@ -1,0 +1,68 @@
+// SPDX-License-Identifier: Apache-2.0
+
+pragma solidity ^0.8.27;
+
+import {IERC165} from "@openzeppelin/contracts/interfaces/IERC165.sol";
+import {ISemVerMixin} from "./ISemVerMixin.sol";
+
+/// @notice Interface for a NewtonPolicyData
+interface INewtonPolicyData is IERC165 {
+    struct PolicyDataInfo {
+        address policyDataAddress;
+        address owner;
+        string metadataCid;
+        string wasmCid;
+        string secretsSchemaCid;
+        uint32 expireAfter;
+    }
+
+    /**
+     * @notice Retrieves the metadata CID for the policy.
+     * @return The metadata CID for the policy.
+     */
+    function getMetadataCid() external view returns (string memory);
+
+    /**
+     * @notice Sets the metadata CID for the policy data.
+     * @param metadataCid The metadata CID to set for the policy data.
+     */
+    function setMetadataCid(
+        string calldata metadataCid
+    ) external;
+
+    /**
+     * @notice Retrieves the policy data location (IPFS CID for WASM plugin).
+     * @return The policy data location for the policy data contract.
+     */
+    function getWasmCid() external view returns (string memory);
+
+    /**
+     * @notice Retrieves the secrets schema CID for this policy data.
+     * @return The IPFS CID of the secrets JSON schema, or empty string if no secrets.
+     */
+    function getSecretsSchemaCid() external view returns (string memory);
+
+    /**
+     * @notice Retrieves the expire after block number for the policy data.
+     * @return The block number after which the policy data should expire.
+     */
+    function getExpireAfter() external view returns (uint32);
+
+    /**
+     * @notice Deprecated. Policy-data verification was removed from the protocol; the AVS serves
+     *         tasks for any deployed policy data. Retained for interface/ABI stability and always
+     *         returns true.
+     * @return Always true.
+     */
+    function isPolicyDataVerified() external view returns (bool);
+
+    /**
+     * @notice Get the factory contract that deployed this policy data
+     * @return The address of the factory contract
+     */
+    function factory() external view returns (address);
+
+    /// @notice Returns the semantic version of the policy data implementation
+    /// @return The version string in SemVer format (e.g., "0.3.0")
+    function version() external view returns (string memory);
+}

@@ -44,6 +44,8 @@ contract NewtonMessage {
         bytes wasmArgs;
         // encoded policy data
         bytes data;
+        // policy data address
+        address policyDataAddress;
         // expiration block number for the policy data
         uint32 expireBlock;
     }
@@ -56,7 +58,8 @@ contract NewtonMessage {
         address policyAddress;
         // policy program binary
         bytes policy;
-        // the policy's oracle output, empty for a pure-Rego policy
+        // an array of policy data entries
+        // NOTE: order matters, the first policy data is the first policy data in the policy data set of the policy.
         PolicyData[] policyData;
     }
 
