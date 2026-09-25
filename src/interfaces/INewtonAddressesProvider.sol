@@ -64,9 +64,6 @@ interface INewtonAddressesProvider {
     /// @notice Deploys NewtonPolicy instances with version stamping
     function getPolicyFactory() external view returns (address);
 
-    /// @notice Deploys NewtonPolicyData instances with version stamping
-    function getPolicyDataFactory() external view returns (address);
-
     // -------------------------------------------------------------------------
     // Private data storage — typed getters
     // -------------------------------------------------------------------------
@@ -171,9 +168,6 @@ interface INewtonAddressesProvider {
         address addr
     ) external;
     function setPolicyFactory(
-        address addr
-    ) external;
-    function setPolicyDataFactory(
         address addr
     ) external;
     function setStateCommitRegistry(

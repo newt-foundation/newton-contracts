@@ -1,20 +1,16 @@
 {
   "lastUpdate": {
-    "timestamp": "1785789502",
-    "block_number": "45010607"
+    "timestamp": "1777773940",
+    "block_number": "41002826"
   },
   "addresses": {
     "proxyAdmin": "0x5e5c80c7034df088d9f6bc1e5350ba01af4a3777",
-    "policyFactory": "0xcd2b28eed56b51f9aee4174a9301863a9dbde60e",
-    "policyFactoryImpl": "0xe0d97fff04c2bab6f1946b11a38bb2f1ec840644",
-    "policy": "0xc2f1dca4b6a7d29b954ecee61e5ade48752f2acc",
-    "policyImplementation": "0xaafb25212525345cf310427a98b9c8a49e24a2ff",
-    "policyDataFactory": "0x502d5d784548ce8b8c2ebb1542908d8a64fd64c4",
-    "policyDataFactoryImpl": "0x114ff75bbc8a282a6108ca4fa6d1dee4c463a7aa",
-    "policyData": "0x11d5facb9153eb8c4e300553e4568763c4038f94",
-    "policyDataImplementation": "0xfb66802d4d32724df478a736654ff507dc306bf1",
-    "policyClient": "0x0864613d0d48ac98a0317a532850f20302e3c7ce",
-    "policyClientImpl": "0xb0d5434d2d0d4142433621bb02501469dd1ff808",
-    "policyId": "0xe661669d226780fb1b2cb0ab557b6a70b7158dadf92130919ebfbbb4f89e00bf"
+    "policyFactory": "0x4c1aa515f235cf263370d768aca5dfe50fac1be5",
+    "policyFactoryImpl": "0xfbc56c2586c81fcf6173ea99f276c8af04f4d282",
+    "policy": "0x564b4923286e43fd1124c4dc44f5f0ca1f83b50a",
+    "policyImplementation": "0xbc8c3fa2876eb5bf257ffd0fe5c8d44f9e385a22",
+    "policyClient": "0xbd8184081aaafe7673d9a8db80dff2b56ba960eb",
+    "policyClientImpl": "0x65e536597f9ea6662dacaf19706f5f92592013ff",
+    "policyId": "0xd48787ca6fe194e848dfc280999c965ab92b46fff96898e161e83c93e4918807"
   }
 }

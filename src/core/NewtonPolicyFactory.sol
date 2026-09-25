@@ -33,6 +33,9 @@ contract NewtonPolicyFactory is AdminMixin, SemVerMixin {
     /// @dev DEPRECATED (default policy verification removed). Retained to preserve storage layout.
     bool private defaultPolicyVerified;
 
+    // --- storage appended below this line; never insert above it ---
+    mapping(address policy => bool) public isPolicy;
+
     event PolicyDeployed(
         address policy, INewtonPolicy.PolicyInfo policyInfo, string implementationVersion
     );
@@ -71,35 +74,33 @@ contract NewtonPolicyFactory is AdminMixin, SemVerMixin {
         string memory _entrypoint,
         string memory _policyCid,
         string memory _schemaCid,
-        address[] memory _policyData,
+        string memory _wasmCid,
+        string memory _secretsSchemaCid,
         string memory _metadataCid,
         address _owner,
         bytes32 _policyCodeHash
     ) external returns (address policyAddr) {
-        bytes memory initData = abi.encodeWithSelector(
-            NewtonPolicy.initialize.selector,
-            address(this),
-            _entrypoint,
-            _policyCid,
-            _schemaCid,
-            _policyData,
-            _metadataCid,
-            _owner,
-            _policyCodeHash
+        // create2 swallows an initializer revert into Create2Failed, so check it here too
+        require(
+            bytes(_secretsSchemaCid).length == 0 || bytes(_wasmCid).length != 0,
+            NewtonPolicy.SecretsSchemaWithoutWasm()
         );
 
-        bytes32 salt = keccak256(
-            abi.encodePacked(
-                address(this),
-                _entrypoint,
-                _policyCid,
-                _schemaCid,
-                _policyData,
-                _metadataCid,
-                _owner,
-                _policyCodeHash
-            )
+        INewtonPolicy.PolicyArtifacts memory artifacts = INewtonPolicy.PolicyArtifacts({
+            entrypoint: _entrypoint,
+            policyCid: _policyCid,
+            schemaCid: _schemaCid,
+            wasmCid: _wasmCid,
+            secretsSchemaCid: _secretsSchemaCid,
+            metadataCid: _metadataCid
+        });
+
+        bytes memory initData = abi.encodeCall(
+            NewtonPolicy.initialize, (address(this), artifacts, _owner, _policyCodeHash)
         );
+
+        // abi.encode, not encodePacked: adjacent dynamic strings would alias
+        bytes32 salt = keccak256(abi.encode(address(this), artifacts, _owner, _policyCodeHash));
 
         bytes memory bytecode = abi.encodePacked(
             type(TransparentUpgradeableProxy).creationCode,
@@ -117,6 +118,7 @@ contract NewtonPolicyFactory is AdminMixin, SemVerMixin {
         ChainLib.requireSupportedChain();
 
         ownersToPolicies[_owner].push(policyAddr);
+        isPolicy[policyAddr] = true;
         _policyOwners.add(_owner);
 
         emit PolicyDeployed(
@@ -128,7 +130,8 @@ contract NewtonPolicyFactory is AdminMixin, SemVerMixin {
                 _policyCid,
                 _schemaCid,
                 _entrypoint,
-                _policyData,
+                _wasmCid,
+                _secretsSchemaCid,
                 _policyCodeHash
             ),
             version()
@@ -152,35 +155,26 @@ contract NewtonPolicyFactory is AdminMixin, SemVerMixin {
         string memory _entrypoint,
         string memory _policyCid,
         string memory _schemaCid,
-        address[] memory _policyData,
+        string memory _wasmCid,
+        string memory _secretsSchemaCid,
         string memory _metadataCid,
         address _owner,
         bytes32 _policyCodeHash
     ) public view returns (address predicted) {
-        bytes memory initData = abi.encodeWithSelector(
-            NewtonPolicy.initialize.selector,
-            address(this),
-            _entrypoint,
-            _policyCid,
-            _schemaCid,
-            _policyData,
-            _metadataCid,
-            _owner,
-            _policyCodeHash
+        INewtonPolicy.PolicyArtifacts memory artifacts = INewtonPolicy.PolicyArtifacts({
+            entrypoint: _entrypoint,
+            policyCid: _policyCid,
+            schemaCid: _schemaCid,
+            wasmCid: _wasmCid,
+            secretsSchemaCid: _secretsSchemaCid,
+            metadataCid: _metadataCid
+        });
+
+        bytes memory initData = abi.encodeCall(
+            NewtonPolicy.initialize, (address(this), artifacts, _owner, _policyCodeHash)
         );
 
-        bytes32 salt = keccak256(
-            abi.encodePacked(
-                address(this),
-                _entrypoint,
-                _policyCid,
-                _schemaCid,
-                _policyData,
-                _metadataCid,
-                _owner,
-                _policyCodeHash
-            )
-        );
+        bytes32 salt = keccak256(abi.encode(address(this), artifacts, _owner, _policyCodeHash));
 
         bytes memory bytecode = abi.encodePacked(
             type(TransparentUpgradeableProxy).creationCode,

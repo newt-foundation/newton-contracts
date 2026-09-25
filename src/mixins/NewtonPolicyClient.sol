@@ -5,13 +5,15 @@ pragma solidity ^0.8.27;
 import {IERC165} from "@openzeppelin/contracts/interfaces/IERC165.sol";
 import {INewtonProverTaskManager} from "../interfaces/INewtonProverTaskManager.sol";
 import {INewtonPolicyClient} from "../interfaces/INewtonPolicyClient.sol";
-import {ISemVerMixin} from "../interfaces/ISemVerMixin.sol";
+import {INewtonPolicyFactoryRegistry} from "../interfaces/INewtonPolicyFactory.sol";
 import {SemVerMixin} from "./SemVerMixin.sol";
-import {NewtonPolicy} from "../core/NewtonPolicy.sol";
 import {NewtonMessage} from "../core/NewtonMessage.sol";
-import {INewtonPolicy} from "../interfaces/INewtonPolicy.sol";
-import {VersionLib} from "../libraries/VersionLib.sol";
 import {PROTOCOL_VERSION} from "../libraries/ProtocolVersion.sol";
+import {
+    POLICY_SET_DOMAIN,
+    MAX_POLICIES,
+    MAX_POLICY_FIELD_BYTES
+} from "../libraries/PolicyConstants.sol";
 
 abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
     /// @notice Stamps the implementation with the protocol version it was compiled
@@ -35,29 +37,6 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
     // error for when a call is made by an account other than the owner
     error OnlyPolicyClientOwner();
 
-    // error for when policy address has not been set yet
-    error PolicyNotSet();
-
-    // error for when the policy factory version is incompatible
-    error IncompatiblePolicyVersion(string actual, string minimum);
-
-    /// @notice Emitted whenever the bound policy ADDRESS ($.policy) is written -
-    ///         the init/birth bind and any later rebind, including a re-set to the
-    ///         same value (emit-on-write, not emit-on-change) - so an indexer can
-    ///         reconstruct a client's full policy-address history from events alone.
-    /// @param previousPolicy The policy address before this write (address(0) at birth).
-    /// @param newPolicy The policy address after this write.
-    event PolicyAddressUpdated(address indexed previousPolicy, address indexed newPolicy);
-
-    /// @notice Emitted whenever the bound policy ID ($.policyId) is written, via
-    ///         setPolicy (including a re-set to the same value, emit-on-write) or
-    ///         via a policy-address rotation clearing it back to zero (see
-    ///         `_setPolicyAddress`).
-    /// @param policy The policy contract the id was set on ($.policy at call time).
-    /// @param policyId The new policyId -- `NewtonPolicy.setPolicy`'s return value,
-    ///        or `bytes32(0)` when cleared by a policy-address rotation.
-    event PolicyIdUpdated(address indexed policy, bytes32 indexed policyId);
-
     // modifier to restrict functions to only the owner
     modifier onlyPolicyClientOwner() {
         require(
@@ -67,12 +46,20 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
     }
 
     /// @notice Struct to contain stateful values for NewtonPolicyClient-type contracts
+    /// @dev `_reservedSlot0`/`_reservedSlot1` were `policy`/`policyId` upstream. They keep their
+    ///      names, types and position so an already-deployed proxy's storage layout does not
+    ///      shift; the new `policyId` is appended rather than reusing `_reservedSlot1` so a
+    ///      client that has upgraded but not yet called `setPolicies` reads zero -- which
+    ///      matches no real set -- instead of a stale single-policy id that still looks live.
     /// @custom:storage-location erc7201:newton.storage.NewtonPolicyClient
     struct NewtonPolicyClientStorage {
         INewtonProverTaskManager policyTaskManager;
-        address policy;
-        bytes32 policyId;
+        address _reservedSlot0; // formerly policy
+        bytes32 _reservedSlot1; // formerly policyId
         address policyClientOwner;
+        PolicySpec[] policies;
+        bytes32 policyId;
+        uint64 policyRevision;
     }
 
     /// @notice EIP-1967 proxy storage slot for the NewtonPolicyClientStorage struct
@@ -97,6 +84,8 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
         NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
         $.policyTaskManager = INewtonProverTaskManager(policyTaskManager);
         $.policyClientOwner = policyClientOwner;
+
+        emit PolicyClientInitialized(policyTaskManager, policyClientOwner);
     }
 
     /**
@@ -107,127 +96,118 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
         address policyClientOwner
     ) public onlyPolicyClientOwner {
         NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
+        address previousOwner = $.policyClientOwner;
         $.policyClientOwner = policyClientOwner;
+
+        emit PolicyClientOwnerUpdated(previousOwner, policyClientOwner);
     }
 
     /**
-     * @notice Internal setter for the policy contract address.
-     * @dev Writes then emits, with NO version gate: the TaskManager version check
-     *      lives in the public `setPolicyAddress` wrapper, not here. Callers that bind
-     *      the policy directly (e.g. an initializer) therefore emit PolicyAddressUpdated
-     *      without a version check - the event is still truthful (the address was
-     *      bound); an incompatible initial policy simply fails later at task creation.
-     * @param policy The address of the NewtonPolicy contract.
-     * @dev Clears the cached `$.policyId` back to zero whenever `policy` actually changes.
-     *      `$.policyId` is only ever refreshed by `_setPolicy` (a separate call), so without
-     *      this, rotating `$.policy` alone would leave `$.policyId` pointing at the OLD
-     *      policy's id -- every attestation/task-response check that compares against
-     *      `getPolicyId()` (`TaskLib.sanityCheckAttestation`, `_validateAttestation`,
-     *      `_validateAttestationDirect`, `AttestationValidator.validateAttestationDirect`/
-     *      `isAttestationDirectValid`) would then keep accepting stale, already-evaluated
-     *      credentials issued under the old policy until they naturally expire, instead of
-     *      requiring a fresh `_setPolicy` under the new one first.
+     * @notice Initializer-only policy setup, tolerant of an empty list.
+     * @dev A client deployed ahead of its policies is a legal state. `setPolicies` itself stays
+     *      strict about a non-empty set; this wrapper is only for the deferred-configuration path.
+     * @param policies The ordered policy specifications, or an empty list to defer configuration.
      */
-    function _setPolicyAddress(
-        address policy
+    function _initPolicies(
+        PolicySpec[] memory policies
     ) internal {
-        NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
-        address previous = $.policy;
-        $.policy = policy;
-        if (previous != policy) {
-            $.policyId = bytes32(0);
-            emit PolicyIdUpdated(policy, bytes32(0));
+        if (policies.length != 0) {
+            _setPolicies(policies);
         }
-        emit PolicyAddressUpdated(previous, policy);
     }
 
     /**
-     * @notice Only callable by the owner. Sets the policy contract address for deferred setup.
-     * @param policy The address of the NewtonPolicy contract.
-     * @dev Validates that the policy's factory version is compatible with the TaskManager's
-     *      minimum required policy version. This is a runtime check (not compile-time) so that
-     *      existing policy clients can upgrade to newer policy versions without redeployment.
-     *      The TaskManager gate is the authoritative version check, matching the canonical
-     *      check_compatibility() logic used by newton-cli.
+     * @notice Internal implementation for replacing a client's complete policy set.
+     * @param policies The new ordered policy set.
+     * @return newPolicyId The identifier committing to this client, this exact ordered set, and
+     *         the revision it was set at.
+     * @dev Per-entry, requires: the policy was deployed by the task manager's configured factory
+     *      (provenance -- not an arbitrary contract shaped like a policy) and a nonzero expiry.
+     *      The one-rego-to-one-oracle invariant needs no check here: a policy carries its own
+     *      single wasmCid, so it cannot declare more than one oracle.
      */
-    function setPolicyAddress(
-        address policy
-    ) public onlyPolicyClientOwner {
-        NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
-
-        // Runtime version check: read minimum from TaskManager (mutable, authoritative)
-        // Fails fast at configuration time rather than at task creation time
-        address taskManager = address($.policyTaskManager);
-        if (taskManager != address(0)) {
-            address factory = INewtonPolicy(policy).factory();
-            string memory factoryVersion = ISemVerMixin(factory).version();
-
-            string memory tmMinVersion =
-                INewtonProverTaskManager(taskManager).minCompatiblePolicyVersion();
-            if (bytes(tmMinVersion).length > 0) {
-                require(
-                    VersionLib.isCompatible(factoryVersion, tmMinVersion),
-                    IncompatiblePolicyVersion(factoryVersion, tmMinVersion)
-                );
-            }
-        }
-
-        _setPolicyAddress(policy);
-    }
-
-    /**
-     * @notice Sets a policy for the calling address to the policyID from on chain.
-     * @param policyConfig The policy configuration.
-     * @return policyId The policyID associated with the calling address.
-     * @dev This function enables clients to define execution rules or parameters for tasks they submit.
-     *      The policy governs how tasks submitted by the caller are executed, ensuring compliance with predefined rules.
-     */
-    function _setPolicy(
-        INewtonPolicy.PolicyConfig memory policyConfig
+    function _setPolicies(
+        PolicySpec[] memory policies
     ) internal returns (bytes32) {
         NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
-        require($.policy != address(0), PolicyNotSet());
-        bytes32 policyId = NewtonPolicy($.policy).setPolicy(policyConfig);
-        $.policyId = policyId;
-        emit PolicyIdUpdated($.policy, policyId);
-        return policyId;
+
+        require(policies.length != 0, EmptyPolicySet());
+        require(policies.length <= MAX_POLICIES, TooManyPolicies(policies.length, MAX_POLICIES));
+
+        require(address($.policyTaskManager) != address(0), PolicyFactoryNotSet());
+        address factory = $.policyTaskManager.policyFactory();
+        require(factory != address(0), PolicyFactoryNotSet());
+
+        for (uint256 i = 0; i < policies.length; ++i) {
+            require(
+                INewtonPolicyFactoryRegistry(factory).isPolicy(policies[i].policy),
+                PolicyNotRegistered(policies[i].policy)
+            );
+            require(policies[i].config.expireAfter != 0, ZeroExpireAfter(i));
+            require(
+                policies[i].config.policyParams.length <= MAX_POLICY_FIELD_BYTES,
+                PolicyParamsTooLarge(i, policies[i].config.policyParams.length)
+            );
+        }
+
+        uint64 revision = $.policyRevision + 1;
+        bytes32 newPolicyId = keccak256(
+            abi.encode(POLICY_SET_DOMAIN, block.chainid, address(this), revision, policies)
+        );
+        bytes32 previous = $.policyId;
+
+        delete $.policies;
+        for (uint256 i = 0; i < policies.length; ++i) {
+            $.policies.push(policies[i]);
+        }
+        $.policyRevision = revision;
+        $.policyId = newPolicyId;
+
+        emit PoliciesUpdated(previous, newPolicyId, revision, policies);
+
+        return newPolicyId;
     }
 
     /**
-     * @notice Same as _setPolicy, but only callable by the owner. Used for external policy configuration.
-     * @param policyConfig The policy configuration.
-     * @return policyId The policyID associated with the calling address.
+     * @notice Only callable by the owner. Replaces the complete policy set atomically.
+     * @param policies The new ordered policy set.
+     * @return The identifier committing to this client, this exact ordered set, and the
+     *         revision it was set at.
      */
-    function setPolicy(
-        INewtonPolicy.PolicyConfig memory policyConfig
+    function setPolicies(
+        PolicySpec[] calldata policies
     ) external onlyPolicyClientOwner returns (bytes32) {
-        return _setPolicy(policyConfig);
+        return _setPolicies(policies);
     }
 
-    function getPolicyAddress() external view returns (address) {
-        return _getPolicyAddress();
+    function getPolicies() external view returns (PolicySpec[] memory) {
+        return _policies();
     }
 
-    function _getPolicyAddress() internal view returns (address) {
-        return _getNewtonPolicyClientStorage().policy;
-    }
-
-    function getPolicyConfig() external view returns (INewtonPolicy.PolicyConfig memory) {
-        return _getPolicyConfig();
-    }
-
-    function _getPolicyConfig() internal view returns (INewtonPolicy.PolicyConfig memory) {
-        NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
-        require($.policy != address(0), PolicyNotSet());
-        return NewtonPolicy($.policy).getPolicyConfig(_getPolicyId());
+    function _policies() internal view returns (PolicySpec[] memory) {
+        return _getNewtonPolicyClientStorage().policies;
     }
 
     function getPolicyId() external view returns (bytes32) {
-        return _getPolicyId();
+        return _policyId();
     }
 
-    function _getPolicyId() internal view returns (bytes32) {
+    function _policyId() internal view returns (bytes32) {
         return _getNewtonPolicyClientStorage().policyId;
+    }
+
+    function policyRevision() external view returns (uint64) {
+        return _getNewtonPolicyClientStorage().policyRevision;
+    }
+
+    /**
+     * @notice Retrieves the policyID, revision, and policy set in one call. A caller reading
+     *         these across three separate `eth_call`s can have a `setPolicies` land between
+     *         them and observe a mix of old and new state; this getter is atomic against that.
+     */
+    function getPolicySetSnapshot() external view returns (bytes32, uint64, PolicySpec[] memory) {
+        NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
+        return ($.policyId, $.policyRevision, $.policies);
     }
 
     function getNewtonPolicyTaskManager() external view returns (address) {
