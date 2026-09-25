@@ -176,7 +176,7 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
      */
     function setPolicies(
         PolicySpec[] calldata policies
-    ) external onlyPolicyClientOwner returns (bytes32) {
+    ) external virtual onlyPolicyClientOwner returns (bytes32) {
         return _setPolicies(policies);
     }
 
