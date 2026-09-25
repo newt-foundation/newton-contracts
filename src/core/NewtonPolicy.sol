@@ -29,9 +29,7 @@ contract NewtonPolicy is
     string public policyCid;
     string public schemaCid;
     string public entrypoint;
-    /// @notice empty for a pure-Rego policy
-    string public wasmCid;
-    string public secretsSchemaCid;
+    address[] public policyData;
     string public metadataCid;
     /// @notice keccak256 of the raw policy program bytes
     /// @dev Set at initialize-time. The SP1 circuit commits the same hash into
@@ -49,7 +47,6 @@ contract NewtonPolicy is
     error OnlyPolicyClient();
     error InterfaceNotSupported();
     error InvalidPolicyCodeHash();
-    error SecretsSchemaWithoutWasm();
 
     /* Modifiers */
     modifier onlyPolicyClient() {
@@ -67,25 +64,24 @@ contract NewtonPolicy is
 
     function initialize(
         address _factory,
-        INewtonPolicy.PolicyArtifacts calldata artifacts,
+        string calldata _entrypoint,
+        string calldata _policyCid,
+        string calldata _schemaCid,
+        address[] calldata _policyData,
+        string calldata _metadataCid,
         address _owner,
         bytes32 _policyCodeHash
     ) public initializer {
         require(_policyCodeHash != bytes32(0), InvalidPolicyCodeHash());
-        require(
-            bytes(artifacts.secretsSchemaCid).length == 0 || bytes(artifacts.wasmCid).length != 0,
-            SecretsSchemaWithoutWasm()
-        );
         __Ownable_init();
         _transferOwnership(_owner);
         __ERC165_init();
         factory = _factory;
-        entrypoint = artifacts.entrypoint;
-        policyCid = artifacts.policyCid;
-        schemaCid = artifacts.schemaCid;
-        wasmCid = artifacts.wasmCid;
-        secretsSchemaCid = artifacts.secretsSchemaCid;
-        metadataCid = artifacts.metadataCid;
+        policyCid = _policyCid;
+        schemaCid = _schemaCid;
+        policyData = _policyData;
+        entrypoint = _entrypoint;
+        metadataCid = _metadataCid;
         policyCodeHash = _policyCodeHash;
     }
 
@@ -102,8 +98,7 @@ contract NewtonPolicy is
                 schemaCid,
                 entrypoint,
                 policyConfig,
-                wasmCid,
-                secretsSchemaCid,
+                policyData,
                 block.timestamp,
                 version()
             )
@@ -123,8 +118,7 @@ contract NewtonPolicy is
                 schemaCid,
                 entrypoint,
                 policyConfig,
-                wasmCid,
-                secretsSchemaCid,
+                policyData,
                 policyCodeHash,
                 version()
             )
@@ -166,23 +160,8 @@ contract NewtonPolicy is
         return schemaCid;
     }
 
-    function getWasmCid() public view returns (string memory) {
-        return wasmCid;
-    }
-
-    function getSecretsSchemaCid() public view returns (string memory) {
-        return secretsSchemaCid;
-    }
-
-    function setSecretsSchemaCid(
-        string calldata _secretsSchemaCid
-    ) public onlyOwner {
-        require(
-            bytes(_secretsSchemaCid).length == 0 || bytes(wasmCid).length != 0,
-            SecretsSchemaWithoutWasm()
-        );
-        secretsSchemaCid = _secretsSchemaCid;
-        emit SecretsSchemaCidUpdated(_secretsSchemaCid);
+    function getPolicyData() public view returns (address[] memory) {
+        return policyData;
     }
 
     function getPolicyConfig(

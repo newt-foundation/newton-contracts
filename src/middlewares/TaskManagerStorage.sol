@@ -126,12 +126,6 @@ abstract contract TaskManagerStorage is
     ///      means no attestation was provided — permissible for non-privacy tasks.
     mapping(bytes32 => bytes32) public allTaskAttestations;
 
-    /// @notice The policy factory whose registry membership is authoritative policy provenance.
-    /// @dev Clients read this through the task manager (`policyFactory()`) when they accept a
-    ///      policy set in `NewtonPolicyClient._setPolicies` — a policy's self-reported
-    ///      `factory()` is not provenance. Claims one word from `__GAP` below.
-    address public policyFactory;
-
     /// @notice The active epoch length, in blocks, of the source-chain operator-set governance cycle.
     /// @dev Delegates to `OperatorRegistry.epochDurationBlocks()` — the single source of truth post
     ///      NEWT-1175. Returning zero means OperatorRegistry has not yet had `OperatorRegistryEpochGovernance.initializeEpochs(uint32)`
@@ -166,9 +160,9 @@ abstract contract TaskManagerStorage is
         // `IOperatorRegistry(operatorRegistry).epochDurationBlocks()`. See `epochBlocks()` below.
     }
 
-    // storage gap for upgradeability; 44 rather than 45 because policyFactory claimed one word
+    // storage gap for upgradeability
     // slither-disable-next-line shadowing-state
-    uint256[44] private __GAP;
+    uint256[45] private __GAP;
 }
 
 /**

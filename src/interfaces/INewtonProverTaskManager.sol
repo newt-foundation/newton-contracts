@@ -4,12 +4,10 @@ pragma solidity ^0.8.27;
 import "@eigenlayer-middleware/src/libraries/BN254.sol";
 import {NewtonMessage} from "../core/NewtonMessage.sol";
 import {INewtonPolicy} from "./INewtonPolicy.sol";
-import {INewtonPolicyClient} from "./INewtonPolicyClient.sol";
 
 interface INewtonProverTaskManager {
     // EVENTS
-    // Task already carries its frozen `policies` set, so no separate PolicyState is needed.
-    event NewTaskCreated(bytes32 indexed taskId, Task task);
+    event NewTaskCreated(bytes32 indexed taskId, Task task, INewtonPolicy.PolicyState state);
 
     event TaskResponded(TaskResponse taskResponse, ResponseCertificate responseCertificate);
 
@@ -24,10 +22,6 @@ interface INewtonProverTaskManager {
     event AggregatorUpdated(address indexed previousAggregator, address indexed newAggregator);
 
     event TaskResponseHandlerUpdated(address indexed newHandler);
-
-    /// @notice Emitted when the policy factory whose registry is authoritative for policy
-    ///         provenance is (re)configured.
-    event PolicyFactoryUpdated(address indexed policyFactory);
 
     /// @notice Emitted on the standard-mode deny branch of respondToTask: a
     ///         quorum-signed denial for this policy client, keyed by policyClient
@@ -46,16 +40,19 @@ interface INewtonProverTaskManager {
     ///            on the client), not this event.
     ///         2. WITHHELD RESPONSES. A deny response the aggregator/gateway never
     ///            submits emits nothing. Absence is not proof of non-denial.
-    ///         3. NON-CANONICAL RESULTS ARE DENIALS. This fires whenever `taskResponse.allowed`
-    ///            is false - i.e. at least one policy in the set denied. So a consumer reads
-    ///            this as "not allowed", not "every policy evaluated to a clean false".
+    ///         3. NON-CANONICAL RESULTS ARE DENIALS. This fires on the complement of
+    ///            a canonical allow (evaluateResult true is ABI-bool true or the
+    ///            string "true"; anything else - including a malformed evaluationResult
+    ///            - is treated as not-allowed and emits PolicyDenied). So a consumer
+    ///            reads this as "not allowed", not strictly "the policy evaluated to a
+    ///            clean false". A malformed result is separately challengeable.
     ///         To recover WHAT was denied, join taskId to the NewTaskCreated event
     ///         (taskId is indexed there and it carries the full Task.intent); do NOT
     ///         use TaskResponded for this - it has no indexed fields and is not
     ///         topic-filterable by taskId.
     /// @param policyClient The Shield clone the denial is for.
     /// @param taskId The task the denial responds to.
-    /// @param policyId The policy set that denied.
+    /// @param policyId The policy that denied.
     /// @param intentHash keccak256(abi.encode(intent)) - ties the denial to the exact intent.
     /// @param referenceBlock The block at which the response was recorded on-chain
     ///        (uint32(block.number) in respondToTask; matches ResponseCertificate.referenceBlock).
@@ -69,19 +66,13 @@ interface INewtonProverTaskManager {
 
     // STRUCTS
     // Task struct represents the minimal on-chain task data.
-    // policyTaskData is moved to TaskResponse - operators generate it independently.
+    // policyTaskData and policyConfig are moved to TaskResponse - operators generate these independently.
     // Task is completed when quorumNumbers are signed by at least quorumThresholdPercentage of operators.
     struct Task {
         // the unique identifier for the task
         bytes32 taskId;
         // policy client address
         address policyClient;
-        // the client's policy-set identity this task is permanently frozen to
-        bytes32 policyId;
-        // the client's policy-set revision this task is permanently frozen to - a preimage
-        // input of policyId, carried alongside it so the challenge path can recompute policyId
-        // on the destination chain without an extra read
-        uint64 policyRevision;
         // the block number when the task was created
         uint32 taskCreatedBlock;
         // the quorum threshold percentage of the task
@@ -90,11 +81,8 @@ interface INewtonProverTaskManager {
         NewtonMessage.Intent intent;
         // the signature of the intent by the intent creator
         bytes intentSignature;
-        // the client's exact ordered policy set, frozen into the task at creation
-        INewtonPolicyClient.PolicySpec[] policies;
-        // task request WASM args, one entry per policy in `policies` order - operators use
-        // each entry to generate that policy's policyTaskData. Empty entry for a pure-Rego policy.
-        bytes[] wasmArgs;
+        // task request WASM args - operators use this to generate policyTaskData
+        bytes wasmArgs;
         // the quorum numbers of the task
         bytes quorumNumbers;
         // timestamp marking the offchain ingestion of the task
@@ -109,18 +97,20 @@ interface INewtonProverTaskManager {
         bytes32 taskId;
         // policy client address
         address policyClient;
-        // must equal the task's policyId
+        // policy id of the task (derived from policyTaskData)
         bytes32 policyId;
+        // the policy address of the task (from policyTaskData)
+        address policyAddress;
         // the intent of the task
         NewtonMessage.Intent intent;
         // the signature of the intent by the intent creator
         bytes intentSignature;
-        // the policy set's verdict: true only when every policy allowed
-        bool allowed;
-        // one entry per policy in the task's `policies` order - generated by operators,
-        // validated by aggregator. Each entry's policyAddress already identifies the policy,
-        // so no separate top-level policyAddress field is needed.
-        NewtonMessage.PolicyTaskData[] policyTaskData;
+        // Policy evaluation result.
+        bytes evaluationResult;
+        // the policy task data - generated by operators, validated by aggregator
+        NewtonMessage.PolicyTaskData policyTaskData;
+        // policy configuration - fetched by operators from chain
+        INewtonPolicy.PolicyConfig policyConfig;
         // timestamp marking the offchain ingestion of the task
         uint256 initializationTimestamp;
     }
@@ -175,7 +165,6 @@ interface INewtonProverTaskManager {
     function taskCreationBufferWindow() external view returns (uint32);
     function minCompatiblePolicyVersion() external view returns (string memory);
     function minCompatiblePolicyDataVersion() external view returns (string memory);
-    function policyFactory() external view returns (address);
 
     // FUNCTIONS
     // NOTE: this function creates new task.

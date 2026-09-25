@@ -6,13 +6,13 @@ import "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
 import "@openzeppelin/contracts/utils/Create2.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {NewtonMessage} from "./NewtonMessage.sol";
-import {INewtonPolicy} from "../interfaces/INewtonPolicy.sol";
-import {NewtonPolicy} from "./NewtonPolicy.sol";
+import {INewtonPolicyData} from "../interfaces/INewtonPolicyData.sol";
+import {NewtonPolicyData} from "./NewtonPolicyData.sol";
 import {ChainLib} from "../libraries/ChainLib.sol";
 import {SemVerMixin} from "../mixins/SemVerMixin.sol";
 import {AdminMixin} from "../mixins/AdminMixin.sol";
 
-contract NewtonPolicyFactory is AdminMixin, SemVerMixin {
+contract NewtonPolicyDataFactory is AdminMixin, SemVerMixin {
     using EnumerableSet for EnumerableSet.AddressSet;
 
     error Create2Failed();
@@ -20,21 +20,33 @@ contract NewtonPolicyFactory is AdminMixin, SemVerMixin {
     address public implementation;
     ProxyAdmin public proxyAdmin;
 
-    /// @dev DEPRECATED (policy verification removed). Retained (name and slot unchanged) to
+    /// @dev DEPRECATED (policy-data verification removed). Retained (name and slot unchanged) to
     ///      preserve the storage layout of already-deployed factory proxies. No longer read or
     ///      written by the protocol.
-    mapping(address => NewtonMessage.VerificationInfo) private policyVerifications;
-    mapping(address => address[]) public ownersToPolicies;
+    mapping(address => NewtonMessage.VerificationInfo) private policyDataVerifications;
+    mapping(address => address[]) public ownersToPolicyData;
+    address[] public policyDataOwners;
 
     /// @dev DEPRECATED (verifier management removed). Retained to preserve storage layout.
     EnumerableSet.AddressSet private _verifiers;
-    EnumerableSet.AddressSet private _policyOwners;
 
-    /// @dev DEPRECATED (default policy verification removed). Retained to preserve storage layout.
-    bool private defaultPolicyVerified;
+    /// @dev DEPRECATED (default policy-data verification removed). Retained to preserve layout.
+    bool private defaultPolicyDataVerified;
 
-    event PolicyDeployed(
-        address policy, INewtonPolicy.PolicyInfo policyInfo, string implementationVersion
+    /// @notice Struct used for salt generation to ensure consistent encoding
+    struct SaltData {
+        address factory;
+        string wasmCid;
+        string secretsSchemaCid;
+        uint32 expireAfter;
+        string metadataCid;
+        address owner;
+    }
+
+    event PolicyDataDeployed(
+        address policyData,
+        INewtonPolicyData.PolicyDataInfo policyDataInfo,
+        string implementationVersion
     );
     event ImplementationUpdated(
         address indexed oldImplementation, address indexed newImplementation
@@ -54,7 +66,7 @@ contract NewtonPolicyFactory is AdminMixin, SemVerMixin {
         require(owner != address(0), InvalidOwnerAddress());
         __Ownable_init();
         _transferOwnership(owner);
-        implementation = address(new NewtonPolicy());
+        implementation = address(new NewtonPolicyData());
         proxyAdmin = new ProxyAdmin();
     }
 
@@ -67,37 +79,40 @@ contract NewtonPolicyFactory is AdminMixin, SemVerMixin {
     /* ERRORS */
     error InvalidImplementationAddress();
 
-    function deployPolicy(
-        string memory _entrypoint,
-        string memory _policyCid,
-        string memory _schemaCid,
-        address[] memory _policyData,
+    function deployPolicyData(
+        string memory _wasmCid,
+        string memory _secretsSchemaCid,
+        uint32 _expireAfter,
         string memory _metadataCid,
-        address _owner,
-        bytes32 _policyCodeHash
-    ) external returns (address policyAddr) {
+        address _owner
+    ) external returns (address policyDataAddr) {
         bytes memory initData = abi.encodeWithSelector(
-            NewtonPolicy.initialize.selector,
+            NewtonPolicyData.initialize.selector,
             address(this),
-            _entrypoint,
-            _policyCid,
-            _schemaCid,
-            _policyData,
+            _wasmCid,
+            _secretsSchemaCid,
+            _expireAfter,
             _metadataCid,
-            _owner,
-            _policyCodeHash
+            _owner
         );
+
+        SaltData memory saltData = SaltData({
+            factory: address(this),
+            wasmCid: _wasmCid,
+            secretsSchemaCid: _secretsSchemaCid,
+            expireAfter: _expireAfter,
+            metadataCid: _metadataCid,
+            owner: _owner
+        });
 
         bytes32 salt = keccak256(
             abi.encodePacked(
-                address(this),
-                _entrypoint,
-                _policyCid,
-                _schemaCid,
-                _policyData,
-                _metadataCid,
-                _owner,
-                _policyCodeHash
+                saltData.factory,
+                saltData.wasmCid,
+                saltData.secretsSchemaCid,
+                saltData.expireAfter,
+                saltData.metadataCid,
+                saltData.owner
             )
         );
 
@@ -112,73 +127,71 @@ contract NewtonPolicyFactory is AdminMixin, SemVerMixin {
         }
         require(proxy != address(0), Create2Failed());
 
-        policyAddr = proxy;
+        policyDataAddr = proxy;
 
         ChainLib.requireSupportedChain();
 
-        ownersToPolicies[_owner].push(policyAddr);
-        _policyOwners.add(_owner);
+        if (ownersToPolicyData[_owner].length == 0) {
+            policyDataOwners.push(_owner);
+        }
+        ownersToPolicyData[_owner].push(policyDataAddr);
 
-        emit PolicyDeployed(
-            policyAddr,
-            INewtonPolicy.PolicyInfo(
-                policyAddr,
-                _owner,
-                _metadataCid,
-                _policyCid,
-                _schemaCid,
-                _entrypoint,
-                _policyData,
-                _policyCodeHash
+        emit PolicyDataDeployed(
+            policyDataAddr,
+            INewtonPolicyData.PolicyDataInfo(
+                policyDataAddr, _owner, _metadataCid, _wasmCid, _secretsSchemaCid, _expireAfter
             ),
             version()
         );
     }
 
-    /// @notice Updates the policy implementation used for newly deployed policy proxies.
+    /// @notice Updates the policy-data implementation used for newly deployed policy-data proxies.
     /// @dev `upgradeContracts()` upgrades the factory proxy but does not re-run `initialize()`.
     ///      Without this setter, the factory continues using the *old* `implementation` stored in
-    ///      storage, which can cause interface-id mismatches across deployments.
+    ///      storage.
     function setImplementation(
         address newImplementation
-    ) external onlyOwner {
+    ) external onlyAdmin {
         require(newImplementation.code.length > 0, InvalidImplementationAddress());
         address old = implementation;
         implementation = newImplementation;
         emit ImplementationUpdated(old, newImplementation);
     }
 
-    function computePolicyAddress(
-        string memory _entrypoint,
-        string memory _policyCid,
-        string memory _schemaCid,
-        address[] memory _policyData,
+    function computePolicyDataAddress(
+        string memory _wasmCid,
+        string memory _secretsSchemaCid,
+        uint32 _expireAfter,
         string memory _metadataCid,
-        address _owner,
-        bytes32 _policyCodeHash
+        address _owner
     ) public view returns (address predicted) {
         bytes memory initData = abi.encodeWithSelector(
-            NewtonPolicy.initialize.selector,
+            NewtonPolicyData.initialize.selector,
             address(this),
-            _entrypoint,
-            _policyCid,
-            _schemaCid,
-            _policyData,
+            _wasmCid,
+            _secretsSchemaCid,
+            _expireAfter,
             _metadataCid,
-            _owner,
-            _policyCodeHash
+            _owner
         );
+
+        SaltData memory saltData = SaltData({
+            factory: address(this),
+            wasmCid: _wasmCid,
+            secretsSchemaCid: _secretsSchemaCid,
+            expireAfter: _expireAfter,
+            metadataCid: _metadataCid,
+            owner: _owner
+        });
 
         bytes32 salt = keccak256(
             abi.encodePacked(
-                address(this),
-                _entrypoint,
-                _policyCid,
-                _schemaCid,
-                _policyData,
-                _metadataCid,
-                _owner,
-                _policyCodeHash
+                saltData.factory,
+                saltData.wasmCid,
+                saltData.secretsSchemaCid,
+                saltData.expireAfter,
+                saltData.metadataCid,
+                saltData.owner
             )
         );
 
@@ -190,13 +203,13 @@ contract NewtonPolicyFactory is AdminMixin, SemVerMixin {
         predicted = Create2.computeAddress(salt, keccak256(bytecode));
     }
 
-    function getAllPoliciesByOwner(
+    function getAllPolicyDataByOwner(
         address owner
     ) external view returns (address[] memory) {
-        return ownersToPolicies[owner];
+        return ownersToPolicyData[owner];
     }
 
-    function getAllPolicyOwners() external view returns (address[] memory) {
-        return _policyOwners.values();
+    function getAllPolicyDataOwners() external view returns (address[] memory) {
+        return policyDataOwners;
     }
 }

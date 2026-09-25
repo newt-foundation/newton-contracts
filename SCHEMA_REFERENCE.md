@@ -6,11 +6,12 @@ This document provides a comprehensive reference for all structs, enums, constan
 
 1. [Core Message Types](#core-message-types)
 2. [Policy System](#policy-system)
-3. [Task Management](#task-management)
-4. [Interfaces](#interfaces)
-5. [Constants](#constants)
-6. [Enums](#enums)
-7. [Error Types](#error-types)
+3. [Policy Data System](#policy-data-system)
+4. [Task Management](#task-management)
+5. [Interfaces](#interfaces)
+6. [Constants](#constants)
+7. [Enums](#enums)
+8. [Error Types](#error-types)
 
 ---
 
@@ -50,98 +51,195 @@ Represents a transaction authorization attestation.
 
 ```solidity
 struct Attestation {
-    bytes32 taskId;
-    bytes32 policyId;
-    address policyClient;
-    uint32 expiration;
-    Intent intent;
-    bytes intentSignature;
+    bytes32 taskId;            // task id
+    bytes32 policyId;          // policy id
+    address policyClient;      // policy client
+    Intent intent;             // intent
+    uint32 expiration;         // expiration block number for the attestation
 }
 ```
 
 **Fields:**
 
 - `taskId`: Unique identifier for the associated task
-- `policyId`: Identifier for the policy set governing this attestation
+- `policyId`: Identifier for the policy governing this attestation
 - `policyClient`: Address of the policy client contract
-- `expiration`: Block number after which the attestation expires
 - `intent`: The transaction intent being attested
-- `intentSignature`: User's signature on the intent
+- `expiration`: Block number after which the attestation expires
 
+### PolicyData Struct
+
+**Location:** `core/NewtonMessage.sol`
+
+Represents policy data with its attestation proof.
+
+```solidity
+struct PolicyData {
+    bytes data;                // encoded policy data
+    bytes attestation;         // attestation proof for the policy data
+    address policyDataAddress; // policy data address
+    uint32 expireBlock;        // expiration block number for the policy data
+}
+```
+
+**Fields:**
+
+- `data`: The encoded policy data content
+- `attestation`: Cryptographic proof attesting to the validity of the policy data
+- `policyDataAddress`: Address of the policy data contract
+- `expireBlock`: Block number after which the policy data expires
+
+### PolicyTaskData Struct
+
+**Location:** `core/NewtonMessage.sol`
+
+Represents comprehensive policy data for task execution.
+
+```solidity
+struct PolicyTaskData {
+    bytes32 policyId;          // policy id
+    address policyAddress;     // policy address
+    bytes policy;              // policy program binary
+    PolicyData[] policyData;   // array of policy data with attestation
+}
+```
+
+**Fields:**
+
+- `policyId`: Unique identifier for the policy
+- `policyAddress`: Address of the policy contract
+- `policy`: Binary representation of the policy program
+- `policyData`: Array of policy data entries (order matters - first entry is the first policy data in the policy data set)
+
+### VerificationInfo Struct
+
+**Location:** `core/NewtonMessage.sol`
+
+Represents verification information for policy data.
+
+```solidity
+struct VerificationInfo {
+    address verifier;          // verifier
+    bool verified;             // verified
+    uint256 timestamp;         // timestamp
+}
+```
+
+**Fields:**
+
+- `verifier`: Address of the entity that performed the verification
+- `verified`: Boolean indicating whether the item is verified
+- `timestamp`: Unix timestamp of when the verification occurred
 
 ---
 
 ## Policy System
 
-### PolicyInfo Struct
-
-**Location:** `interfaces/INewtonPolicy.sol`
-
-A policy's artifact fields, written once by `initialize` and emitted by `PolicyDeployed`.
-
-```solidity
-struct PolicyInfo {
-    address policyAddress;
-    address owner;
-    string metadataCid;
-    string policyCid;
-    string schemaCid;
-    string entrypoint;
-    string wasmCid;
-    string secretsSchemaCid;
-    bytes32 policyCodeHash;
-}
-```
-
-**Fields:**
-
-- `policyAddress`: address of the deployed policy proxy
-- `owner`: policy owner, authorized for `setMetadataCid` and `setSecretsSchemaCid`
-- `metadataCid`: IPFS CID of the human-facing metadata document
-- `policyCid`: IPFS CID of the Rego module source
-- `schemaCid`: IPFS CID of the JSON schema for this policy's params
-- `entrypoint`: Rego evaluation entrypoint, formatted `{package}.{rule}`
-- `wasmCid`: IPFS CID of the WASM oracle plugin; empty for a pure-Rego policy
-- `secretsSchemaCid`: IPFS CID of the oracle's secrets schema; empty when it needs no secrets
-- `policyCodeHash`: keccak256 of the raw Rego module bytes
-
 ### PolicyConfig Struct
 
 **Location:** `interfaces/INewtonPolicy.sol`
 
-One client's configuration for one use of a policy.
+Configuration parameters for a policy.
 
 ```solidity
 struct PolicyConfig {
-    bytes policyParams;
-    uint32 expireAfter;
+    bytes policyParams;        // policy parameters
+    uint32 expireAfter;        // expiration time in blocks
 }
 ```
 
 **Fields:**
 
-- `policyParams`: Encoded parameters for this policy use
-- `expireAfter`: Blocks a response stays valid, counted from the block the response is recorded
+- `policyParams`: Encoded parameters for the policy
+- `expireAfter`: Number of blocks after which the policy configuration expires
 
-### PolicySpec Struct
+### SetPolicyInfo Struct
 
-**Location:** `interfaces/INewtonPolicyClient.sol`
+**Location:** `interfaces/INewtonPolicy.sol`
 
-One policy and the client's configuration for this use of it.
+Information provided when a policy is set.
 
 ```solidity
-struct PolicySpec {
-    address policy;
-    INewtonPolicy.PolicyConfig config;
+struct SetPolicyInfo {
+    bytes32 policyId;          // policy id
+    address policyAddress;     // policy address
+    address owner;             // owner
+    string policyCid;          // policy CID
+    string schemaCid;          // schema CID
+    string entrypoint;         // entrypoint
+    PolicyConfig policyConfig; // policy configuration
+    address[] policyData;      // policy data addresses
 }
 ```
 
 **Fields:**
 
-- `policy`: Policy contract address
-- `config`: Client's configuration for this use (policyParams and expireAfter)
+- `policyId`: Unique identifier for the policy
+- `policyAddress`: Address of the policy contract
+- `owner`: Address of the policy owner
+- `policyCid`: CID pointing to the policy location
+- `schemaCid`: CID pointing to the policy schema
+- `entrypoint`: Policy evaluation entrypoint (format: `{package}.{output}`)
+- `policyConfig`: Configuration parameters for the policy
+- `policyData`: Array of policy data contract addresses
+
+### PolicyInfo Struct
+
+**Location:** `interfaces/INewtonPolicy.sol`
+
+General information about a policy.
+
+```solidity
+struct PolicyInfo {
+    address policyAddress;     // policy address
+    address owner;             // owner
+    string metadataCid;        // metadata CID
+    string policyCid;          // policy CID
+    string schemaCid;          // schema CID
+    string entrypoint;         // entrypoint
+    address[] policyData;      // policy data addresses
+}
+```
+
+**Fields:**
+
+- `policyAddress`: Address of the policy contract
+- `owner`: Address of the policy owner
+- `metadataCid`: CID pointing to policy metadata
+- `policyCid`: CID pointing to the policy location
+- `schemaCid`: CID pointing to the policy schema
+- `entrypoint`: Policy evaluation entrypoint
+- `policyData`: Array of policy data contract addresses
 
 ---
+
+## Policy Data System
+
+### PolicyDataInfo Struct
+
+**Location:** `interfaces/INewtonPolicyData.sol`
+
+Information about policy data.
+
+```solidity
+struct PolicyDataInfo {
+    address policyDataAddress; // policy data address
+    address owner;             // owner
+    string metadataCid;        // metadata CID
+    string wasmCid; // policy data location
+    string secretsSchemaCid;   // secrets schema CID
+    uint32 expireAfter;        // expiration time in blocks
+}
+```
+
+**Fields:**
+
+- `policyDataAddress`: Address of the policy data contract
+- `owner`: Address of the policy data owner
+- `metadataCid`: CID pointing to policy data metadata
+- `wasmCid`: IPFS URL for WASM plugin location
+- `secretsSchemaCid`: CID pointing to secrets JSON schema (regorus format)
+- `expireAfter`: Number of blocks after which the policy data expires
 
 ## Task Management
 
@@ -153,18 +251,16 @@ Represents a task in the Newton Prover system.
 
 ```solidity
 struct Task {
-    bytes32 taskId;
-    address policyClient;
-    bytes32 policyId;
-    uint64 policyRevision;
-    uint32 taskCreatedBlock;
-    uint32 quorumThresholdPercentage;
-    NewtonMessage.Intent intent;
-    bytes intentSignature;
-    INewtonPolicyClient.PolicySpec[] policies;
-    bytes[] wasmArgs;
-    bytes quorumNumbers;
-    uint256 initializationTimestamp;
+    bytes32 taskId;                    // unique identifier for the task
+    address policyClient;              // policy client address
+    bytes32 policyId;                  // policy id
+    uint32 nonce;                      // nonce of the task
+    Intent intent;                     // intent of the task
+    PolicyTaskData policyTaskData;     // policy task data of the task
+    PolicyConfig policyConfig;         // policy configuration for the policy program
+    uint32 taskCreatedBlock;           // block number when the task was created
+    bytes quorumNumbers;               // quorum numbers of the task
+    uint32 quorumThresholdPercentage;  // quorum threshold percentage of the task
 }
 ```
 
@@ -172,16 +268,14 @@ struct Task {
 
 - `taskId`: Unique identifier for the task
 - `policyClient`: Address of the policy client that created the task
-- `policyId`: Identifier for the policy set governing this task
-- `policyRevision`: The client's policy revision this task is bound to
-- `taskCreatedBlock`: Block number when the task was created
-- `quorumThresholdPercentage`: Minimum percentage of operators required to sign
+- `policyId`: Identifier of the policy governing this task
+- `nonce`: Sequential number for task ordering
 - `intent`: The transaction intent to be evaluated
-- `intentSignature`: User's signature on the intent
-- `policies`: The client's exact ordered policy set, frozen into the task at creation
-- `wasmArgs`: One WASM input per policy, in `policies` order; empty bytes for pure-Rego policies
+- `policyTaskData`: Complete policy data for task execution
+- `policyConfig`: Configuration parameters for the policy
+- `taskCreatedBlock`: Block number when the task was created
 - `quorumNumbers`: Encoded quorum identifiers for operator selection
-- `initializationTimestamp`: Unix timestamp when the task was initialized
+- `quorumThresholdPercentage`: Minimum percentage of operators required to sign
 
 ### TaskResponse Struct
 
@@ -191,15 +285,12 @@ Response to a task, signed by operators.
 
 ```solidity
 struct TaskResponse {
-    bytes32 taskId;
-    address policyClient;
-    bytes32 policyId;
-    NewtonMessage.Intent intent;
-    bytes intentSignature;
-    bytes[] rego;
-    bytes[] oracleOutputs;
-    bool allowed;
-    uint256 initializationTimestamp;
+    bytes32 taskId;             // task identifier
+    address policyClient;       // policy client address
+    bytes32 policyId;           // policy id of the task
+    address policyAddress;      // policy address of the task
+    Intent intent;              // intent of the task
+    bytes evaluationResult;     // policy evaluation result
 }
 ```
 
@@ -207,35 +298,36 @@ struct TaskResponse {
 
 - `taskId`: Identifier of the task being responded to
 - `policyClient`: Address of the policy client
-- `policyId`: Identifier of the policy set that was evaluated
+- `policyId`: Identifier of the policy that was evaluated
+- `policyAddress`: Address of the policy contract
 - `intent`: The transaction intent that was evaluated
-- `intentSignature`: User's signature on the intent
-- `rego`: The exact Rego module bytes evaluated per policy, in the task's `policies` order
-- `oracleOutputs`: Each policy's WASM oracle output, in the task's `policies` order; empty bytes for pure-Rego policies
-- `allowed`: The policy set's verdict; true only when every policy allowed
-- `initializationTimestamp`: Unix timestamp when the task was initialized
+- `evaluationResult`: Result of the policy evaluation (encoded boolean or string)
 
 ### ResponseCertificate Struct
 
 **Location:** `interfaces/INewtonProverTaskManager.sol`
 
-Certificate for policy clients to attest the validity of policy evaluation result during intent execution.
+TaskResponse Certificate for policy clients to attest the validity of policy evaluation result dCIDng intent execution.
 
 ```solidity
 struct ResponseCertificate {
+    // the block number when the response certificate is created
     uint32 referenceBlock;
-    uint32 responseExpireBlock;
+    // the hash of the non-signers
     bytes32 hashOfNonSigners;
+    // encoded signature data (NonSignerStakesAndSignature for source chains, BN254Certificate for destination)
     bytes signatureData;
+    // the block number when the task response expires
+    uint32 responseExpireBlock;
 }
 ```
 
 **Fields:**
 
-- `referenceBlock`: Block number when the response certificate is created
-- `responseExpireBlock`: Block number when the task response expires
+- `referenceBlock`: Block number when the response was submitted
 - `hashOfNonSigners`: Hash of operators who did not sign the response
 - `signatureData`: Encoded signature data (NonSignerStakesAndSignature for source chains, BN254Certificate for destination chains)
+- `responseExpireBlock`: Block number after which the response expires
 
 ### ChallengeData Struct
 
@@ -245,16 +337,16 @@ Data submitted by challengers to dispute task responses.
 
 ```solidity
 struct ChallengeData {
-    bytes32 taskId;
-    bytes proof;
-    bytes data;
+    bytes32 taskId;            // task identifier
+    bytes proof;               // sp1 zk proof to attest the policy evaluation result
+    bytes data;                // committed proof output to verify against task response
 }
 ```
 
 **Fields:**
 
 - `taskId`: Identifier of the task being challenged
-- `proof`: SP1 zero-knowledge proof attesting to the challenger's evaluation result
+- `proof`: Zero-knowledge proof attesting to the challenger's evaluation result
 - `data`: The committed proof output used for verification against the task response
 
 ---
@@ -269,25 +361,19 @@ Storage structure for policy client contracts using ERC-7201 storage pattern.
 
 ```solidity
 struct NewtonPolicyClientStorage {
-    INewtonProverTaskManager policyTaskManager;
-    address _reservedSlot0;
-    bytes32 _reservedSlot1;
-    address policyClientOwner;
-    PolicySpec[] policies;
-    bytes32 policyId;
-    uint64 policyRevision;
+    INewtonProverTaskManager policyTaskManager; // task manager contract
+    address policy;                             // policy contract address
+    bytes32 policyId;                          // policy identifier
+    address policyClientOwner;                 // owner of the policy client
 }
 ```
 
 **Fields:**
 
 - `policyTaskManager`: Interface to the Newton Prover Task Manager contract
-- `_reservedSlot0`: Reserved storage slot (formerly policy)
-- `_reservedSlot1`: Reserved storage slot (formerly policyId)
+- `policy`: Address of the associated policy contract
+- `policyId`: Unique identifier for the policy
 - `policyClientOwner`: Address authorized to manage the policy client
-- `policies`: The client's ordered policy set
-- `policyId`: Unique identifier for the current policy set
-- `policyRevision`: Policy revision counter, increments on every successful write
 
 ---
 
@@ -301,17 +387,15 @@ Main interface for Newton Policy contracts.
 
 **Key Functions:**
 
-- `getPolicyCid()`: IPFS CID of the Rego module source
-- `getPolicyCodeHash()`: keccak256 of the raw Rego module bytes
-- `getSchemaCid()`: IPFS CID of the JSON schema for this policy's params
-- `getEntrypoint()`: Rego evaluation entrypoint, formatted `{package}.{rule}`
-- `getWasmCid()`: IPFS CID of the WASM oracle plugin; empty for a pure-Rego policy
-- `getSecretsSchemaCid()` / `setSecretsSchemaCid()`: IPFS CID of the oracle's secrets schema
-- `getMetadataCid()` / `setMetadataCid()`: IPFS CID of the human-facing metadata document
-- `getPolicyConfig(policyId)`: One client's `PolicyConfig` for this policy
-- `getPolicyId(client)`: The policyId registered for a client
-- `factory()`: The factory that deployed this policy
-- `version()`: The semantic version of the policy implementation
+- `getMetadataCid()`: Retrieves policy metadata CID
+- `setMetadataCid(string)`: Sets policy metadata CID
+- `getPolicyId(address)`: Gets policy ID for a client address
+- `getEntrypoint()`: Gets policy evaluation entrypoint
+- `getschemaCid()`: Gets policy schema CID
+- `getpolicyCid()`: Gets policy location CID
+- `getPolicyConfig(bytes32)`: Gets policy configuration by ID
+- `getPolicyData()`: Gets array of policy data contract addresses
+- `isPolicyVerified()`: Checks if policy is verified
 
 ### INewtonPolicyClient Interface
 
@@ -321,13 +405,23 @@ Interface for contracts that can submit tasks with policy constraints.
 
 **Key Functions:**
 
-- `setPolicies(PolicySpec[])`: Replaces the complete policy set atomically
-- `getPolicies()`: Returns the client's current ordered policy set
-- `getPolicySetSnapshot()`: Returns (policyId, revision, policies) atomically - the complete frozen snapshot
-- `policyId()`: Returns the identifier for the client's current policy set
-- `policyRevision()`: Returns the client's policy revision counter
-- `getNewtonPolicyTaskManager()`: Returns the task manager address
-- `getOwner()`: Retrieves the owner address of the policy client
+- `getPolicyId()`: Gets the policy ID for the client
+- `getPolicyAddress()`: Gets the policy contract address
+- `getNewtonPolicyTaskManager()`: Gets the task manager address
+
+### INewtonPolicyData Interface
+
+**Location:** `interfaces/INewtonPolicyData.sol`
+
+Interface for policy data contracts.
+
+**Key Functions:**
+
+- `getMetadataCid()`: Gets policy data metadata CID
+- `setMetadataCid(string)`: Sets policy data metadata CID
+- `getwasmCid()`: Gets IPFS URL for WASM plugin
+- `getExpireAfter()`: Gets expiration block count
+- `isPolicyDataVerified()`: Checks if policy data is verified
 
 ### INewtonProverTaskManager Interface
 
@@ -337,58 +431,34 @@ Main interface for task management in the Newton Prover system.
 
 **Key Functions:**
 
-- `createNewTask(Task)`: Creates a new task for policy evaluation
-- `respondToTask(Task, TaskResponse, bytes, bytes)`: Submits a response to an existing task
-- `raiseAndResolveChallenge(Task, TaskResponse, ResponseCertificate, ChallengeData, BN254.G1Point[])`: Challenges a task response
-- `slashForCrossChainChallenge(uint256, Task, TaskResponse, ChallengeData, bytes, BN254.G1Point[])`: Relays a cross-chain challenge to trigger slashing on source
+- `createNewTask(...)`: Creates a new task for policy evaluation
+- `latestNonce()`: Gets the latest task nonce
+- `respondToTask(...)`: Submits a response to an existing task
+- `raiseAndResolveChallenge(...)`: Challenges a task response
+- `getTaskResponseWindowBlock()`: Gets the response window in blocks
 - `validateAttestation(Attestation)`: Validates an attestation for use
-- `validateAttestationDirect(Task, TaskResponse, bytes)`: Validates attestation directly by verifying signatures
-- `challengeDirectlyVerifiedAttestation(Task, TaskResponse, bytes)`: Challenges directly verified attestations
-- `challengeDirectlyVerifiedMismatch(Task, TaskResponse)`: Invalidates a direct-path attestation whose stored hashes diverge
-- `taskHash(bytes32)`: Returns the task-identity hash recorded when the task was created
-- `taskResponseHash(bytes32)`: Returns keccak256 of task response with response certificate
-- `normalizedTaskResponseHash(bytes32)`: Returns keccak256 of task response only, without response certificate
-- `allTaskAttestations(bytes32)`: Returns keccak256 of attestation data for the given task
-
-### IRegoVerifier Interface
-
-**Location:** `interfaces/IRegoVerifier.sol`
-
-Interface for verifying Rego policy evaluation proofs.
-
-**RegoContext Struct:**
-
-```solidity
-struct RegoContext {
-    INewtonProverTaskManager.Task task;
-    INewtonProverTaskManager.TaskResponse taskResponse;
-    string[] entrypoints;
-    bytes[] evaluations;
-    bytes32[] policyCodeHashes;
-}
-```
-
-**Key Functions:**
-
-- `verifyRegoProof(bytes calldata _publicValues, bytes calldata _proofBytes)`: Verifies a zero-knowledge proof of Rego evaluation, returns RegoContext
 
 ---
 
 ## Constants
 
-### Policy System Constants
+### Task Management Constants
 
-**Location:** `libraries/PolicyConstants.sol`
+**Location:** `NewtonProverTaskManager.sol`
 
 ```solidity
-bytes32 constant POLICY_SET_DOMAIN = keccak256("newton.policy.set");
-uint256 constant MAX_POLICIES = 8;
+uint32 public immutable TASK_RESPONSE_WINDOW_BLOCK;  // Set dCIDng construction
+uint32 public constant TASK_CHALLENGE_WINDOW_BLOCK = 100;
+uint256 internal constant _THRESHOLD_DENOMINATOR = 100;
+uint256 public constant WADS_TO_SLASH = 100000000000000000; // 10%
 ```
 
 **Descriptions:**
 
-- `POLICY_SET_DOMAIN`: Domain separator for a policy-set ID: one client's exact ordered policy list at one revision
-- `MAX_POLICIES`: Upper bound on policies in one client's set. The single authoritative bound; contracts reject oversize sets and off-chain services mirror this value
+- `TASK_RESPONSE_WINDOW_BLOCK`: Number of blocks within which aggregators must respond to tasks
+- `TASK_CHALLENGE_WINDOW_BLOCK`: Number of blocks within which challenges can be raised (100 blocks)
+- `_THRESHOLD_DENOMINATOR`: Denominator for threshold calculations (100)
+- `WADS_TO_SLASH`: Amount to slash when operators are penalized (10% in WAD format)
 
 ### Storage Slot Constants
 
@@ -421,29 +491,70 @@ error Unauthorized(string reason);
 
 ### Policy Errors
 
-**Location:** `interfaces/INewtonPolicy.sol`
+**Location:** `core/NewtonPolicy.sol`
 
 ```solidity
-error InvalidPolicyCodeHash();
-error EmptyPolicyCid();
-error EmptySchemaCid();
-error EmptyEntrypoint();
-error SecretsSchemaWithoutWasm();
+error OnlyPolicyClient();
+error InterfaceNotSupported();
+```
+
+### Policy Data Errors
+
+**Location:** `core/NewtonPolicyData.sol`
+
+```solidity
+error OnlyNewtonPolicy();
+error InterfaceNotSupported();
+error InvalidSignature();
+error SignatureVerificationFailed();
+error InvalidPolicyData();
+```
+
+### Factory Errors
+
+**Location:** `core/NewtonPolicyFactory.sol` & `core/NewtonPolicyDataFactory.sol`
+
+```solidity
+error OnlyNewtonPolicy();        // or OnlyNewtonPolicyData()
+error InterfaceNotSupported();
+error OnlyVerifiers();
+```
+
+### Task Manager Errors
+
+**Location:** `NewtonProverTaskManager.sol`
+
+```solidity
+error OnlyAggregator();
+error OnlyTaskGenerator();
+error PolicyIdMismatch();
+error PolicyAddressMismatch();
+error PolicyDataLengthMismatch();
+error PolicyDataAddressMismatch();
+error PolicyDataAttestationFailed();
+error PolicyDataExpired();
+error TaskMismatch(bytes32 expected, bytes32 actual);
+error InvalidPolicyId();
+error InvalidPolicyClient();
+error InvalidPolicyAddress();
+error TaskAlreadyResponded();
+error TaskResponseTooLate();
+error InsufficientQuorumStake();
+error ChallengeNotEnabled();
+error ChallengeTaskIdMismatch();
+error TaskResponseInvalid();
+error ChallengePeriodExpired();
+error InvalidNonSigners();
+error AttestationHashMismatch();
+error AttestationExpired();
+error AttestationAlreadySpent();
+error OnlyAttestationClient();
+error InterfaceNotSupported();
+error PolicyNotVerified();
+error PolicyDataNotVerified();
 ```
 
 ### Policy Client Errors
-
-**Location:** `interfaces/INewtonPolicyClient.sol`
-
-```solidity
-error EmptyPolicySet();
-error TooManyPolicies(uint256 count, uint256 maximum);
-error PolicyNotRegistered(address policy);
-error ZeroExpireAfter(uint256 index);
-error PolicyFactoryNotSet();
-```
-
-### Mixin Errors
 
 **Location:** `mixins/NewtonPolicyClient.sol`
 
@@ -451,33 +562,65 @@ error PolicyFactoryNotSet();
 error OnlyPolicyClientOwner();
 ```
 
----
-
-## Events
-
-### Policy Client Events
-
-#### PoliciesUpdated Event
+### Interface Errors
 
 **Location:** `interfaces/INewtonPolicyClient.sol`
 
 ```solidity
-event PoliciesUpdated(
-    bytes32 indexed previousPolicyId,
-    bytes32 indexed policyId,
-    uint64 revision,
-    PolicySpec[] policies
-);
+error InvalidPolicyID();
 ```
 
-**Description:** Emitted on every successful write, including reapplying an identical list: the revision advances, so each write mints a distinct policyId.
+---
+
+## Events
+
+### Policy Events
+
+#### PolicySet Event
+
+**Location:** `interfaces/INewtonPolicy.sol`
+
+```solidity
+event PolicySet(address indexed client, bytes32 indexed policyId, SetPolicyInfo policy);
+```
+
+**Description:** Emitted when a policy client sets a new policy configuration.
 
 **Parameters:**
 
-- `previousPolicyId`: The policy ID before this update
-- `policyId`: The new policy ID for this exact ordered list at this revision
-- `revision`: The client's policy revision counter
-- `policies`: The ordered policy specifications
+- `client`: Address of the policy client that set the policy
+- `policyId`: Unique identifier for the newly set policy
+- `policy`: Complete policy information including configuration and metadata
+
+#### policyMetadataCidUpdated Event
+
+**Location:** `interfaces/INewtonPolicy.sol`
+
+```solidity
+event policyMetadataCidUpdated(string metadataCid);
+```
+
+**Description:** Emitted when a policy's metadata CID is updated.
+
+**Parameters:**
+
+- `metadataCid`: New metadata CID for the policy
+
+### Policy Data Events
+
+#### policyDataMetadataCidUpdated Event
+
+**Location:** `core/NewtonPolicyData.sol`
+
+```solidity
+event policyDataMetadataCidUpdated(string metadataCid);
+```
+
+**Description:** Emitted when policy data metadata CID is updated.
+
+**Parameters:**
+
+- `metadataCid`: New metadata CID for the policy data
 
 ### Factory Events
 
@@ -486,9 +629,7 @@ event PoliciesUpdated(
 **Location:** `core/NewtonPolicyFactory.sol`
 
 ```solidity
-event PolicyDeployed(
-    address policy, INewtonPolicy.PolicyInfo policyInfo, string implementationVersion
-);
+event PolicyDeployed(address policy, INewtonPolicy.PolicyInfo policyInfo);
 ```
 
 **Description:** Emitted when a new policy contract is deployed through the factory.
@@ -496,8 +637,80 @@ event PolicyDeployed(
 **Parameters:**
 
 - `policy`: Address of the newly deployed policy contract
-- `policyInfo`: The policy's artifact fields, including its owner and oracle CIDs
-- `implementationVersion`: Version of the policy implementation behind the proxy
+- `policyInfo`: Complete information about the deployed policy
+
+#### PolicyVerificationUpdated Event
+
+**Location:** `core/NewtonPolicyFactory.sol`
+
+```solidity
+event PolicyVerificationUpdated(address policy, NewtonMessage.VerificationInfo verificationInfo);
+```
+
+**Description:** Emitted when a policy's verification status is updated.
+
+**Parameters:**
+
+- `policy`: Address of the policy contract
+- `verificationInfo`: Updated verification information including verifier, status, and timestamp
+
+#### PolicyDataDeployed Event
+
+**Location:** `core/NewtonPolicyDataFactory.sol`
+
+```solidity
+event PolicyDataDeployed(address policyData, INewtonPolicyData.PolicyDataInfo policyDataInfo);
+```
+
+**Description:** Emitted when a new policy data contract is deployed through the factory.
+
+**Parameters:**
+
+- `policyData`: Address of the newly deployed policy data contract
+- `policyDataInfo`: Complete information about the deployed policy data
+
+#### PolicyDataVerificationUpdated Event
+
+**Location:** `core/NewtonPolicyDataFactory.sol`
+
+```solidity
+event PolicyDataVerificationUpdated(address policyData, NewtonMessage.VerificationInfo verificationInfo);
+```
+
+**Description:** Emitted when a policy data contract's verification status is updated.
+
+**Parameters:**
+
+- `policyData`: Address of the policy data contract
+- `verificationInfo`: Updated verification information including verifier, status, and timestamp
+
+#### VerifierAdded Event
+
+**Location:** `core/NewtonPolicyFactory.sol` & `core/NewtonPolicyDataFactory.sol`
+
+```solidity
+event VerifierAdded(address verifier);
+```
+
+**Description:** Emitted when a new verifier is authorized to verify policies or policy data.
+
+**Parameters:**
+
+- `verifier`: Address of the newly authorized verifier
+
+#### VerifierRemoved Event
+
+**Location:** `core/NewtonPolicyFactory.sol` & `core/NewtonPolicyDataFactory.sol`
+
+```solidity
+event VerifierRemoved(address verifier);
+```
+
+**Description:** Emitted when a verifier's authorization is revoked.
+
+**Parameters:**
+
+- `verifier`: Address of the verifier whose authorization was revoked
 
 ### Task Management Events
 
@@ -582,20 +795,21 @@ event AttestationSpent(bytes32 indexed taskId, NewtonMessage.Attestation attesta
 
 ### Policy Deployment Flow
 
-1. Deploy the policy with `NewtonPolicyFactory.deployPolicy(entrypoint, policyCid, schemaCid, wasmCid, secretsSchemaCid, metadataCid, owner, policyCodeHash)`
-2. Policy client calls `setPolicies(PolicySpec[])` to configure its ordered policy set
+1. Deploy policy using `NewtonPolicyFactory.deployPolicy()`
+2. Set policy verification using `NewtonPolicyFactory.setPolicyVerification()`
+3. Deploy policy data using `NewtonPolicyDataFactory.deployPolicyData()`
 
 ### Task Execution Flow
 
-1. Policy client calls `INewtonProverTaskManager.createNewTask(Task)` with a frozen policy snapshot and one `wasmArgs` entry per policy
-2. Operators evaluate the policy set and submit `respondToTask(Task, TaskResponse, bytes, bytes)`
-3. If allowed, an attestation is created
-4. Policy client validates attestation using `validateAttestation(Attestation)` or `validateAttestationDirect(Task, TaskResponse, bytes)`
+1. Policy client calls `INewtonProverTaskManager.createNewTask()`
+2. Operators evaluate the task and submit `respondToTask()`
+3. If successful, an attestation is created
+4. Policy client validates attestation using `validateAttestation()`
 
 ### Challenge Flow
 
-1. Challenger calls `raiseAndResolveChallenge(Task, TaskResponse, ResponseCertificate, ChallengeData, BN254.G1Point[])` with SP1 zero-knowledge proof
-2. System verifies the challenge proof on-chain
+1. Challenger calls `raiseAndResolveChallenge()` with proof
+2. System verifies the challenge proof
 3. If challenge succeeds, signing operators are slashed
 4. If challenge fails, challenger bears the cost
 

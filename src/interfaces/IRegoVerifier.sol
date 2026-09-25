@@ -11,20 +11,17 @@ import {INewtonProverTaskManager} from "../interfaces/INewtonProverTaskManager.s
 interface IRegoVerifier {
     // STRUCTS
 
-    /// @notice The context of the policy-set evaluation. One entry per policy in
-    ///         `task.policies` order in each array.
-    /// @dev `policyCodeHashes[i]` is `keccak256` of the raw policy program bytes that the
-    ///      SP1 circuit actually executed for policy `i`. The challenge path binds this to
+    /// @notice The context of the rego policy evaluation.
+    /// @dev `policyCodeHash` is `keccak256` of the raw policy program bytes that the
+    ///      SP1 circuit actually executed. The challenge path binds this to
     ///      `INewtonPolicy.getPolicyCodeHash()` so a caller cannot supply divergent
-    ///      policy bytes in the zkVM and still slash an operator. The per-policy address and
-    ///      module bytes are already reachable via `taskResponse.policyTaskData[i]`, so no
-    ///      separate identity field is carried here.
+    ///      policy bytes in the zkVM and still slash an operator.
     struct RegoContext {
         INewtonProverTaskManager.Task task;
         INewtonProverTaskManager.TaskResponse taskResponse;
-        string[] entrypoints;
-        bytes[] evaluations;
-        bytes32[] policyCodeHashes;
+        string entrypoint;
+        bytes evaluation;
+        bytes32 policyCodeHash;
     }
 
     /// @notice The entrypoint for verifying the proof of a rego policy evaluation.
