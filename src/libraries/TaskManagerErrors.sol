@@ -16,4 +16,7 @@ library TaskManagerErrors {
     error NotDirectlyVerified();
     error InvalidTaskResponseHandler();
     error TaskManagerMismatch();
+    error PolicyIdMismatch();
+    error PolicySnapshotMismatch();
+    error InvalidPolicyFactory();
 }
