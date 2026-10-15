@@ -2,6 +2,7 @@
 pragma solidity ^0.8.27;
 
 import {INewtonProverTaskManager} from "../interfaces/INewtonProverTaskManager.sol";
+import {ChainLib} from "../libraries/ChainLib.sol";
 import {INewtonPolicyClient} from "../interfaces/INewtonPolicyClient.sol";
 import {INewtonAddressesProvider} from "../interfaces/INewtonAddressesProvider.sol";
 import {AddressesProviderConsumer} from "../mixins/AddressesProviderConsumer.sol";
@@ -107,7 +108,7 @@ contract AttestationValidator is Initializable, OwnableUpgradeable, AddressesPro
         );
         bytes32 hash = keccak256(abi.encode(attestation));
         require(attestations[attestation.taskId] == hash, AttestationHashMismatch());
-        require(uint32(block.number) < attestation.expiration, AttestationExpired());
+        require(uint32(ChainLib.blockNumber()) < attestation.expiration, AttestationExpired());
         // Clear hash for gas refund and mark as spent via sentinel
         attestations[attestation.taskId] = bytes32(0);
         attestationExpirations[attestation.taskId] = ATTESTATION_SPENT_SENTINEL;
@@ -161,7 +162,7 @@ contract AttestationValidator is Initializable, OwnableUpgradeable, AddressesPro
         if (attestationExpirations[attestation.taskId] == ATTESTATION_SPENT_SENTINEL) return false;
         // Also covers a taskId that was never created (`stored` defaults to bytes32(0)).
         if (attestations[attestation.taskId] != keccak256(abi.encode(attestation))) return false;
-        if (uint32(block.number) >= attestation.expiration) return false;
+        if (uint32(ChainLib.blockNumber()) >= attestation.expiration) return false;
 
         return true;
     }
@@ -306,7 +307,8 @@ contract AttestationValidator is Initializable, OwnableUpgradeable, AddressesPro
         );
 
         // Sanity check the task parameters
-        require(task.taskCreatedBlock < uint32(block.number), TaskLib.TaskCreatedBlockInFuture());
+        uint32 nowBlock = uint32(ChainLib.blockNumber());
+        require(task.taskCreatedBlock < nowBlock, TaskLib.TaskCreatedBlockInFuture());
 
         // Bind every Task field that overlaps with TaskResponse to prevent a malicious
         // policy client from committing a crafted task hash that diverges from the signed
@@ -332,7 +334,7 @@ contract AttestationValidator is Initializable, OwnableUpgradeable, AddressesPro
         TaskLib.sanityCheckTaskResponse(
             task,
             taskResponse,
-            uint32(block.number),
+            nowBlock,
             INewtonProverTaskManager(taskManager).taskResponseWindowBlock()
         );
 
@@ -345,8 +347,7 @@ contract AttestationValidator is Initializable, OwnableUpgradeable, AddressesPro
         ITaskResponseHandler(taskResponseHandler)
             .verifyTaskResponse(task, taskResponse, signatureData);
 
-        uint32 referenceBlock = uint32(block.number);
-        uint32 expiration = referenceBlock + minExpireAfterBlocks;
+        uint32 expiration = nowBlock + minExpireAfterBlocks;
 
         NewtonMessage.Attestation memory attestationForHash = NewtonMessage.Attestation(
             taskId,
@@ -358,7 +359,7 @@ contract AttestationValidator is Initializable, OwnableUpgradeable, AddressesPro
         );
 
         TaskLib.sanityCheckAttestation(attestationForHash);
-        require(uint32(block.number) < expiration, AttestationExpired());
+        require(nowBlock < expiration, AttestationExpired());
 
         // Mark as spent regardless of evaluation result to prevent replay
         directlyVerifiedAttestations[taskId] = true;
@@ -405,7 +406,7 @@ contract AttestationValidator is Initializable, OwnableUpgradeable, AddressesPro
     ) public view returns (bool) {
         if (!directlyVerifiedAttestations[taskId]) return false;
         if (!directAttestationApproved[taskId]) return false;
-        if (uint32(block.number) >= directAttestationExpirations[taskId]) return false;
+        if (uint32(ChainLib.blockNumber()) >= directAttestationExpirations[taskId]) return false;
 
         // `client` is caller-supplied, so it need not be a contract at all, let alone an
         // `INewtonPolicyClient` -- reading its live policy must therefore degrade to `false`
@@ -489,7 +490,8 @@ contract AttestationValidator is Initializable, OwnableUpgradeable, AddressesPro
         if (attestationExpirations[taskId] == ATTESTATION_SPENT_SENTINEL) return false;
 
         // Sanity check the task parameters
-        if (task.taskCreatedBlock >= uint32(block.number)) return false;
+        uint32 nowBlock = uint32(ChainLib.blockNumber());
+        if (task.taskCreatedBlock >= nowBlock) return false;
 
         // Bind every Task field that overlaps with TaskResponse (synced with
         // validateAttestationDirect)
@@ -506,7 +508,7 @@ contract AttestationValidator is Initializable, OwnableUpgradeable, AddressesPro
         try this._checkSanityTaskResponse(
             task,
             taskResponse,
-            uint32(block.number),
+            nowBlock,
             INewtonProverTaskManager(taskManager).taskResponseWindowBlock()
         ) {}
         catch {
@@ -528,7 +530,7 @@ contract AttestationValidator is Initializable, OwnableUpgradeable, AddressesPro
             return false;
         }
 
-        uint32 expiration = uint32(block.number) + minExpireAfterBlocks;
+        uint32 expiration = nowBlock + minExpireAfterBlocks;
         try this._checkSanityAttestation(
             NewtonMessage.Attestation(
                 taskId,
@@ -542,7 +544,7 @@ contract AttestationValidator is Initializable, OwnableUpgradeable, AddressesPro
         catch {
             return false;
         }
-        if (uint32(block.number) >= expiration) return false;
+        if (nowBlock >= expiration) return false;
 
         // Return the decision, matching what validateAttestationDirect returns on this same path.
         // A denied response is verifiable but would not be accepted.

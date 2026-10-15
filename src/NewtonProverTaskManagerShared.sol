@@ -2,6 +2,7 @@
 pragma solidity ^0.8.27;
 
 import {INewtonProverTaskManager} from "./interfaces/INewtonProverTaskManager.sol";
+import {ChainLib} from "./libraries/ChainLib.sol";
 import {INewtonPolicyClient} from "./interfaces/INewtonPolicyClient.sol";
 import {TaskManagerStorage} from "./middlewares/TaskManagerStorage.sol";
 import {NewtonMessage} from "./core/NewtonMessage.sol";
@@ -37,7 +38,7 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
         TaskResponse calldata taskResponse
     ) {
         TaskLib.sanityCheckTaskResponse(
-            task, taskResponse, uint32(block.number), taskResponseWindowBlock
+            task, taskResponse, uint32(ChainLib.blockNumber()), taskResponseWindowBlock
         );
         _;
     }
@@ -99,7 +100,7 @@ abstract contract NewtonProverTaskManagerShared is TaskManagerStorage, Reentranc
         bytes32 hashOfNonSigners = ITaskResponseHandler(taskResponseHandler)
             .verifyTaskResponse(task, taskResponse, signatureData);
 
-        uint32 referenceBlock = uint32(block.number);
+        uint32 referenceBlock = uint32(ChainLib.blockNumber());
         uint32 responseExpireBlock = referenceBlock + minExpireAfterBlocks;
         ResponseCertificate memory responseCertificate = ResponseCertificate(
             referenceBlock, responseExpireBlock, hashOfNonSigners, signatureData

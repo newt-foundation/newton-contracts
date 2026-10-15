@@ -58,7 +58,8 @@ interface INewtonProverTaskManager {
     /// @param policyId The policy set that denied.
     /// @param intentHash keccak256(abi.encode(intent)) - ties the denial to the exact intent.
     /// @param referenceBlock The block at which the response was recorded on-chain
-    ///        (uint32(block.number) in respondToTask; matches ResponseCertificate.referenceBlock).
+    ///        (uint32(ChainLib.blockNumber()) in respondToTask, the L2 height on Arbitrum chains;
+    ///        matches ResponseCertificate.referenceBlock).
     event PolicyDenied(
         address indexed policyClient,
         bytes32 indexed taskId,

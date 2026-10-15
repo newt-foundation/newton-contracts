@@ -3,6 +3,7 @@
 pragma solidity ^0.8.27;
 
 import {IEpochRegistry} from "../interfaces/IEpochRegistry.sol";
+import {ChainLib} from "../libraries/ChainLib.sol";
 import {IOperatorRegistry} from "../interfaces/IOperatorRegistry.sol";
 import {INewtonAddressesProvider} from "../interfaces/INewtonAddressesProvider.sol";
 import {AddressesProviderConsumer} from "../mixins/AddressesProviderConsumer.sol";
@@ -106,7 +107,7 @@ contract EpochRegistry is Initializable, AdminMixin, AddressesProviderConsumer, 
             mpk: mpk,
             operatorSetHash: operatorSetHash,
             epochId: nextEpochId,
-            startBlock: uint64(block.number),
+            startBlock: uint64(ChainLib.blockNumber()),
             threshold: threshold,
             committeeSize: committeeSize
         });

@@ -2,6 +2,7 @@
 pragma solidity ^0.8.27;
 
 import {INewtonProverTaskManager} from "../interfaces/INewtonProverTaskManager.sol";
+import {ChainLib} from "./ChainLib.sol";
 import {NewtonMessage} from "../core/NewtonMessage.sol";
 import {INewtonPolicyClient} from "../interfaces/INewtonPolicyClient.sol";
 import {IERC165} from "@openzeppelin/contracts/interfaces/IERC165.sol";
@@ -62,10 +63,10 @@ library TaskLib {
         // The block must be > 0, < current block (required by BLSSignatureChecker),
         // and within taskCreationBufferWindow blocks of current block to prevent stale state
         require(task.taskCreatedBlock > 0, InvalidTaskCreatedBlock());
-        require(task.taskCreatedBlock < uint32(block.number), TaskCreatedBlockInFuture());
+        uint32 nowBlock = uint32(ChainLib.blockNumber());
+        require(task.taskCreatedBlock < nowBlock, TaskCreatedBlockInFuture());
         require(
-            uint32(block.number) - task.taskCreatedBlock <= taskCreationBufferWindow,
-            TaskCreatedBlockTooOld()
+            nowBlock - task.taskCreatedBlock <= taskCreationBufferWindow, TaskCreatedBlockTooOld()
         );
 
         PolicyValidationLib.requirePolicyDataBounds(task);

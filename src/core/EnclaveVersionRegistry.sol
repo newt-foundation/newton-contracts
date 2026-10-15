@@ -3,6 +3,7 @@
 pragma solidity ^0.8.27;
 
 import {IEnclaveVersionRegistry} from "../interfaces/IEnclaveVersionRegistry.sol";
+import {ChainLib} from "../libraries/ChainLib.sol";
 import {IOperatorRegistry} from "../interfaces/IOperatorRegistry.sol";
 import {INewtonAddressesProvider} from "../interfaces/INewtonAddressesProvider.sol";
 import {AddressesProviderConsumer} from "../mixins/AddressesProviderConsumer.sol";
@@ -113,8 +114,9 @@ contract EnclaveVersionRegistry is
         require(pcr0Hash != bytes32(0), InvalidPcr0Hash());
         require(_versions[pcr0Hash].activatedAt == 0, VersionAlreadyRegistered(pcr0Hash));
 
-        _versions[pcr0Hash] =
-            EnclaveVersion({activatedAt: uint64(block.number), deprecatedAt: 0, label: label});
+        _versions[pcr0Hash] = EnclaveVersion({
+            activatedAt: uint64(ChainLib.blockNumber()), deprecatedAt: 0, label: label
+        });
 
         unchecked {
             ++_activeCount;
@@ -131,7 +133,7 @@ contract EnclaveVersionRegistry is
         require(v.activatedAt != 0, VersionNotRegistered(pcr0Hash));
         require(v.deprecatedAt == 0, VersionAlreadyDeprecated(pcr0Hash));
 
-        v.deprecatedAt = uint64(block.number);
+        v.deprecatedAt = uint64(ChainLib.blockNumber());
 
         unchecked {
             --_activeCount;

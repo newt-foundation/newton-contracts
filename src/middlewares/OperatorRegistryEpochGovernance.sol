@@ -2,6 +2,7 @@
 pragma solidity ^0.8.27;
 
 import {Initializable} from "@openzeppelin-upgrades/contracts/proxy/utils/Initializable.sol";
+import {ChainLib} from "../libraries/ChainLib.sol";
 import {
     ISlashingRegistryCoordinatorTypes
 } from "@eigenlayer-middleware/src/interfaces/ISlashingRegistryCoordinator.sol";
@@ -204,9 +205,10 @@ contract OperatorRegistryEpochGovernance is Initializable, AdminMixin {
     ) external reinitializer(4) onlyOwner {
         if (_initialEpochDurationBlocks == 0) revert InvalidEpochDuration();
         currentEpoch = 0;
-        epochStartBlock = uint64(block.number);
+        uint64 startBlock = uint64(ChainLib.blockNumber());
+        epochStartBlock = startBlock;
         epochDurationBlocks = _initialEpochDurationBlocks;
-        emit EpochAdvanced(0, uint64(block.number), _initialEpochDurationBlocks);
+        emit EpochAdvanced(0, startBlock, _initialEpochDurationBlocks);
     }
 
     /* ───────── BOOTSTRAP-PHASE MUTATORS — owner-gated, gated on `epochDurationBlocks == 0` ───────── */
@@ -418,8 +420,9 @@ contract OperatorRegistryEpochGovernance is Initializable, AdminMixin {
         uint64 startBlock = epochStartBlock;
         uint32 duration = epochDurationBlocks;
         if (duration == 0) revert InvalidEpochDuration();
-        if (block.number < uint256(startBlock) + uint256(duration)) {
-            revert EpochNotReady(startBlock, duration, block.number);
+        uint256 nowBlock = ChainLib.blockNumber();
+        if (nowBlock < uint256(startBlock) + uint256(duration)) {
+            revert EpochNotReady(startBlock, duration, nowBlock);
         }
         if (address(operatorRegistry) == address(0)) revert OperatorRegistryUnset();
 
@@ -469,7 +472,7 @@ contract OperatorRegistryEpochGovernance is Initializable, AdminMixin {
         }
 
         currentEpoch = newEpoch;
-        uint64 newStartBlock = uint64(block.number);
+        uint64 newStartBlock = uint64(ChainLib.blockNumber());
         epochStartBlock = newStartBlock;
         emit EpochAdvanced(newEpoch, newStartBlock, duration);
 
@@ -486,7 +489,7 @@ contract OperatorRegistryEpochGovernance is Initializable, AdminMixin {
 
     /// @notice Whether `applyPendingChanges()` would succeed at the current block.
     function isEpochAdvanceReady() external view returns (bool) {
-        return block.number >= uint256(epochStartBlock) + uint256(epochDurationBlocks);
+        return ChainLib.blockNumber() >= uint256(epochStartBlock) + uint256(epochDurationBlocks);
     }
 
     function pendingWhitelistAdditions(

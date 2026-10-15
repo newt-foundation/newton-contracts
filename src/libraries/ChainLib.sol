@@ -2,27 +2,36 @@
 
 pragma solidity ^0.8.27;
 
+interface ArbSys {
+    function arbBlockNumber() external view returns (uint256);
+}
+
 library ChainLib {
     error ChainNotSupported(uint256 chainId);
 
+    ArbSys private constant ARBSYS = ArbSys(address(0x64));
+
+    /// @notice L2 block number on Arbitrum chains, where block.number is the parent chain's
+    /// @dev Mirrors Chainlink's ChainSpecificUtil._getBlockNumber
+    function blockNumber() internal view returns (uint256) {
+        return isArbitrum(block.chainid) ? ARBSYS.arbBlockNumber() : block.number;
+    }
+
+    function isArbitrum(
+        uint256 chainId
+    ) internal pure returns (bool) {
+        return chainId == 4663 // Robinhood Chain
+            || chainId == 46630; // Robinhood Chain testnet
+    }
+
     // NOTE: make sure to use with requireSupportedChain modifier
     function isMainnet() internal view returns (bool) {
-        uint256 chainId = block.chainid;
-        return chainId == 1 // Ethereum mainnet
-            || chainId == 10 // Optimism mainnet
-            || chainId == 42161 // Arbitrum One mainnet
-            || chainId == 137 // Polygon mainnet
-            || chainId == 8453; // Base mainnet
+        return isMainnetStatic(block.chainid);
     }
 
     // NOTE: make sure to use with requireSupportedChain modifier
     function isTestnet() internal view returns (bool) {
-        uint256 chainId = block.chainid;
-        return chainId == 11155111 // Sepolia testnet
-            || chainId == 84532 // Base Sepolia testnet
-            || chainId == 11155420 // Optimism Sepolia testnet
-            || chainId == 421614 // Arbitrum One Sepolia testnet
-            || chainId == 80002; // Polygon Amoy testnet
+        return isTestnetStatic(block.chainid);
     }
 
     // NOTE: make sure to use with requireSupportedChain modifier
@@ -115,10 +124,9 @@ library ChainLib {
         uint256 chainId
     ) internal pure returns (bool) {
         return chainId == 1 // Ethereum mainnet
-            || chainId == 10 // Optimism mainnet
-            || chainId == 42161 // Arbitrum One mainnet
-            || chainId == 137 // Polygon mainnet
-            || chainId == 8453; // Base mainnet
+            || chainId == 8453 // Base mainnet
+            || chainId == 4663 // Robinhood Chain
+            || chainId == 5042; // Arc
     }
 
     /// @notice Static version of isTestnet
@@ -127,9 +135,8 @@ library ChainLib {
     ) internal pure returns (bool) {
         return chainId == 11155111 // Sepolia testnet
             || chainId == 84532 // Base Sepolia testnet
-            || chainId == 11155420 // Optimism Sepolia testnet
-            || chainId == 421614 // Arbitrum One Sepolia testnet
-            || chainId == 80002; // Polygon Amoy testnet
+            || chainId == 46630 // Robinhood Chain testnet
+            || chainId == 5042002; // Arc testnet
     }
 
     // =============================================================

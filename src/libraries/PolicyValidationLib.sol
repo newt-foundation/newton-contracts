@@ -2,6 +2,7 @@
 pragma solidity ^0.8.27;
 
 import {INewtonProverTaskManager} from "../interfaces/INewtonProverTaskManager.sol";
+import {ChainLib} from "./ChainLib.sol";
 import {INewtonPolicy} from "../interfaces/INewtonPolicy.sol";
 import {INewtonPolicyFactoryRegistry} from "../interfaces/INewtonPolicyFactory.sol";
 import {ISemVerMixin} from "../interfaces/ISemVerMixin.sol";
@@ -140,7 +141,7 @@ library PolicyValidationLib {
 
         minExpireAfterBlocks = type(uint32).max;
         uint256 totalBytes;
-        uint32 currentBlock = uint32(block.number);
+        uint32 currentBlock = uint32(ChainLib.blockNumber());
 
         for (uint256 i; i < count;) {
             address policyAddress = task.policies[i].policy;

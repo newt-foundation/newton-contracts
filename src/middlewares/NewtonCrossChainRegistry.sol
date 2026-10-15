@@ -19,7 +19,7 @@ import {ICrossChainRegistryTypes} from "@eigenlayer/contracts/interfaces/ICrossC
  *         that EigenLayer does not yet natively support
  * @dev This contract is deployed on Ethereum mainnet/Sepolia alongside EigenLayer's own
  *      CrossChainRegistry. While EigenLayer's registry handles supported destinations (e.g., Base),
- *      Newton's registry handles other L2s (e.g., Arbitrum, Optimism, Polygon) that EigenLayer
+ *      Newton's registry handles other chains (Robinhood, Arc) that EigenLayer
  *      cross-chain infrastructure doesn't yet support.
  */
 contract NewtonCrossChainRegistry is Initializable, AdminMixin, Pausable, SemVerMixin {

@@ -2,6 +2,7 @@
 pragma solidity ^0.8.27;
 
 import {INewtonProverTaskManager} from "../interfaces/INewtonProverTaskManager.sol";
+import {ChainLib} from "../libraries/ChainLib.sol";
 import {TaskLib} from "../libraries/TaskLib.sol";
 import {TaskManagerErrors} from "../libraries/TaskManagerErrors.sol";
 import {ChallengeLib} from "../libraries/ChallengeLib.sol";
@@ -209,7 +210,8 @@ contract ChallengeVerifier is
             _isChallengable(task, taskResponse, responseCertificate, challenge), NotChallengable()
         );
         require(
-            uint32(block.number) < responseCertificate.referenceBlock + taskChallengeWindowBlock,
+            uint32(ChainLib.blockNumber())
+                < responseCertificate.referenceBlock + taskChallengeWindowBlock,
             ChallengePeriodExpired()
         );
 
@@ -490,7 +492,7 @@ contract ChallengeVerifier is
         return task.taskId == taskId && allTaskResponses[taskId] != bytes32(0)
             && allTaskResponses[taskId] == keccak256(abi.encode(taskResponse, responseCertificate))
             && !taskSuccesfullyChallenged[taskId]
-            && uint32(block.number) < responseCertificate.responseExpireBlock
+            && uint32(ChainLib.blockNumber()) < responseCertificate.responseExpireBlock
             && challenge.taskId == taskId;
     }
 
@@ -587,10 +589,11 @@ contract ChallengeVerifier is
         );
 
         // Verify taskResponseWindow has passed
+        uint32 nowBlock = uint32(ChainLib.blockNumber());
         require(
-            uint32(block.number) > task.taskCreatedBlock + taskResponseWindowBlock,
+            nowBlock > task.taskCreatedBlock + taskResponseWindowBlock,
             TaskLib.TaskResponseWindowNotPassed(
-                uint32(block.number), task.taskCreatedBlock, taskResponseWindowBlock
+                nowBlock, task.taskCreatedBlock, taskResponseWindowBlock
             )
         );
 
@@ -679,7 +682,7 @@ contract ChallengeVerifier is
         // Uses task.taskCreatedBlock as the anchor since the direct path may
         // have been set before the regular path's responseCertificate exists.
         require(
-            uint32(block.number) < task.taskCreatedBlock + taskChallengeWindowBlock,
+            uint32(ChainLib.blockNumber()) < task.taskCreatedBlock + taskChallengeWindowBlock,
             ChallengePeriodExpired()
         );
 
@@ -760,7 +763,8 @@ contract ChallengeVerifier is
 
         // 3. Must be within challenge window
         require(
-            uint32(block.number) < responseCertificate.referenceBlock + taskChallengeWindowBlock,
+            uint32(ChainLib.blockNumber())
+                < responseCertificate.referenceBlock + taskChallengeWindowBlock,
             ChallengePeriodExpired()
         );
 

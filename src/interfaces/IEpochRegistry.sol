@@ -28,7 +28,7 @@ interface IEpochRegistry {
         bytes32 operatorSetHash;
         /// Monotonically increasing epoch identifier. First epoch is 0.
         uint64 epochId;
-        /// block.number at which this epoch was registered.
+        /// ChainLib.blockNumber() at which this epoch was registered (L2 height on Arbitrum chains).
         uint64 startBlock;
         /// Threshold (t) — minimum co-signers for threshold decryption.
         uint8 threshold;
