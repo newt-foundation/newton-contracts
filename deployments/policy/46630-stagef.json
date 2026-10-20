@@ -1,0 +1,14 @@
+{
+  "lastUpdate": {
+    "timestamp": "1792086716",
+    "block_number": "11922032"
+  },
+  "addresses": {
+    "policyFactory": "0x13b90d2828fe7bb4e61a0760e73bde777e0704b7",
+    "policyFactoryImpl": "0xbb7d5d993c086592a438cb5849d534a2feb0b0af",
+    "policy": "0xef8978aa7908b37a4553384e492cee187c36603e",
+    "policyClient": "0x447caa08c7bcf6dd2cda3b8af0df606317b4a898",
+    "policyClientImpl": "0x3ddbd4a23ed71bdb6b6dca8fdd87b8e4df07c431",
+    "policyId": "0x3e61e1eca34943181ad9303383faee01ddc9fbd5dd1994c1990d3a2cd6587cf2"
+  }
+}
