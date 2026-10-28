@@ -4,6 +4,7 @@ pragma solidity ^0.8.27;
 
 import {IERC165} from "@openzeppelin/contracts/interfaces/IERC165.sol";
 import {INewtonPolicy} from "./INewtonPolicy.sol";
+import {NewtonMessage} from "../core/NewtonMessage.sol";
 
 /// @notice Interface for a NewtonPolicyClient-type contract that enables clients to define execution rules or parameters for tasks they submit
 interface INewtonPolicyClient is IERC165 {
@@ -109,4 +110,69 @@ interface INewtonPolicyClient is IERC165 {
      * @return The owner address of the policy client.
      */
     function getOwner() external view returns (address);
+}
+
+/// @notice Delegated submission for a NewtonPolicyClient: an allowlisted delegator may submit an
+///         attestation on behalf of `intent.from` when it carries `intent.from`'s EIP-712 signature
+///         over the intent. Kept apart from `INewtonPolicyClient` so that interface's ERC-165 id,
+///         which `TaskLib` and `PolicyClientRegistry` check on every client, stays the same for
+///         clients deployed before delegation existed.
+interface INewtonPolicyClientDelegation {
+    /// @notice Emitted when an account is added to or removed from the delegator set.
+    event DelegatorUpdated(address indexed delegator, bool allowed);
+
+    /// @notice Emitted when the client starts or stops requiring delegated submission.
+    event DelegatorRequiredUpdated(bool required);
+
+    /// @notice Emitted when `delegator` lands the intent with this `intentDigest`.
+    event IntentSpent(bytes32 indexed digest, address indexed delegator);
+
+    /// @notice Only callable by the owner. Adds `delegator`, which must have signed
+    ///         `delegatorApprovalDigest(delegatorNonces(delegator), deadline)`; consumes the nonce.
+    function approveDelegator(
+        address delegator,
+        uint256 deadline,
+        bytes calldata signature
+    ) external;
+
+    /// @notice Only callable by the owner. Removes a delegator.
+    function removeDelegator(
+        address delegator
+    ) external;
+
+    /// @notice Callable by a delegator to remove itself; also voids its unused approvals.
+    function resignDelegator() external;
+
+    function delegatorNonces(
+        address delegator
+    ) external view returns (uint256);
+
+    /// @notice EIP-712 digest of `DelegatorApproval(nonce, deadline)` under this client's domain;
+    ///         what a delegator signs to consent to being added.
+    function delegatorApprovalDigest(
+        uint256 nonce,
+        uint256 deadline
+    ) external view returns (bytes32);
+
+    /// @notice Only callable by the owner. When true, `intent.from` can no longer submit its own
+    ///         attestation; every submission goes through a delegator.
+    function setDelegatorRequired(
+        bool required
+    ) external;
+
+    function isDelegator(
+        address account
+    ) external view returns (bool);
+
+    function delegatorRequired() external view returns (bool);
+
+    /// @notice Whether a delegator already landed the intent with this `intentDigest`.
+    function isIntentSpent(
+        bytes32 digest
+    ) external view returns (bool);
+
+    /// @notice EIP-712 digest of `intent` under this client's domain; what `intent.from` signs.
+    function intentDigest(
+        NewtonMessage.Intent calldata intent
+    ) external view returns (bytes32);
 }

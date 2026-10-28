@@ -3,8 +3,13 @@
 pragma solidity ^0.8.27;
 
 import {IERC165} from "@openzeppelin/contracts/interfaces/IERC165.sol";
+import {IERC5267} from "@openzeppelin/contracts/interfaces/IERC5267.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {INewtonProverTaskManager} from "../interfaces/INewtonProverTaskManager.sol";
-import {INewtonPolicyClient} from "../interfaces/INewtonPolicyClient.sol";
+import {
+    INewtonPolicyClient,
+    INewtonPolicyClientDelegation
+} from "../interfaces/INewtonPolicyClient.sol";
 import {INewtonPolicyFactoryRegistry} from "../interfaces/INewtonPolicyFactory.sol";
 import {SemVerMixin} from "./SemVerMixin.sol";
 import {NewtonMessage} from "../core/NewtonMessage.sol";
@@ -15,7 +20,12 @@ import {
     MAX_POLICY_FIELD_BYTES
 } from "../libraries/PolicyConstants.sol";
 
-abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
+abstract contract NewtonPolicyClient is
+    INewtonPolicyClient,
+    INewtonPolicyClientDelegation,
+    IERC5267,
+    SemVerMixin
+{
     /// @notice Stamps the implementation with the protocol version it was compiled
     ///         against so inheriting clients (e.g. vaults) expose `version()`. This
     ///         lets off-chain tooling detect a client/protocol version drift; a
@@ -31,7 +41,9 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
         bytes4 interfaceId
     ) public view virtual override returns (bool) {
         return interfaceId == type(IERC165).interfaceId // 0x01ffc9a7
-            || interfaceId == type(INewtonPolicyClient).interfaceId;
+            || interfaceId == type(INewtonPolicyClient).interfaceId
+            || interfaceId == type(INewtonPolicyClientDelegation).interfaceId
+            || interfaceId == type(IERC5267).interfaceId;
     }
 
     // error for when a call is made by an account other than the owner
@@ -60,6 +72,11 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
         PolicySpec[] policies;
         bytes32 policyId;
         uint64 policyRevision;
+        // appended for delegated submission; append-only from here on
+        mapping(address => bool) delegators;
+        bool delegatorRequired;
+        mapping(address => uint256) delegatorNonces;
+        mapping(bytes32 => bool) spentIntents;
     }
 
     /// @notice EIP-1967 proxy storage slot for the NewtonPolicyClientStorage struct
@@ -226,12 +243,188 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
         return _getNewtonPolicyClientStorage().policyClientOwner;
     }
 
+    bytes32 private constant _EIP712_DOMAIN_TYPEHASH = keccak256(
+        "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+    );
+    bytes32 private constant _INTENT_TYPEHASH = keccak256(
+        "Intent(address from,address to,uint256 value,bytes data,uint256 chainId,bytes functionSignature)"
+    );
+    bytes32 private constant _DELEGATOR_APPROVAL_TYPEHASH =
+        keccak256("DelegatorApproval(uint256 nonce,uint256 deadline)");
+    string private constant _EIP712_NAME = "NewtonPolicyClient";
+    string private constant _EIP712_VERSION = "1";
+
+    /// @dev Owner and delegator both consent: the owner submits, the delegator signed.
+    function approveDelegator(
+        address delegator,
+        uint256 deadline,
+        bytes calldata signature
+    ) external onlyPolicyClientOwner {
+        require(
+            block.timestamp <= deadline, NewtonMessage.Unauthorized("Delegator approval expired")
+        );
+        NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
+        (address signer, ECDSA.RecoverError err) = ECDSA.tryRecover(
+            _delegatorApprovalDigest($.delegatorNonces[delegator]++, deadline), signature
+        );
+        require(
+            err == ECDSA.RecoverError.NoError && signer == delegator,
+            NewtonMessage.Unauthorized("Invalid delegator approval")
+        );
+        $.delegators[delegator] = true;
+        emit DelegatorUpdated(delegator, true);
+    }
+
+    function removeDelegator(
+        address delegator
+    ) external onlyPolicyClientOwner {
+        _getNewtonPolicyClientStorage().delegators[delegator] = false;
+        emit DelegatorUpdated(delegator, false);
+    }
+
+    function resignDelegator() external {
+        NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
+        $.delegators[msg.sender] = false;
+        ++$.delegatorNonces[msg.sender];
+        emit DelegatorUpdated(msg.sender, false);
+    }
+
+    function delegatorNonces(
+        address delegator
+    ) external view returns (uint256) {
+        return _getNewtonPolicyClientStorage().delegatorNonces[delegator];
+    }
+
+    function delegatorApprovalDigest(
+        uint256 nonce,
+        uint256 deadline
+    ) external view returns (bytes32) {
+        return _delegatorApprovalDigest(nonce, deadline);
+    }
+
+    function _delegatorApprovalDigest(
+        uint256 nonce,
+        uint256 deadline
+    ) internal view returns (bytes32) {
+        return _hashTypedData(keccak256(abi.encode(_DELEGATOR_APPROVAL_TYPEHASH, nonce, deadline)));
+    }
+
+    function setDelegatorRequired(
+        bool required
+    ) external onlyPolicyClientOwner {
+        _getNewtonPolicyClientStorage().delegatorRequired = required;
+        emit DelegatorRequiredUpdated(required);
+    }
+
+    function isDelegator(
+        address account
+    ) external view returns (bool) {
+        return _getNewtonPolicyClientStorage().delegators[account];
+    }
+
+    function delegatorRequired() external view returns (bool) {
+        return _getNewtonPolicyClientStorage().delegatorRequired;
+    }
+
+    function isIntentSpent(
+        bytes32 digest
+    ) external view returns (bool) {
+        return _getNewtonPolicyClientStorage().spentIntents[digest];
+    }
+
+    /// @dev Computed per call rather than cached: the mixin has no initializer of its own that
+    ///      every client runs, and `address(this)` must be the proxy, not the implementation.
+    function eip712Domain()
+        public
+        view
+        virtual
+        returns (bytes1, string memory, string memory, uint256, address, bytes32, uint256[] memory)
+    {
+        return (
+            hex"0f",
+            _EIP712_NAME,
+            _EIP712_VERSION,
+            block.chainid,
+            address(this),
+            bytes32(0),
+            new uint256[](0)
+        );
+    }
+
+    function intentDigest(
+        NewtonMessage.Intent calldata intent
+    ) external view returns (bytes32) {
+        return _intentDigest(intent);
+    }
+
+    function _intentDigest(
+        NewtonMessage.Intent memory intent
+    ) internal view returns (bytes32) {
+        return _hashTypedData(
+            keccak256(
+                abi.encode(
+                    _INTENT_TYPEHASH,
+                    intent.from,
+                    intent.to,
+                    intent.value,
+                    keccak256(intent.data),
+                    intent.chainId,
+                    keccak256(intent.functionSignature)
+                )
+            )
+        );
+    }
+
+    function _hashTypedData(
+        bytes32 structHash
+    ) internal view virtual returns (bytes32) {
+        bytes32 domainSeparator = keccak256(
+            abi.encode(
+                _EIP712_DOMAIN_TYPEHASH,
+                keccak256(bytes(_EIP712_NAME)),
+                keccak256(bytes(_EIP712_VERSION)),
+                block.chainid,
+                address(this)
+            )
+        );
+        return keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
+    }
+
+    /// @dev `intent.from` submitting its own attestation passes unless the client requires a
+    ///      delegator; with `delegatorRequired` false this is exactly the old sender check. Any
+    ///      other caller must be an allowlisted delegator carrying `intent.from`'s signature.
+    ///      `digest` is read only on the delegated path; callers skip hashing on self-submission.
+    ///      A delegated digest is single-use, the intent carries no nonce of its own; callers spend
+    ///      it only once the task manager allows, so a denied or challenged task leaves it unspent.
+    function _checkIntentSender(
+        bytes32 digest,
+        address from,
+        bytes memory signature
+    ) internal view {
+        NewtonPolicyClientStorage storage $ = _getNewtonPolicyClientStorage();
+        if (msg.sender == from) {
+            require(!$.delegatorRequired, NewtonMessage.Unauthorized("Delegator required"));
+            return;
+        }
+        require(
+            $.delegators[msg.sender], NewtonMessage.Unauthorized("Not authorized intent sender")
+        );
+        require(signature.length != 0, NewtonMessage.Unauthorized("Missing intent signature"));
+        (address signer, ECDSA.RecoverError err) = ECDSA.tryRecover(digest, signature);
+        require(
+            err == ECDSA.RecoverError.NoError && signer == from,
+            NewtonMessage.Unauthorized("Invalid intent signature")
+        );
+        require(!$.spentIntents[digest], NewtonMessage.Unauthorized("Intent already used"));
+    }
+
     /**
      * @notice Validates the transaction by checking the policy evaluation task response.
      * @param attestation the attestation to validate
      * @return true if the attestation is valid, false otherwise
      * @dev This function validates the attestation by checking the policy ID and the intent sender.
-     *      NOTE: Attestation is valid if the policy ID matches and the intent sender is the caller.
+     *      NOTE: Attestation is valid if the policy ID matches and the caller is the intent sender
+     *      or a delegator carrying the intent sender's signature (see `_checkIntentSender`).
      *      If either of the conditions is not met, the function reverts with an Unauthorized error.
      */
     function _validateAttestation(
@@ -242,15 +435,19 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
             attestation.policyId == $.policyId,
             NewtonMessage.Unauthorized("Policy ID does not match")
         );
-        require(
-            attestation.intent.from == msg.sender,
-            NewtonMessage.Unauthorized("Not authorized intent sender")
-        );
+        address from = attestation.intent.from;
+        bytes32 digest = msg.sender == from ? bytes32(0) : _intentDigest(attestation.intent);
+        _checkIntentSender(digest, from, attestation.intentSignature);
         require(
             attestation.intent.chainId == block.chainid,
             NewtonMessage.Unauthorized("Chain ID does not match")
         );
-        return $.policyTaskManager.validateAttestation(attestation);
+        bool valid = $.policyTaskManager.validateAttestation(attestation);
+        if (valid && digest != bytes32(0)) {
+            $.spentIntents[digest] = true;
+            emit IntentSpent(digest, msg.sender);
+        }
+        return valid;
     }
 
     /**
@@ -273,14 +470,19 @@ abstract contract NewtonPolicyClient is INewtonPolicyClient, SemVerMixin {
             taskResponse.policyId == $.policyId,
             NewtonMessage.Unauthorized("Policy ID does not match")
         );
-        require(
-            taskResponse.intent.from == msg.sender,
-            NewtonMessage.Unauthorized("Not authorized intent sender")
-        );
+        address from = taskResponse.intent.from;
+        bytes32 digest = msg.sender == from ? bytes32(0) : _intentDigest(taskResponse.intent);
+        _checkIntentSender(digest, from, taskResponse.intentSignature);
         require(
             taskResponse.intent.chainId == block.chainid,
             NewtonMessage.Unauthorized("Chain ID does not match")
         );
-        return $.policyTaskManager.validateAttestationDirect(task, taskResponse, signatureData);
+        bool valid =
+            $.policyTaskManager.validateAttestationDirect(task, taskResponse, signatureData);
+        if (valid && digest != bytes32(0)) {
+            $.spentIntents[digest] = true;
+            emit IntentSpent(digest, msg.sender);
+        }
+        return valid;
     }
 }
